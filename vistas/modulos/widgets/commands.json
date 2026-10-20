@@ -1,0 +1,46 @@
+{
+  "module": "widgets",
+  "name": "Gestor de Widgets de Escritorio",
+  "description": "Comandos de personalización de widgets flotantes, dock y temas",
+  "commands": [
+    {
+      "name": "catalogo widgets",
+      "command": "/widgets",
+      "command_sudo": "/widgets",
+      "aliases": ["/escritorio", "/gadgets"],
+      "description": "Abre el catálogo principal de widgets flotantes",
+      "syntax": "/widgets",
+      "actions": [
+        "goto: widgets",
+        "tab: 0",
+        "message: §a[Widgets] Catálogo de complementos flotantes activo para %user%."
+      ]
+    },
+    {
+      "name": "dock de accesos",
+      "command": "/dock",
+      "command_sudo": "/dock",
+      "aliases": ["/launcher", "/barra"],
+      "description": "Abre el configurador de la barra de acceso rápido",
+      "syntax": "/dock",
+      "actions": [
+        "goto: widgets",
+        "tab: 1",
+        "message: §b[Widgets] Panel del dock de herramientas abierto."
+      ]
+    },
+    {
+      "name": "distribuciones guardadas",
+      "command": "/layouts",
+      "command_sudo": "/layouts",
+      "aliases": ["/diseños", "/perfiles-widget"],
+      "description": "Muestra los diseños y configuraciones de pantalla guardados",
+      "syntax": "/layouts",
+      "actions": [
+        "goto: widgets",
+        "tab: 2",
+        "message: §e[Widgets] Diseños y perfiles de escritorio activos."
+      ]
+    }
+  ]
+}
