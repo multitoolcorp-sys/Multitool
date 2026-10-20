@@ -1,0 +1,37 @@
+{
+    "name": "Extras",
+    "position": 16,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "📱 Espejo Celular",
+            "file_name": "submodulos/espejo_celular.py",
+            "class_name": "EspejoCelularGUI",
+            "visible": true
+        },
+        {
+            "name": "📸 Recortes & OCR",
+            "file_name": "submodulos/snipper.py",
+            "class_name": "SnipperGUI",
+            "visible": true
+        },
+        {
+            "name": "📌 Kanban & Pizarra",
+            "file_name": "submodulos/kanban_pizarra.py",
+            "class_name": "KanbanPizarraSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🚀 Lanzador & Sonidos",
+            "file_name": "submodulos/lanzador_soundboard.py",
+            "class_name": "LanzadorSoundboardSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🎡 Ruleta",
+            "file_name": "submodulos/ruleta.py",
+            "class_name": "RouletteGUI",
+            "visible": true
+        }
+    ]
+}

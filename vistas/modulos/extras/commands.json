@@ -1,0 +1,72 @@
+{
+  "module": "extras",
+  "name": "Herramientas Extras",
+  "description": "Comandos para la suite de herramientas extras, azar y capturas",
+  "commands": [
+    {
+      "name": "lanzar dados",
+      "command": "/dice",
+      "command_sudo": "/dice",
+      "aliases": ["/dado", "/roll"],
+      "description": "Navega y activa el lanzador de dados 3D",
+      "syntax": "/dice [caras:6]",
+      "actions": [
+        "goto: extras",
+        "tab: 4",
+        "message: §a[Extras] Módulo de Ruleta y Dados abierto para %user%."
+      ]
+    },
+    {
+      "name": "lanzar moneda",
+      "command": "/coin",
+      "command_sudo": "/coin",
+      "aliases": ["/moneda", "/flip"],
+      "description": "Navega y prepara el lanzamiento de moneda 3D",
+      "syntax": "/coin",
+      "actions": [
+        "goto: extras",
+        "tab: 4",
+        "message: §e[Extras] Vista de lanzamiento de moneda activada para %user%."
+      ]
+    },
+    {
+      "name": "abrir recortes",
+      "command": "/snip",
+      "command_sudo": "/snip",
+      "aliases": ["/recorte", "/ocr"],
+      "description": "Abre la herramienta de recortes de pantalla y lector OCR",
+      "syntax": "/snip",
+      "actions": [
+        "goto: extras",
+        "tab: 1",
+        "message: §b[Extras] Suite de Recortes y OCR lista para %user%."
+      ]
+    },
+    {
+      "name": "abrir pizarra",
+      "command": "/board",
+      "command_sudo": "/board",
+      "aliases": ["/pizarra", "/whiteboard"],
+      "description": "Abre la pizarra interactiva vectorial",
+      "syntax": "/board",
+      "actions": [
+        "goto: extras",
+        "tab: 2",
+        "message: §d[Extras] Pizarra vectorial interactiva en pantalla."
+      ]
+    },
+    {
+      "name": "espejo celular",
+      "command": "/mirror",
+      "command_sudo": "/mirror",
+      "aliases": ["/celular", "/phone"],
+      "description": "Abre la herramienta de transmisión y espejo celular",
+      "syntax": "/mirror",
+      "actions": [
+        "goto: extras",
+        "tab: 0",
+        "message: §f[Extras] Conexión de Espejo Celular seleccionada."
+      ]
+    }
+  ]
+}
