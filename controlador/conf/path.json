@@ -1,0 +1,60 @@
+{
+    "modulos": {
+        "inicio": {
+            "path": "vistas.modulos.inicio.inicio",
+            "class": "TabInicio"
+        },
+        "calculadora": {
+            "path": "vistas.modulos.calculadora.calculadora",
+            "class": "TabCalculadora"
+        },
+        "notas": {
+            "path": "vistas.modulos.notas.notas",
+            "class": "TabNotas"
+        },
+        "navegador": {
+            "path": "vistas.modulos.navegador.navegador",
+            "class": "TabNavegador"
+        },
+        "sistema": {
+            "path": "vistas.modulos.sistema.sistema",
+            "class": "TabSistema"
+        },
+        "archivos": {
+            "path": "vistas.modulos.archivos.archivos",
+            "class": "TabArchivos"
+        },
+        "calendario": {
+            "path": "vistas.modulos.calendario.calendario",
+            "class": "TabCalendario"
+        },
+        "tiempo": {
+            "path": "vistas.modulos.tiempo.tiempo",
+            "class": "TabTiempo"
+        },
+        "reproductor": {
+            "path": "vistas.modulos.reproductor.reproductor",
+            "class": "TabReproductor"
+        },
+        "grabadora": {
+            "path": "vistas.modulos.grabadora.grabadora",
+            "class": "TabGrabadora"
+        },
+        "chat": {
+            "path": "vistas.modulos.chat.chat",
+            "class": "TabChat"
+        },
+        "traductor": {
+            "path": "vistas.modulos.traductor.traductor",
+            "class": "TabTraductor"
+        },
+        "horarios": {
+            "path": "vistas.modulos.horarios.horarios",
+            "class": "TabHorarios"
+        },
+        "emulador": {
+            "path": "vistas.modulos.emulador.emulador",
+            "class": "TabEmulador"
+        }
+    }
+}
