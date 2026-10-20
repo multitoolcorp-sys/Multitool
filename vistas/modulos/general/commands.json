@@ -1,0 +1,46 @@
+{
+  "module": "general",
+  "name": "Panel General & Dashboard",
+  "description": "Comandos de vista de inicio, accesos rápidos y estado del sistema",
+  "commands": [
+    {
+      "name": "pantalla de inicio",
+      "command": "/home",
+      "command_sudo": "/home",
+      "aliases": ["/inicio", "/general", "/main"],
+      "description": "Abre el panel de bienvenida y accesos rápidos de MultiTool",
+      "syntax": "/home",
+      "actions": [
+        "goto: general",
+        "tab: 0",
+        "message: §a[MultiTool] Bienvenido al panel principal, %user%."
+      ]
+    },
+    {
+      "name": "dashboard",
+      "command": "/dashboard",
+      "command_sudo": "/dashboard",
+      "aliases": ["/resumen"],
+      "description": "Abre la vista de resumen global y accesos rápidos",
+      "syntax": "/dashboard",
+      "actions": [
+        "goto: general",
+        "tab: 1",
+        "message: §b[Dashboard] Vista panorámica del sistema activa."
+      ]
+    },
+    {
+      "name": "acerca de",
+      "command": "/about",
+      "command_sudo": "/about",
+      "aliases": ["/info", "/version"],
+      "description": "Muestra información de la versión de MultiTool",
+      "syntax": "/about",
+      "actions": [
+        "goto: general",
+        "tab: 2",
+        "message: §d[MultiTool] Sistema profesional MultiTool v2.0."
+      ]
+    }
+  ]
+}

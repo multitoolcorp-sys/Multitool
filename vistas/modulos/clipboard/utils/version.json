@@ -1,0 +1,19 @@
+{
+  "modulo": "clipboard",
+  "version": "21.1.1",
+  "fecha": "2026-08-17",
+  "descripcion": "Actualización del módulo Clipboard v21.1.1",
+  "ultima_actualizacion": "2026-10-17",
+  "historial": [
+    {
+      "version": "21.1.1",
+      "fecha": "2026-10-17 01:30:35",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.0",
+      "fecha": "2026-08-19 17:00:35",
+      "descripcion": "===============================================================================\n                  RESUMEN GENERAL DE CAMBIOS Y CORRECCIONES - MULTITOOL\n===============================================================================\n\n-------------------------------------------------------------------------------\n1. 🧩 MÓDULO DE WIDGETS Y VENTANAS FLOTANTES\n-------------------------------------------------------------------------------\n+ Agregada navegación interna directa al presionar \"Abrir\": los módulos ahora se abren dentro de la app principal en lugar de forzar ventanas flotantes.\n+ Agregado modo persiana ultra compacto al colapsar widgets fijados: la barra se reduce automáticamente a 160px de ancho por 26px de alto sin dejar espacio sobrante.\n- Solucionado el fallo al presionar el botón de cierre (✕) asegurando que las ventanas flotantes se oculten y cierren limpiamente de inmediato.\n- Solucionada la duplicación de estado en el botón de colapso (▼/▲) permitiendo desplegar y ocultar los widgets de forma suave y sin bloqueos.\n\n-------------------------------------------------------------------------------\n2. 📱 MÓDULO DE EXTRAS Y ESPEJO CELULAR (PHONE MIRRORING)\n-------------------------------------------------------------------------------\n+ Agregado nuevo submódulo \"Espejo Celular\" para duplicar y controlar teléfonos Android por USB y Wi-Fi en pantalla grande.\n+ Agregado modo de duplicación profesional a 60 FPS sin latencia.\n+ Agregadas funciones estilo Enlace Móvil: apagar pantalla física del celular para ahorro de batería, transmisión de audio a la PC y prevención de suspensión.\n+ Agregado \"Modo Gamer & Periféricos\" (Teclado y Mouse UHID) para jugar a Roblox, Minecraft y juegos 3D usando WASD y rotación de cámara a 360°.\n+ Agregado instalador automático de herramientas ADB y motor HD en 1 solo clic.\n- Solucionado el problema de bloqueos de seguridad y permisos en teléfonos Xiaomi, POCO y Samsung.\n\n-------------------------------------------------------------------------------\n3. 👤 MÓDULO DE CUENTA Y DETECCIÓN DE ACTUALIZACIONES\n-------------------------------------------------------------------------------\n+ Agregada detección automática de actualizaciones pendientes comparando la versión local de cada módulo con el catálogo oficial.\n+ Agregada notificación emergente al iniciar sesión cuando existen módulos con versiones nuevas disponibles.\n+ Integrada la vinculación con Google OAuth 2.0 directamente dentro de la ventana de Modificar Datos Personales.\n- Eliminados campos redundantes de usuario en la sección de Ajustes y Seguridad para una interfaz más limpia.\n\n-------------------------------------------------------------------------------\n4. 📂 MÓDULO DE ARCHIVOS Y JUEGOS\n-------------------------------------------------------------------------------\n- Solucionado el fallo al navegar entre carpetas en el explorador de archivos.\n- Solucionada la regla de movimiento en Damas: las fichas normales solo capturan hacia adelante.\n- Agregada diferenciación visual de colores en las coronas de las Reinas en el juego de Damas."
+    }
+  ]
+}

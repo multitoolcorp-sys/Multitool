@@ -1,0 +1,46 @@
+{
+  "module": "calendario",
+  "name": "Calendario & Planificador",
+  "description": "Comandos de agenda, eventos y planificación temporal",
+  "commands": [
+    {
+      "name": "ver calendario",
+      "command": "/calendar",
+      "command_sudo": "/calendar",
+      "aliases": ["/calendario", "/cal", "/agenda"],
+      "description": "Abre la vista principal del calendario mensual",
+      "syntax": "/calendar",
+      "actions": [
+        "goto: calendario",
+        "tab: 0",
+        "message: §a[Calendario] Calendario mensual activo para %user%."
+      ]
+    },
+    {
+      "name": "gestor eventos",
+      "command": "/events",
+      "command_sudo": "/events",
+      "aliases": ["/eventos", "/reminders"],
+      "description": "Abre el panel de lista de eventos y recordatorios",
+      "syntax": "/events",
+      "actions": [
+        "goto: calendario",
+        "tab: 1",
+        "message: §b[Calendario] Panel de eventos y recordatorios activo."
+      ]
+    },
+    {
+      "name": "dia de hoy",
+      "command": "/today",
+      "command_sudo": "/today",
+      "aliases": ["/hoy"],
+      "description": "Enfoca la fecha y eventos correspondientes al día de hoy",
+      "syntax": "/today",
+      "actions": [
+        "goto: calendario",
+        "tab: 0",
+        "message: §e[Calendario] Fecha actual: %date% - %time%."
+      ]
+    }
+  ]
+}

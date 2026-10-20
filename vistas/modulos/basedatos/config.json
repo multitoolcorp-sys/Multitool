@@ -1,0 +1,17 @@
+{
+    "name": "Base de Datos",
+    "position": 16,
+    "visible": true,
+    "icon": "🗄️",
+    "description": "Gestor y explorador de bases de datos SQLite y SQL estilo DBeaver",
+    "file_name": "basedatos.py",
+    "class_name": "TabBasedatos",
+    "submodulos": [
+        {
+            "name": "Gestor de Bases de Datos",
+            "file_name": "basedatos.py",
+            "class_name": "TabBasedatos",
+            "visible": true
+        }
+    ]
+}

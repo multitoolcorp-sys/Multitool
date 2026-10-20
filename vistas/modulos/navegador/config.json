@@ -1,0 +1,45 @@
+{
+    "name": "Navegador",
+    "position": 4,
+    "visible": true,
+    "file_name": "navegador.py",
+    "class_name": "TabNavegador",
+    "submodulos": [
+        {
+            "name": "🌎 EXTERNO",
+            "file_name": "submodulos/externo.py",
+            "class_name": "TabNavegadorExterno",
+            "visible": true
+        },
+        {
+            "name": "⭐ FAVORITOS",
+            "file_name": "submodulos/favoritos.py",
+            "class_name": "TabNavegadorFavoritos",
+            "visible": true
+        },
+        {
+            "name": "🧭 EXPLORAR",
+            "file_name": "submodulos/explorar.py",
+            "class_name": "TabNavegadorExplorar",
+            "visible": true
+        },
+        {
+            "name": "📜 HISTORIAL",
+            "file_name": "submodulos/historial_view.py",
+            "class_name": "TabNavegadorHistorial",
+            "visible": true
+        },
+        {
+            "name": "📧 CLIENTE GMAIL",
+            "file_name": "submodulos/gui_email.py",
+            "class_name": "EmailGUI",
+            "visible": true
+        },
+        {
+            "name": "⚡ DESCARGAS",
+            "file_name": "submodulos/descargas.py",
+            "class_name": "TabNavegadorDescargas",
+            "visible": true
+        }
+    ]
+}

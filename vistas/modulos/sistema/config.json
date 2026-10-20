@@ -1,0 +1,61 @@
+{
+    "name": "Sistema",
+    "position": 5,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Resumen",
+            "file_name": "submodulos/tab_resumen.py",
+            "class_name": "TabResumen",
+            "visible": true
+        },
+        {
+            "name": "Monitoreo",
+            "file_name": "submodulos/tab_monitoreo.py",
+            "class_name": "TabMonitoreo",
+            "visible": true
+        },
+        {
+            "name": "Procesos",
+            "file_name": "submodulos/tab_procesos.py",
+            "class_name": "TabProcesos",
+            "visible": true
+        },
+        {
+            "name": "Inicio de Windows",
+            "file_name": "submodulos/tab_startup.py",
+            "class_name": "TabStartup",
+            "visible": true
+        },
+        {
+            "name": "Limpiador",
+            "file_name": "submodulos/tab_limpiador.py",
+            "class_name": "TabLimpiador",
+            "visible": true
+        },
+        {
+            "name": "Antivirus & EDR",
+            "file_name": "submodulos/tab_antivirus.py",
+            "class_name": "TabAntivirus",
+            "visible": true
+        },
+        {
+            "name": "Control Remoto",
+            "file_name": "submodulos/tab_remote.py",
+            "class_name": "TabRemote",
+            "visible": true
+        },
+        {
+            "name": "Herramientas Avanzadas",
+            "file_name": "submodulos/tab_avanzado.py",
+            "class_name": "TabAvanzado",
+            "visible": true
+        },
+        {
+            "name": "Seguridad",
+            "file_name": "submodulos/tab_seguridad.py",
+            "class_name": "TabSeguridad",
+            "visible": true
+        }
+    ]
+}

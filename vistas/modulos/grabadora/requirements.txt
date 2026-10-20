@@ -1,0 +1,6 @@
+# Dependencias requeridas para el módulo grabadora
+opencv-python>=4.8.0
+sounddevice>=0.4.6
+soundfile>=0.12.1
+pyautogui>=0.9.54
+numpy>=1.24.0

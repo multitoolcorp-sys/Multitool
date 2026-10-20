@@ -1,0 +1,2 @@
+# Dependencias requeridas para el módulo minigames
+pygame>=2.5.0

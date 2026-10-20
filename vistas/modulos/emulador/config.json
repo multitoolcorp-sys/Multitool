@@ -1,0 +1,31 @@
+{
+    "name": "Emulador",
+    "position": 11,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🎮 Consola Arcade",
+            "file_name": "submodulos/consola_arcade.py",
+            "class_name": "ConsolaArcadeSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🕹️ Teclado Virtual & Mapeo",
+            "file_name": "submodulos/teclado_mapeo.py",
+            "class_name": "TecladoMapeoSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📁 Gestor de ROMs & N64",
+            "file_name": "submodulos/gestor_roms.py",
+            "class_name": "GestorRomsSubmodule",
+            "visible": true
+        },
+        {
+            "name": "⚙️ Ajustes & Paletas CRT",
+            "file_name": "submodulos/opciones_retro.py",
+            "class_name": "OpcionesRetroSubmodule",
+            "visible": true
+        }
+    ]
+}

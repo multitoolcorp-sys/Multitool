@@ -1,0 +1,59 @@
+{
+  "module": "proyectos",
+  "name": "Gestor de Proyectos & Metodologías",
+  "description": "Comandos de gestión ágil de proyectos, scrum y tareas",
+  "commands": [
+    {
+      "name": "ver proyectos",
+      "command": "/projects",
+      "command_sudo": "/projects",
+      "aliases": ["/proyectos"],
+      "description": "Navega hacia la gestión de proyectos",
+      "syntax": "/projects",
+      "actions": [
+        "goto: proyectos",
+        "tab: 0",
+        "message: §a[Proyectos] Navegando al gestor de proyectos para %user%."
+      ]
+    },
+    {
+      "name": "scrum",
+      "command": "/scrum",
+      "command_sudo": "/scrum",
+      "aliases": ["/sprint"],
+      "description": "Abre el panel de metodología Scrum y Sprints",
+      "syntax": "/scrum",
+      "actions": [
+        "goto: proyectos",
+        "tab: 1",
+        "message: §b[Proyectos] Vista de metodología Scrum activa."
+      ]
+    },
+    {
+      "name": "editor codigo",
+      "command": "/code",
+      "command_sudo": "/code",
+      "aliases": ["/editor"],
+      "description": "Abre el editor de código integrado del proyecto",
+      "syntax": "/code",
+      "actions": [
+        "goto: proyectos",
+        "tab: 2",
+        "message: §e[Proyectos] Editor de código del proyecto activo."
+      ]
+    },
+    {
+      "name": "estadisticas proyecto",
+      "command": "/stats",
+      "command_sudo": "/stats",
+      "aliases": ["/metricas"],
+      "description": "Abre el panel de métricas y estadísticas del proyecto",
+      "syntax": "/stats",
+      "actions": [
+        "goto: proyectos",
+        "tab: 3",
+        "message: §d[Proyectos] Métricas y estadísticas desplegadas."
+      ]
+    }
+  ]
+}

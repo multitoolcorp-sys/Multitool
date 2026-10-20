@@ -1,0 +1,37 @@
+{
+    "name": "Proyectos",
+    "position": 15,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "📋 Tablero Kanban",
+            "file_name": "submodulos/gui_proyectos.py",
+            "class_name": "ProyectosGUI",
+            "visible": true
+        },
+        {
+            "name": "🏃 Metodología Scrum",
+            "file_name": "submodulos/scrum_proyectos.py",
+            "class_name": "TabScrumProyectos",
+            "visible": true
+        },
+        {
+            "name": "💻 Editor de Código",
+            "file_name": "submodulos/codigo_proyectos.py",
+            "class_name": "TabEditorCodigoProyectos",
+            "visible": true
+        },
+        {
+            "name": "📊 Estadísticas",
+            "file_name": "submodulos/estadisticas.py",
+            "class_name": "TabEstadisticasProyectos",
+            "visible": true
+        },
+        {
+            "name": "📦 Archivados & Exportación",
+            "file_name": "submodulos/archivados.py",
+            "class_name": "TabArchivadosProyectos",
+            "visible": true
+        }
+    ]
+}

@@ -1,0 +1,51 @@
+{
+    "name": "MiniGames",
+    "file_name": "minigames.py",
+    "class_name": "TabMiniGames",
+    "position": 12,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🕹️ Juegos Arcade",
+            "file_name": "submodulos/juegos_arcade.py",
+            "class_name": "JuegosArcadeSubmodule",
+            "visible": true
+        },
+        {
+            "name": "♟️ Estrategia 1v1",
+            "file_name": "submodulos/juegos_tablero.py",
+            "class_name": "JuegosTableroSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🧠 Batalla Naval & Adivinanza",
+            "file_name": "submodulos/juegos_combate_adivinanza.py",
+            "class_name": "JuegosCombateAdivinanzaSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🎴 Desafíos Mentales",
+            "file_name": "submodulos/juegos_mentales.py",
+            "class_name": "JuegosMentalesSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🔥 Isaac Roguelike",
+            "file_name": "submodulos/isaac_game.py",
+            "class_name": "TabIsaacGame",
+            "visible": true
+        },
+        {
+            "name": "🎰 Casino & Apuestas",
+            "file_name": "submodulos/casino.py",
+            "class_name": "CasinoSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🏆 Marcadores & Récords",
+            "file_name": "submodulos/marcadores_records.py",
+            "class_name": "MarcadoresRecordsSubmodule",
+            "visible": true
+        }
+    ]
+}

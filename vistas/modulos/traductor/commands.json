@@ -1,0 +1,46 @@
+{
+  "module": "traductor",
+  "name": "Traductor Multilingüe & Diccionario",
+  "description": "Comandos de traducción instantánea, glosario y sinónimos",
+  "commands": [
+    {
+      "name": "traducir texto",
+      "command": "/translate",
+      "command_sudo": "/translate",
+      "aliases": ["/traductor", "/trad", "/idiomas"],
+      "description": "Abre el traductor de texto multilingüe con autodetect",
+      "syntax": "/translate",
+      "actions": [
+        "goto: traductor",
+        "tab: 0",
+        "message: §a[Traductor] Traductor en tiempo real activo para %user%."
+      ]
+    },
+    {
+      "name": "diccionario de sinonimos",
+      "command": "/dictionary",
+      "command_sudo": "/dictionary",
+      "aliases": ["/diccionario", "/sinonimos", "/vocab"],
+      "description": "Abre el diccionario de definiciones y términos",
+      "syntax": "/dictionary",
+      "actions": [
+        "goto: traductor",
+        "tab: 1",
+        "message: §b[Traductor] Diccionario semántico y sinónimos cargado."
+      ]
+    },
+    {
+      "name": "historial traducciones",
+      "command": "/langhistory",
+      "command_sudo": "/langhistory",
+      "aliases": ["/historialtrad"],
+      "description": "Abre el historial de traducciones realizadas",
+      "syntax": "/langhistory",
+      "actions": [
+        "goto: traductor",
+        "tab: 2",
+        "message: §e[Traductor] Historial de consultas multilingües abierto."
+      ]
+    }
+  ]
+}
