@@ -1,0 +1,46 @@
+{
+  "module": "reproductor",
+  "name": "Reproductor Multimedia",
+  "description": "Comandos de reproducción de audio y video, listas y ecualizador",
+  "commands": [
+    {
+      "name": "abrir reproductor",
+      "command": "/player",
+      "command_sudo": "/player",
+      "aliases": ["/reproductor", "/music", "/media"],
+      "description": "Abre el panel principal del reproductor multimedia",
+      "syntax": "/player",
+      "actions": [
+        "goto: reproductor",
+        "tab: 0",
+        "message: §a[Reproductor] Reproductor multimedia cargado para %user%."
+      ]
+    },
+    {
+      "name": "lista de reproduccion",
+      "command": "/playlist",
+      "command_sudo": "/playlist",
+      "aliases": ["/lista", "/queue"],
+      "description": "Abre la lista de pistas en cola de reproducción",
+      "syntax": "/playlist",
+      "actions": [
+        "goto: reproductor",
+        "tab: 1",
+        "message: §b[Reproductor] Cola y lista de reproducción activa."
+      ]
+    },
+    {
+      "name": "ecualizador de audio",
+      "command": "/equalizer",
+      "command_sudo": "/equalizer",
+      "aliases": ["/ecualizador", "/eq"],
+      "description": "Abre el panel de efectos de audio y ecualizador",
+      "syntax": "/equalizer",
+      "actions": [
+        "goto: reproductor",
+        "tab: 2",
+        "message: §e[Reproductor] Ecualizador de audio activo."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "module": "emulador",
+  "name": "Emulador & Retro Gaming",
+  "description": "Comandos de emulación, biblioteca de juegos y configuración de controles",
+  "commands": [
+    {
+      "name": "catalogo de juegos",
+      "command": "/games",
+      "command_sudo": "/games",
+      "aliases": ["/emulador", "/roms", "/retro"],
+      "description": "Abre el catálogo principal de títulos y emulación",
+      "syntax": "/games",
+      "actions": [
+        "goto: emulador",
+        "tab: 0",
+        "message: §a[Emulador] Catálogo de emulación activo para %user%."
+      ]
+    },
+    {
+      "name": "configurar controles",
+      "command": "/controls",
+      "command_sudo": "/controls",
+      "aliases": ["/controles", "/gamepad"],
+      "description": "Abre el menú de configuración de mandos y teclado",
+      "syntax": "/controls",
+      "actions": [
+        "goto: emulador",
+        "tab: 1",
+        "message: §b[Emulador] Mapeo de controles y gamepad desplegado."
+      ]
+    },
+    {
+      "name": "filtros graficos",
+      "command": "/shaders",
+      "command_sudo": "/shaders",
+      "aliases": ["/video", "/filtros"],
+      "description": "Abre el menú de ajustes gráficos y filtros de pantalla",
+      "syntax": "/shaders",
+      "actions": [
+        "goto: emulador",
+        "tab: 2",
+        "message: §e[Emulador] Ajustes de filtros gráficos activos."
+      ]
+    }
+  ]
+}

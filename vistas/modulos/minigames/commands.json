@@ -1,0 +1,79 @@
+{
+  "module": "minigames",
+  "name": "Minijuegos & Arcade",
+  "description": "Comandos específicos de juego, vidas, ventajas y puntuaciones",
+  "commands": [
+    {
+      "name": "dar vida",
+      "command": "/life",
+      "command_sudo": "/life",
+      "aliases": ["/vida", "/lives"],
+      "description": "Otorga vidas extra en juegos arcade",
+      "syntax": "/life [cantidad:99]",
+      "actions": [
+        "cheat: vida %arg_1:99%",
+        "message: §a[Minijuegos] Vidas configuradas a %arg_1:99% para %user%."
+      ]
+    },
+    {
+      "name": "godmode",
+      "command": "/god",
+      "command_sudo": "/god",
+      "aliases": ["/godmode", "/inmortal"],
+      "description": "Activa o desactiva la invencibilidad en juegos arcade",
+      "syntax": "/god [on|off]",
+      "actions": [
+        "cheat: godmode %arg_1:on%",
+        "message: §e[Minijuegos] Modo invencible establecido en %arg_1:on% para %user%."
+      ]
+    },
+    {
+      "name": "agregar puntos",
+      "command": "/points",
+      "command_sudo": "/points",
+      "aliases": ["/addpoints", "/score"],
+      "description": "Agrega o consulta puntos del jugador",
+      "syntax": "/points [add|set] <cantidad>",
+      "actions": [
+        "exec: points %args%",
+        "message: §a[Minijuegos] Puntos procesados correctamente para %user%."
+      ]
+    },
+    {
+      "name": "premio mayor jackpot",
+      "command": "/jackpot",
+      "command_sudo": "/jackpot",
+      "aliases": ["/777"],
+      "description": "Garantiza el premio mayor 777 en la siguiente tirada del casino",
+      "syntax": "/jackpot",
+      "actions": [
+        "cheat: jackpot",
+        "message: §6[Casino] ¡Premio mayor 777 activado para la próxima tirada de %user%!"
+      ]
+    },
+    {
+      "name": "suerte casino",
+      "command": "/luck",
+      "command_sudo": "/luck",
+      "aliases": ["/suerte"],
+      "description": "Aumenta la probabilidad de victoria en apuestas y casino",
+      "syntax": "/luck [on|off]",
+      "actions": [
+        "cheat: suerte %arg_1:on%",
+        "message: §b[Casino] Parámetro de suerte establecido en %arg_1:on%."
+      ]
+    },
+    {
+      "name": "daño aumentado",
+      "command": "/damage",
+      "command_sudo": "/damage",
+      "aliases": ["/danio", "/power"],
+      "description": "Multiplica el daño de proyectiles en juegos de disparos",
+      "syntax": "/damage [multiplicador:5.0]",
+      "actions": [
+        "cheat: daño %arg_1:5.0%",
+        "message: §c[Arcade] Multiplicador de daño fijado a x%arg_1:5.0% para %user%."
+      ]
+    }
+  ]
+}

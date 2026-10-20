@@ -1,0 +1,46 @@
+{
+  "module": "chat",
+  "name": "Chat & Asistente Inteligente",
+  "description": "Comandos de mensajería, consultas de IA y configuración de modelos",
+  "commands": [
+    {
+      "name": "asistente ia",
+      "command": "/ai",
+      "command_sudo": "/ai",
+      "aliases": ["/chat", "/prompt", "/bot"],
+      "description": "Abre la ventana interactiva del asistente inteligente",
+      "syntax": "/ai",
+      "actions": [
+        "goto: chat",
+        "tab: 0",
+        "message: §a[Asistente IA] Sala de conversación activa para %user%."
+      ]
+    },
+    {
+      "name": "modelos y ajustes",
+      "command": "/models",
+      "command_sudo": "/models",
+      "aliases": ["/modelos", "/ai-config"],
+      "description": "Abre el panel de ajuste de parámetros y modelos de lenguaje",
+      "syntax": "/models",
+      "actions": [
+        "goto: chat",
+        "tab: 1",
+        "message: §b[Chat] Panel de configuración de parámetros IA abierto."
+      ]
+    },
+    {
+      "name": "limpiar chat",
+      "command": "/clearchat",
+      "command_sudo": "/clearchat",
+      "aliases": ["/borrarchat"],
+      "description": "Limpia la conversación actual",
+      "syntax": "/clearchat",
+      "actions": [
+        "goto: chat",
+        "action: limpiar_conversacion",
+        "message: §e[Chat] Historial del chat reiniciado para la sesión actual."
+      ]
+    }
+  ]
+}

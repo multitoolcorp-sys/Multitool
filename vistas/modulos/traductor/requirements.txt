@@ -1,0 +1,4 @@
+# Dependencias requeridas para el módulo traductor
+deep-translator>=1.11.4
+gTTS>=2.3.2
+langdetect>=1.0.9

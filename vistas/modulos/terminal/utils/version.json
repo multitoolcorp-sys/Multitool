@@ -1,0 +1,14 @@
+{
+  "modulo": "terminal",
+  "version": "21.0.1",
+  "fecha": "2026-08-17",
+  "descripcion": "Actualización del módulo Terminal v21.0.1",
+  "ultima_actualizacion": "2026-10-17",
+  "historial": [
+    {
+      "version": "21.0.1",
+      "fecha": "2026-10-17 01:38:08",
+      "descripcion": "Actualización de módulo."
+    }
+  ]
+}

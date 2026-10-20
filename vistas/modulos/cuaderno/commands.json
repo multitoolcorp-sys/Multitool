@@ -1,0 +1,46 @@
+{
+  "module": "cuaderno",
+  "name": "Cuaderno Digital & Documentos",
+  "description": "Comandos de redacción, páginas de apuntes y exportación",
+  "commands": [
+    {
+      "name": "abrir cuaderno",
+      "command": "/notebook",
+      "command_sudo": "/notebook",
+      "aliases": ["/cuaderno", "/journal"],
+      "description": "Abre el visor y editor principal del cuaderno digital",
+      "syntax": "/notebook",
+      "actions": [
+        "goto: cuaderno",
+        "tab: 0",
+        "message: §a[Cuaderno] Cuaderno activo para %user%."
+      ]
+    },
+    {
+      "name": "nueva pagina",
+      "command": "/newpage",
+      "command_sudo": "/newpage",
+      "aliases": ["/nuevapagina"],
+      "description": "Añade una nueva página en blanco al cuaderno activo",
+      "syntax": "/newpage",
+      "actions": [
+        "goto: cuaderno",
+        "action: nueva_pagina",
+        "message: §b[Cuaderno] Nueva página añadida al cuaderno."
+      ]
+    },
+    {
+      "name": "exportar documento",
+      "command": "/bookexport",
+      "command_sudo": "/bookexport",
+      "aliases": ["/exportarcuaderno", "/pdfexport"],
+      "description": "Abre el panel de exportación a PDF y texto",
+      "syntax": "/bookexport",
+      "actions": [
+        "goto: cuaderno",
+        "tab: 1",
+        "message: §e[Cuaderno] Módulo de exportación de documentos activo."
+      ]
+    }
+  ]
+}

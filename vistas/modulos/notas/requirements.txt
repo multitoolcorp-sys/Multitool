@@ -1,0 +1,2 @@
+# Dependencias requeridas para el módulo notas
+Pillow>=10.0.0

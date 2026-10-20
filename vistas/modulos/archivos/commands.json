@@ -1,0 +1,46 @@
+{
+  "module": "archivos",
+  "name": "Explorador de Archivos",
+  "description": "Comandos de navegación, gestión de archivos y carpetas",
+  "commands": [
+    {
+      "name": "explorar archivos",
+      "command": "/explore",
+      "command_sudo": "/explore",
+      "aliases": ["/archivos", "/explorer", "/files"],
+      "description": "Abre el explorador de archivos local",
+      "syntax": "/explore",
+      "actions": [
+        "goto: archivos",
+        "tab: 0",
+        "message: §a[Explorador] Navegador de archivos activo para %user%."
+      ]
+    },
+    {
+      "name": "recientes",
+      "command": "/recents",
+      "command_sudo": "/recents",
+      "aliases": ["/recientes"],
+      "description": "Muestra los archivos accedidos recientemente",
+      "syntax": "/recents",
+      "actions": [
+        "goto: archivos",
+        "tab: 1",
+        "message: §b[Archivos] Historial de archivos recientes desplegado."
+      ]
+    },
+    {
+      "name": "buscar archivos",
+      "command": "/searchfiles",
+      "command_sudo": "/searchfiles",
+      "aliases": ["/buscararchivos", "/findfile"],
+      "description": "Abre la herramienta de búsqueda de archivos y filtrado",
+      "syntax": "/searchfiles",
+      "actions": [
+        "goto: archivos",
+        "tab: 2",
+        "message: §e[Archivos] Panel de búsqueda y filtros activado."
+      ]
+    }
+  ]
+}

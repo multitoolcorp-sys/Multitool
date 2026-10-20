@@ -1,0 +1,46 @@
+{
+  "module": "grabadora",
+  "name": "Grabadora de Audio & Dictado",
+  "description": "Comandos de captura de audio, transcripción y grabaciones",
+  "commands": [
+    {
+      "name": "iniciar grabacion",
+      "command": "/record",
+      "command_sudo": "/record",
+      "aliases": ["/grabar", "/grabadora", "/mic"],
+      "description": "Abre el panel de captura de audio y micrófono",
+      "syntax": "/record",
+      "actions": [
+        "goto: grabadora",
+        "tab: 0",
+        "message: §a[Grabadora] Interfaz de captura de audio preparada."
+      ]
+    },
+    {
+      "name": "biblioteca audios",
+      "command": "/recordings",
+      "command_sudo": "/recordings",
+      "aliases": ["/audios", "/grabaciones"],
+      "description": "Abre el catálogo de notas de voz y pistas grabadas",
+      "syntax": "/recordings",
+      "actions": [
+        "goto: grabadora",
+        "tab: 1",
+        "message: §b[Grabadora] Biblioteca de grabaciones desplegada."
+      ]
+    },
+    {
+      "name": "transcribir audio",
+      "command": "/transcribe",
+      "command_sudo": "/transcribe",
+      "aliases": ["/dictado", "/transcripcion"],
+      "description": "Abre la herramienta de transcripción automática de voz a texto",
+      "syntax": "/transcribe",
+      "actions": [
+        "goto: grabadora",
+        "tab: 2",
+        "message: §e[Grabadora] Motor de transcripción de voz listo."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+    "name": "Calendario",
+    "position": 7,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Calendario",
+            "file_name": "calendario.py",
+            "class_name": "TabCalendario",
+            "position": 0,
+            "visible": true
+        }
+    ]
+}

@@ -1,0 +1,59 @@
+{
+  "module": "cuenta",
+  "name": "Gestión de Cuenta & Perfil",
+  "description": "Comandos de perfil de usuario, seguridad, puntos y bóveda",
+  "commands": [
+    {
+      "name": "perfil de usuario",
+      "command": "/profile",
+      "command_sudo": "/profile",
+      "aliases": ["/cuenta", "/perfil", "/user"],
+      "description": "Abre la pantalla de perfil del usuario",
+      "syntax": "/profile",
+      "actions": [
+        "goto: cuenta",
+        "tab: 0",
+        "action: actualizar_puntos_ui",
+        "message: §a[Cuenta] Perfil de usuario cargado para %user%."
+      ]
+    },
+    {
+      "name": "seguridad y actividad",
+      "command": "/security",
+      "command_sudo": "/security",
+      "aliases": ["/seguridad-cuenta", "/actividad"],
+      "description": "Abre el panel de auditoría de actividad y seguridad",
+      "syntax": "/security",
+      "actions": [
+        "goto: cuenta",
+        "tab: 1",
+        "message: §b[Cuenta] Auditoría de seguridad y sesiones abierta."
+      ]
+    },
+    {
+      "name": "boveda de credenciales",
+      "command": "/vault",
+      "command_sudo": "/vault",
+      "aliases": ["/boveda", "/pinlock"],
+      "description": "Abre la bóveda segura de credenciales y PIN",
+      "syntax": "/vault",
+      "actions": [
+        "goto: cuenta",
+        "tab: 2",
+        "message: §e[Cuenta] Bóveda segura de credenciales solicitada."
+      ]
+    },
+    {
+      "name": "actualizar puntos",
+      "command": "/syncpoints",
+      "command_sudo": "/syncpoints",
+      "aliases": ["/refreshpoints", "/puntos"],
+      "description": "Fuerza la sincronización en tiempo real del marcador de puntos",
+      "syntax": "/syncpoints",
+      "actions": [
+        "action: actualizar_puntos_ui",
+        "message: §6[Cuenta] Saldo de puntos sincronizado en tiempo real para %user%."
+      ]
+    }
+  ]
+}

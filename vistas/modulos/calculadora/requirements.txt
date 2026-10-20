@@ -1,0 +1,6 @@
+# Dependencias requeridas para el módulo calculadora
+openpyxl>=3.1.2
+reportlab>=4.0.0
+PyMuPDF>=1.23.0
+python-docx>=0.8.11
+Pillow>=10.0.0

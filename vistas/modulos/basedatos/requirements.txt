@@ -1,0 +1,3 @@
+# Dependencias requeridas para el módulo basedatos
+pymysql>=1.1.0
+redis>=5.0.0

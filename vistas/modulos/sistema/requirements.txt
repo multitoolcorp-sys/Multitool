@@ -1,0 +1,5 @@
+# Dependencias requeridas para el módulo sistema
+psutil>=5.9.0
+wmi>=1.5.1
+GPUtil>=1.4.0
+matplotlib>=3.7.0

@@ -1,0 +1,67 @@
+{
+    "azul_oscuro": {
+        "nombre": "Azul Espacial",
+        "bg_principal": "#121218",
+        "bg_secundario": "#1E1E2E",
+        "bg_terciario": "#2D2D3D",
+        "fg_principal": "#E2E2E2",
+        "fg_secundario": "#AAB0B8",
+        "acento": "#6366F1",
+        "acento_hover": "#818CF8",
+        "error": "#F87171",
+        "exito": "#34D399",
+        "advertencia": "#FBBF24"
+    },
+    "oscuro": {
+        "nombre": "Carbono Oscuro",
+        "bg_principal": "#1E1E1E",
+        "bg_secundario": "#252526",
+        "bg_terciario": "#2D2D30",
+        "fg_principal": "#F1F1F1",
+        "fg_secundario": "#969696",
+        "acento": "#007ACC",
+        "acento_hover": "#1C97EA",
+        "error": "#F48771",
+        "exito": "#89D185",
+        "advertencia": "#CCA700"
+    },
+    "claro": {
+        "nombre": "Claro Moderno",
+        "bg_principal": "#F3F4F6",
+        "bg_secundario": "#FFFFFF",
+        "bg_terciario": "#E5E7EB",
+        "fg_principal": "#1F2937",
+        "fg_secundario": "#6B7280",
+        "acento": "#3B82F6",
+        "acento_hover": "#2563EB",
+        "error": "#EF4444",
+        "exito": "#10B981",
+        "advertencia": "#F59E0B"
+    },
+    "neon": {
+        "nombre": "Púrpura Neón",
+        "bg_principal": "#0A0512",
+        "bg_secundario": "#140C24",
+        "bg_terciario": "#24163B",
+        "fg_principal": "#F3E8FF",
+        "fg_secundario": "#C084FC",
+        "acento": "#D946EF",
+        "acento_hover": "#E879F9",
+        "error": "#F43F5E",
+        "exito": "#22C55E",
+        "advertencia": "#EAB308"
+    },
+    "verde_oscuro": {
+        "nombre": "Verde Esmeralda",
+        "bg_principal": "#06130D",
+        "bg_secundario": "#0B2216",
+        "bg_terciario": "#133624",
+        "fg_principal": "#ECFDF5",
+        "fg_secundario": "#6EE7B7",
+        "acento": "#10B981",
+        "acento_hover": "#34D399",
+        "error": "#EF4444",
+        "exito": "#10B981",
+        "advertencia": "#F59E0B"
+    }
+}

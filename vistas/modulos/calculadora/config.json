@@ -1,0 +1,92 @@
+{
+    "name": "Calculadora",
+    "position": 3,
+    "visible": true,
+    "icon": "🧮",
+    "submodulos": [
+        {
+            "name": "🔢 Básica",
+            "file_name": "submodulos/basica.py",
+            "class_name": "TabCalculadoraBasica",
+            "visible": true
+        },
+        {
+            "name": "⚗️ Científica",
+            "file_name": "submodulos/cientifica.py",
+            "class_name": "TabCalculadoraCientifica",
+            "visible": true
+        },
+        {
+            "name": "🧪 Química & Tabla",
+            "file_name": "submodulos/quimica.py",
+            "class_name": "TabCalculadoraQuimica",
+            "visible": true
+        },
+        {
+            "name": "🏃 Masa Corporal",
+            "file_name": "submodulos/cuerpo_humano.py",
+            "class_name": "TabCalculadoraCuerpoHumano",
+            "visible": true
+        },
+        {
+            "name": "💻 Programador",
+            "file_name": "submodulos/programador.py",
+            "class_name": "TabCalculadoraProgramador",
+            "visible": true
+        },
+        {
+            "name": "📐 Geometría",
+            "file_name": "submodulos/geometria.py",
+            "class_name": "TabCalculadoraGeometria",
+            "visible": true
+        },
+        {
+            "name": "⚖️ Conversor",
+            "file_name": "submodulos/conversor.py",
+            "class_name": "TabCalculadoraConversor",
+            "visible": true
+        },
+        {
+            "name": "💰 Financiera",
+            "file_name": "submodulos/financiera.py",
+            "class_name": "TabCalculadoraFinanciera",
+            "visible": true
+        },
+        {
+            "name": "🎯 Finanzas & Gastos",
+            "file_name": "submodulos/finance_tracker.py",
+            "class_name": "TabCalculadoraFinanzas",
+            "visible": true
+        },
+        {
+            "name": "📅 Fechas",
+            "file_name": "submodulos/fechas.py",
+            "class_name": "TabCalculadoraFechas",
+            "visible": true
+        },
+        {
+            "name": "🔄 Archivos",
+            "file_name": "submodulos/conversor_archivos.py",
+            "class_name": "TabCalculadoraConversorArchivos",
+            "visible": true
+        },
+        {
+            "name": "📈 Graficador & Matrices",
+            "file_name": "submodulos/graficador.py",
+            "class_name": "TabCalculadoraGraficador",
+            "visible": true
+        },
+        {
+            "name": "📊 Estadística",
+            "file_name": "submodulos/estadistica.py",
+            "class_name": "TabCalculadoraEstadistica",
+            "visible": true
+        },
+        {
+            "name": "📜 Historial",
+            "file_name": "submodulos/historial.py",
+            "class_name": "TabCalculadoraHistorial",
+            "visible": true
+        }
+    ]
+}

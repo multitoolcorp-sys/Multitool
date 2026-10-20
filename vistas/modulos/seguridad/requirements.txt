@@ -1,0 +1,3 @@
+# Dependencias requeridas para el módulo seguridad
+cryptography>=41.0.0
+psutil>=5.9.0

@@ -1,0 +1,43 @@
+{
+    "name": "Cuenta",
+    "position": 1,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "👤 Mi Perfil & Ajustes",
+            "file_name": "submodulos/gui_user.py",
+            "class_name": "GuiUser",
+            "visible": true
+        },
+        {
+            "name": "📊 Auditoría & Actividad",
+            "file_name": "submodulos/actividad.py",
+            "class_name": "TabActividad",
+            "visible": true
+        },
+        {
+            "name": "🛡️ Privacidad & Auto-Bloqueo",
+            "file_name": "submodulos/privacidad.py",
+            "class_name": "TabPrivacidad",
+            "visible": true
+        },
+        {
+            "name": "🔑 Bóveda de Claves & 2FA",
+            "file_name": "submodulos/boveda.py",
+            "class_name": "TabBoveda",
+            "visible": true
+        },
+        {
+            "name": "📱 Dispositivo & Sesión",
+            "file_name": "submodulos/dispositivos.py",
+            "class_name": "TabDispositivos",
+            "visible": true
+        },
+        {
+            "name": "💾 Almacenamiento & Cuotas",
+            "file_name": "submodulos/almacenamiento.py",
+            "class_name": "TabAlmacenamientoGUI",
+            "visible": true
+        }
+    ]
+}
