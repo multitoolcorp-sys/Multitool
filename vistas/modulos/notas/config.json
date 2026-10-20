@@ -1,0 +1,49 @@
+{
+    "name": "Notas",
+    "position": 2,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "📝 Mis Notas & Editor",
+            "file_name": "submodulos/gui_notas.py",
+            "class_name": "NotasGUI",
+            "visible": true
+        },
+        {
+            "name": "📌 Tablero Mosaico",
+            "file_name": "submodulos/tab_tablero_notas.py",
+            "class_name": "TableroNotasGUI",
+            "visible": true
+        },
+        {
+            "name": "📊 Analíticas & Hábitos",
+            "file_name": "submodulos/tab_analytics_notas.py",
+            "class_name": "AnalyticsNotasGUI",
+            "visible": true
+        },
+        {
+            "name": "📑 Editor Markdown",
+            "file_name": "submodulos/tab_markdown.py",
+            "class_name": "TabMarkdownGUI",
+            "visible": true
+        },
+        {
+            "name": "📋 Plantillas de Notas",
+            "file_name": "submodulos/plantillas_notas.py",
+            "class_name": "TabPlantillasNotas",
+            "visible": true
+        },
+        {
+            "name": "🗑️ Papelera de Reciclaje",
+            "file_name": "submodulos/papelera.py",
+            "class_name": "TabPapelera",
+            "visible": true
+        },
+        {
+            "name": "🔗 Red & Backlinks",
+            "file_name": "submodulos/tab_backlinks.py",
+            "class_name": "TabBacklinksGUI",
+            "visible": true
+        }
+    ]
+}

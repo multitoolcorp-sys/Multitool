@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>The Binding of Isaac: Colab Custom Edition</title>
+    <style>
+        body {
+            background-color: #0b0707;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding-top: 5px;
+            font-family: 'Courier New', monospace;
+            color: #d1b894;
+            user-select: none;
+            overflow: auto;
+            transform: scale(0.99);
+            transform-origin: top center;
+        }
+        #game-container {
+            position: relative;
+            text-align: center;
+        }
+        canvas {
+            border: 6px solid #2d1b18;
+            background-color: #1a100e;
+            box-shadow: 0px 0px 40px rgba(0,0,0,0.95);
+            image-rendering: pixelated;
+            max-width: 98vw;
+            max-height: 88vh;
+        }
+        .instruction-box {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #8c7355;
+            line-height: 1.3;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas" width="960" height="480"></canvas>
+    <div class="instruction-box">
+        [W,A,S,D] Moverse | [Flechas] Disparar Lágrimas / Cargar Azufre | Haz clic en el canvas antes de jugar.<br>
+        ¡Consigue un ítem en la sala dorada (💛) y derrota al Pie de Mamá en el último piso para ganar!
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const MARGIN = 50;
+
+// Efecto de sacudida de pantalla
+let screenShake = 0;
+
+// --- WEB AUDIO API (Efectos de sonido retro sin recursos externos) ---
+let audioCtx = null;
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+}
+
+function playSound(type) {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'shoot') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(380, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(80, audioCtx.currentTime + 0.12);
+            gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.12);
+        } else if (type === 'hit') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(30, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } else if (type === 'hurt') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(280, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, audioCtx.currentTime + 0.35);
+            gain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+        } else if (type === 'clear') {
+            osc.type = 'sine';
+            let now = audioCtx.currentTime;
+            osc.frequency.setValueAtTime(260, now);
+            osc.frequency.setValueAtTime(330, now + 0.08);
+            osc.frequency.setValueAtTime(440, now + 0.16);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+            osc.start(); osc.stop(now + 0.35);
+        } else if (type === 'nextfloor') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.6);
+            gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.6);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.6);
+        } else if (type === 'pickup') {
+            let now = audioCtx.currentTime;
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(330, now);
+            osc.frequency.setValueAtTime(440, now + 0.1);
+            osc.frequency.setValueAtTime(554, now + 0.2);
+            osc.frequency.setValueAtTime(659, now + 0.3);
+            gain.gain.setValueAtTime(0.22, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.65);
+            osc.start(); osc.stop(now + 0.65);
+        } else if (type === 'brimstone_fire') {
+            let now = audioCtx.currentTime;
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(90, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.4);
+            gain.gain.setValueAtTime(0.35, now);
+            gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+            osc.start(); osc.stop(now + 0.4);
+        }
+    } catch(e) {}
+}
+
+// --- CONFIGURACIÓN DE PISOS (TEMÁTICAS Y COLORES) ---
+const FLOORS = [
+    { name: "SÓTANO I (Basement)", bg: "#3e2723", wall: "#231411", grid: "#331f1c", difficulty: 1 },
+    { name: "SÓTANO II (Cellar)", bg: "#2a211f", wall: "#15100f", grid: "#211a18", difficulty: 1.25 },
+    { name: "CAVERNAS I (Caves)", bg: "#1e2c2c", wall: "#0f1616", grid: "#182424", difficulty: 1.5 },
+    { name: "CATACUMBAS II (Catacombs)", bg: "#242028", wall: "#110f13", grid: "#1c191f", difficulty: 1.85 },
+    { name: "EL ÚTERO (The Womb)", bg: "#4a0d17", wall: "#230308", grid: "#3d0811", difficulty: 2.3 }
+];
+
+// --- POOL DE ÍTEMS ---
+const ITEMS_POOL = [
+    { id: "onion", name: "SAD ONION", desc: "DAÑO UP (+3)", emoji: "🧅", color: "#ff8a80" },
+    { id: "max_head", name: "MAX'S HEAD", desc: "SUPER DAÑO UP (+5)", emoji: "🐶", color: "#ff5252" },
+    { id: "cricket_head", name: "CRICKET'S HEAD", desc: "MEGA DAÑO (X2 MULTIPLIER!)", emoji: "🐱", color: "#ff1744" },
+    { id: "spoon_bender", name: "SPOON BENDER", desc: "LÁGRIMAS TELEDIRIGIDAS (HOMING)", emoji: "🥄", color: "#d500f9" },
+    { id: "brimstone", name: "BRIMSTONE", desc: "RAYO SANGRIENTO DE AZUFRE", emoji: "🐐", color: "#000000" },
+    { id: "halo", name: "THE HALO", desc: "HP UP + FULL CURACIÓN", emoji: "😇", color: "#ffd700" }
+];
+
+let currentFloorIndex = 0;
+let currentFloor = FLOORS[currentFloorIndex];
+
+// --- JUGADOR (ISAAC) ---
+let player = {
+    x: canvas.width / 2,
+    y: canvas.height / 2,
+    radius: 16,
+    speed: 4.8,
+    hp: 6, // 3 corazones (cada uno vale 2 HP)
+    maxHp: 6,
+    damage: 4,
+    shootCooldown: 0,
+    maxCooldown: 12,
+    invincible: 0,
+    walkCycle: 0,
+    facing: "down",
+    isShooting: false,
+    shootDirection: { x: 0, y: 0 },
+    hasHoming: false,
+    hasBrimstone: false,
+    brimstoneCharge: 0,
+    brimstoneMaxCharge: 60,
+    brimstoneActiveTimer: 0,
+    brimstoneMaxDuration: 180,
+    brimstoneDirection: { x: 0, y: 0 }
+};
+
+// --- ESTRUCTURA DE SALAS Y MAPAS PROCEDIMENTALES ---
+let floorMap = {};
+let currentRoom = null;
+let tears = [];
+let enemyTears = [];
+let particles = [];
+let keys = {};
+let score = 0;
+
+function updatePythonScore(status) {
+    try {
+        let msg = "ISAAC_SCORE:" + score + (status ? (":" + status) : "");
+        document.title = msg;
+    } catch(e) {}
+}
+
+let gameOver = false;
+let gameWon = false;
+let floorTransitionTimer = 120;
+
+// Sistema de celebración de items
+let itemCelebrationTimer = 0;
+let celebratingItem = null;
+
+// Inicializar teclado
+window.addEventListener("keydown", e => {
+    initAudio();
+    keys[e.key.toLowerCase()] = true;
+    keys[e.key] = true;
+    if ((gameOver || gameWon) && (e.key === 'r' || e.key === 'R')) restartEntireGame();
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+        e.preventDefault();
+    }
+});
+window.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+    keys[e.key] = false;
+});
+
+function generateFloor() {
+    currentFloor = FLOORS[currentFloorIndex];
+    floorMap = {};
+    tears = [];
+    enemyTears = [];
+    particles = [];
+
+    const totalRooms = Math.floor(Math.random() * 4) + 5;
+    let roomList = [];
+
+    function addRoom(rx, ry, type) {
+        let room = {
+            x: rx, y: ry,
+            type: type, // 'start', 'normal', 'boss', 'item'
+            cleared: type === 'start' || type === 'item',
+            enemies: [],
+            pickups: [], // Corazones sueltos en el suelo
+            doors: { top: false, bottom: false, left: false, right: false },
+            doorAnim: 0,
+            itemOnPedestal: null,
+            itemCollected: false
+        };
+        floorMap[`${rx},${ry}`] = room;
+        roomList.push(room);
+        return room;
+    }
+
+    addRoom(0, 0, 'start');
+
+    let dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+    while (roomList.length < totalRooms) {
+        let branch = roomList[Math.floor(Math.random() * roomList.length)];
+        let dir = dirs[Math.floor(Math.random() * dirs.length)];
+        let nx = branch.x + dir[0];
+        let ny = branch.y + dir[1];
+
+        if (!floorMap[`${nx},${ny}`]) {
+            let type = 'normal';
+            if (roomList.length === totalRooms - 1) {
+                type = 'boss';
+            } else if (roomList.length === 1) {
+                type = 'item';
+            }
+            addRoom(nx, ny, type);
+        }
+    }
+
+    for (let key in floorMap) {
+        let r = floorMap[key];
+        if (floorMap[`${r.x},${r.y-1}`]) r.doors.top = true;
+        if (floorMap[`${r.x},${r.y+1}`]) r.doors.bottom = true;
+        if (floorMap[`${r.x-1},${r.y}`]) r.doors.left = true;
+        if (floorMap[`${r.x+1},${r.y}`]) r.doors.right = true;
+
+        if (r.type === 'normal') {
+            let enemyCount = Math.floor(Math.random() * 3) + 4;
+            for (let i = 0; i < enemyCount; i++) {
+                r.enemies.push(createRandomEnemy(r));
+            }
+        } else if (r.type === 'boss') {
+            r.enemies.push(createBoss(r));
+        } else if (r.type === 'item') {
+            let selectedItem = ITEMS_POOL[Math.floor(Math.random() * ITEMS_POOL.length)];
+            r.itemOnPedestal = selectedItem;
+            r.itemCollected = false;
+        }
+    }
+
+    currentRoom = floorMap["0,0"];
+    floorTransitionTimer = 150;
+    playSound('nextfloor');
+}
+
+function createRandomEnemy(room) {
+    let margin = MARGIN + 40;
+    let x = Math.random() * (canvas.width - margin * 2) + margin;
+    let y = Math.random() * (canvas.height - margin * 2) + margin;
+
+    let rType = Math.random();
+    let type = 'gaper';
+    if (rType < 0.35) type = 'fly';
+    else if (rType < 0.65) type = 'pooter';
+
+    let diffMult = currentFloor.difficulty;
+    let hp = 15 * diffMult;
+    let speed = 1.3 * diffMult;
+    let radius = 14;
+
+    if (type === 'fly') {
+        hp = 10 * diffMult;
+        speed = 2.4 * diffMult;
+        radius = 10;
+    } else if (type === 'pooter') {
+        hp = 18 * diffMult;
+        speed = 0.8 * diffMult;
+        radius = 16;
+    }
+
+    return {
+        x: x, y: y,
+        type: type,
+        hp: hp,
+        maxHp: hp,
+        speed: speed,
+        radius: radius,
+        flash: 0,
+        animTimer: Math.random() * 100,
+        shootCooldown: Math.random() * 60 + 60
+    };
+}
+
+function createBoss() {
+    let diffMult = currentFloor.difficulty;
+
+    // Si es el último piso (El Útero - Piso 5), el jefe es el Pie de Mamá
+    if (currentFloorIndex === FLOORS.length - 1) {
+        return {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            type: 'moms_foot',
+            hp: 200 * diffMult,
+            maxHp: 200 * diffMult,
+            speed: 0,
+            radius: 45,
+            flash: 0,
+            animTimer: 0,
+            stompState: 'shadow', // shadow -> slam -> vulnerable -> rise
+            stompTimer: 90,       // Tiempo para planear pisotón
+            shadowX: player.x,
+            shadowY: player.y
+        };
+    }
+
+    // Jefes por defecto (Monstro)
+    return {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        type: 'boss',
+        hp: 120 * diffMult,
+        maxHp: 120 * diffMult,
+        speed: 1.5 * diffMult,
+        radius: 35,
+        flash: 0,
+        animTimer: 0,
+        jumpState: 'idle',
+        jumpY: 0,
+        shootCooldown: 80
+    };
+}
+
+// --- PARTÍCULAS ---
+function spawnBlood(x, y, count, force = 4) {
+    for (let i = 0; i < count; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        let speed = Math.random() * force + 1;
+        particles.push({
+            x: x, y: y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            radius: Math.random() * 4 + 2,
+            color: Math.random() > 0.3 ? "#8a0303" : "#500000",
+            alpha: 1,
+            life: Math.random() * 20 + 20
+        });
+    }
+}
+
+function spawnTearSplash(x, y) {
+    for (let i = 0; i < 4; i++) {
+        let angle = Math.random() * Math.PI * 2;
+        particles.push({
+            x: x, y: y,
+            vx: Math.cos(angle) * 2,
+            vy: Math.sin(angle) * 2,
+            radius: Math.random() * 2 + 1,
+            color: player.hasHoming ? "#e040fb" : "#6ebdfa",
+            alpha: 0.8,
+            life: 8
+        });
+    }
+}
+
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+function update() {
+    if (gameOver || gameWon) return;
+    if (floorTransitionTimer > 0) {
+        floorTransitionTimer--;
+        return;
+    }
+
+    if (itemCelebrationTimer > 0) {
+        itemCelebrationTimer--;
+        return;
+    }
+
+    if (player.invincible > 0) player.invincible--;
+
+    // Movimiento de Isaac
+    let dx = 0;
+    let dy = 0;
+    if (keys['w']) { dy = -1; player.facing = "up"; }
+    if (keys['s']) { dy = 1; player.facing = "down"; }
+    if (keys['a']) { dx = -1; player.facing = "left"; }
+    if (keys['d']) { dx = 1; player.facing = "right"; }
+
+    if (dx !== 0 || dy !== 0) {
+        let length = Math.sqrt(dx*dx + dy*dy);
+        player.x += (dx / length) * player.speed;
+        player.y += (dy / length) * player.speed;
+        player.walkCycle += 0.25;
+
+        player.x = Math.max(MARGIN + player.radius, Math.min(canvas.width - MARGIN - player.radius, player.x));
+        player.y = Math.max(MARGIN + player.radius, Math.min(canvas.height - MARGIN - player.radius, player.y));
+    } else {
+        player.walkCycle = 0;
+    }
+
+    // Disparo e ítems
+    player.isShooting = false;
+    let sDx = 0, sDy = 0;
+    if (keys['arrowup']) { sDy = -1; player.facing = "up"; player.isShooting = true; }
+    else if (keys['arrowdown']) { sDy = 1; player.facing = "down"; player.isShooting = true; }
+    else if (keys['arrowleft']) { sDx = -1; player.facing = "left"; player.isShooting = true; }
+    else if (keys['arrowright']) { sDx = 1; player.facing = "right"; player.isShooting = true; }
+
+    player.shootDirection = { x: sDx, y: sDy };
+
+    if (player.isShooting) {
+        if (player.hasBrimstone) {
+            if (player.brimstoneActiveTimer <= 0) {
+                player.brimstoneCharge++;
+                if (player.brimstoneCharge >= player.brimstoneMaxCharge) {
+                    player.brimstoneCharge = 0;
+                    player.brimstoneActiveTimer = player.brimstoneMaxDuration;
+                    player.brimstoneDirection = { x: sDx, y: sDy };
+                    playSound('brimstone_fire');
+                }
+            }
+        } else {
+            if (player.shootCooldown === 0) {
+                tears.push({
+                    x: player.x,
+                    y: player.y - 12,
+                    vx: sDx * 8.5 + (dx * 0.5),
+                    vy: sDy * 8.5 + (dy * 0.5),
+                    radius: 7,
+                    life: 45
+                });
+                player.shootCooldown = player.maxCooldown;
+                playSound('shoot');
+            }
+        }
+    } else {
+        if (player.hasBrimstone && player.brimstoneActiveTimer <= 0) {
+            player.brimstoneCharge = Math.max(0, player.brimstoneCharge - 2);
+        }
+    }
+
+    if (player.shootCooldown > 0) player.shootCooldown--;
+
+    if (player.brimstoneActiveTimer > 0) {
+        player.brimstoneActiveTimer--;
+
+        if (player.brimstoneActiveTimer % 8 === 0) {
+            let bx = player.brimstoneDirection.x;
+            let by = player.brimstoneDirection.y;
+
+            let beamLen = 800;
+            for (let d = 10; d < beamLen; d += 40) {
+                let px = player.x + bx * d;
+                let py = (player.y - 12) + by * d;
+                if (px < MARGIN || px > canvas.width - MARGIN || py < MARGIN || py > canvas.height - MARGIN) break;
+                if (Math.random() < 0.3) {
+                    particles.push({
+                        x: px + (Math.random() - 0.5) * 20,
+                        y: py + (Math.random() - 0.5) * 20,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: (Math.random() - 0.5) * 2,
+                        radius: Math.random() * 4 + 2,
+                        color: Math.random() > 0.4 ? "#ff1744" : "#1a0a0a",
+                        alpha: 0.8,
+                        life: 10
+                    });
+                }
+            }
+
+            currentRoom.enemies.forEach(e => {
+                let hit = false;
+                let headY = player.y - 12;
+                if (bx !== 0) {
+                    let inLineY = Math.abs(e.y - headY) < (e.radius + 18);
+                    let correctDir = (bx > 0) ? (e.x > player.x) : (e.x < player.x);
+                    if (inLineY && correctDir) hit = true;
+                } else if (by !== 0) {
+                    let inLineX = Math.abs(e.x - player.x) < (e.radius + 18);
+                    let correctDir = (by > 0) ? (e.y > headY) : (e.y < headY);
+                    if (inLineX && correctDir) hit = true;
+                }
+
+                if (hit) {
+                    e.hp -= player.damage * 0.75;
+                    e.flash = 5;
+                    spawnBlood(e.x, e.y, 4, 3);
+                    playSound('hit');
+
+                    if (e.hp <= 0) {
+                        spawnBlood(e.x, e.y, 14, 5);
+                        currentRoom.enemies = currentRoom.enemies.filter(item => item !== e);
+                        score += e.type === 'boss' || e.type === 'moms_foot' ? 100 : 15;
+                        updatePythonScore();
+                        if (e.type === 'moms_foot') {
+                            gameWon = true; updatePythonScore('won');
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // Actualizar lágrimas
+    for (let i = tears.length - 1; i >= 0; i--) {
+        let t = tears[i];
+
+        // Spoon Bender Homing
+        if (player.hasHoming && currentRoom.enemies.length > 0) {
+            let target = null;
+            let minDist = Infinity;
+            currentRoom.enemies.forEach(e => {
+                let dist = Math.hypot(e.x - t.x, e.y - t.y);
+                if (dist < minDist) {
+                    minDist = dist;
+                    target = e;
+                }
+            });
+
+            if (target) {
+                let targetAng = Math.atan2(target.y - t.y, target.x - t.x);
+                let currentAng = Math.atan2(t.vy, t.vx);
+                let diff = targetAng - currentAng;
+                diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+                let newAng = currentAng + diff * 0.16;
+                let speed = Math.hypot(t.vx, t.vy);
+                t.vx = Math.cos(newAng) * speed;
+                t.vy = Math.sin(newAng) * speed;
+            }
+        }
+
+        t.x += t.vx;
+        t.y += t.vy;
+        t.life--;
+
+        if (t.x < MARGIN || t.x > canvas.width - MARGIN || t.y < MARGIN || t.y > canvas.height - MARGIN || t.life <= 0) {
+            spawnTearSplash(t.x, t.y);
+            tears.splice(i, 1);
+        }
+    }
+
+    // Actualizar lágrimas enemigas
+    for (let i = enemyTears.length - 1; i >= 0; i--) {
+        let et = enemyTears[i];
+        et.x += et.vx;
+        et.y += et.vy;
+        et.life--;
+
+        if (et.x < MARGIN || et.x > canvas.width - MARGIN || et.y < MARGIN || et.y > canvas.height - MARGIN || et.life <= 0) {
+            spawnBlood(et.x, et.y, 3, 1.5);
+            enemyTears.splice(i, 1);
+            continue;
+        }
+
+        let distX = player.x - et.x;
+        let distY = player.y - et.y;
+        let dist = Math.sqrt(distX*distX + distY*distY);
+        if (dist < player.radius + et.radius) {
+            damagePlayer(1);
+            spawnBlood(player.x, player.y, 6, 3);
+            enemyTears.splice(i, 1);
+        }
+    }
+
+    // Gestión de Fin de Sala e Item Drops
+    let room = currentRoom;
+    if (!room.cleared) {
+        if (room.enemies.length === 0) {
+            room.cleared = true;
+            playSound('clear');
+            spawnBlood(canvas.width / 2, canvas.height / 2, 10);
+
+            // Spawn de CORAZÓN garantizado tras limpiar la sala
+            let isFull = Math.random() < 0.35; // 35% de que sea entero, 65% medio
+            room.pickups.push({
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                type: 'heart',
+                value: isFull ? 2 : 1, // 2 = corazón lleno, 1 = medio
+                collected: false,
+                bounceOffset: Math.random() * 100
+            });
+        }
+    }
+
+    // Absorción de corazones
+    if (room.pickups) {
+        room.pickups.forEach(p => {
+            if (!p.collected) {
+                let dist = Math.hypot(player.x - p.x, player.y - p.y);
+                if (dist < player.radius + 15) {
+                    if (player.hp < player.maxHp) {
+                        player.hp = Math.min(player.maxHp, player.hp + p.value);
+                        p.collected = true;
+                        playSound('pickup');
+                        // Partículas de curación
+                        for (let k = 0; k < 12; k++) {
+                            let angle = Math.random() * Math.PI * 2;
+                            particles.push({
+                                x: player.x, y: player.y,
+                                vx: Math.cos(angle) * 1.5,
+                                vy: Math.sin(angle) * 1.5 - 1.2,
+                                radius: Math.random() * 3 + 2,
+                                color: "#ff5252",
+                                alpha: 1,
+                                life: 18
+                            });
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Procesar enemigos de la sala
+    for (let i = room.enemies.length - 1; i >= 0; i--) {
+        let e = room.enemies[i];
+        e.animTimer += 0.15;
+        if (e.flash > 0) e.flash--;
+
+        // Movimiento de Enemigos estándar
+        if (e.type === 'fly') {
+            let ang = Math.atan2(player.y - e.y, player.x - e.x);
+            let noiseX = Math.sin(e.animTimer * 1.5) * 1.2;
+            let noiseY = Math.cos(e.animTimer * 1.5) * 1.2;
+            e.x += Math.cos(ang) * e.speed + noiseX;
+            e.y += Math.sin(ang) * e.speed + noiseY;
+        } else if (e.type === 'gaper') {
+            let ang = Math.atan2(player.y - e.y, player.x - e.x);
+            e.x += Math.cos(ang) * e.speed;
+            e.y += Math.sin(ang) * e.speed;
+        } else if (e.type === 'pooter') {
+            let ang = Math.atan2(player.y - e.y, player.x - e.x);
+            let distToPlayer = Math.hypot(player.x - e.x, player.y - e.y);
+            if (distToPlayer > 180) {
+                e.x += Math.cos(ang) * e.speed;
+                e.y += Math.sin(ang) * e.speed;
+            } else if (distToPlayer < 120) {
+                e.x -= Math.cos(ang) * e.speed;
+                e.y -= Math.sin(ang) * e.speed;
+            }
+
+            e.shootCooldown--;
+            if (e.shootCooldown <= 0) {
+                let tearAng = Math.atan2(player.y - e.y, player.x - e.x);
+                enemyTears.push({
+                    x: e.x, y: e.y,
+                    vx: Math.cos(tearAng) * 4.5,
+                    vy: Math.sin(tearAng) * 4.5,
+                    radius: 8,
+                    life: 80
+                });
+                e.shootCooldown = 90 + Math.random() * 40;
+            }
+        }
+        // LÓGICA DE MONSTRO (BOSS)
+        else if (e.type === 'boss') {
+            let ang = Math.atan2(player.y - e.y, player.x - e.x);
+
+            if (e.jumpState === 'idle') {
+                e.shootCooldown--;
+                if (e.shootCooldown <= 15) {
+                    e.jumpState = 'up';
+                    e.animTimer = 0;
+                }
+            } else if (e.jumpState === 'up') {
+                e.jumpY -= 4.5;
+                e.x += Math.cos(ang) * (e.speed * 1.8);
+                e.y += Math.sin(ang) * (e.speed * 1.8);
+                if (e.jumpY <= -110) e.jumpState = 'down';
+            } else if (e.jumpState === 'down') {
+                e.jumpY += 5.5;
+                if (e.jumpY >= 0) {
+                    e.jumpY = 0;
+                    e.jumpState = 'idle';
+                    e.shootCooldown = 100 + Math.random() * 50;
+
+                    playSound('hit');
+                    screenShake = 12;
+                    spawnBlood(e.x, e.y, 25, 6);
+                    for (let a = 0; a < Math.PI * 2; a += Math.PI / 4) {
+                        enemyTears.push({
+                            x: e.x, y: e.y,
+                            vx: Math.cos(a) * 4,
+                            vy: Math.sin(a) * 4,
+                            radius: 10,
+                            life: 120
+                        });
+                    }
+                }
+            }
+        }
+        // LÓGICA DEL PIE DE MAMÁ (MOM'S FOOT - JEFE FINAL)
+        else if (e.type === 'moms_foot') {
+            e.stompTimer--;
+
+            if (e.stompState === 'shadow') {
+                // Sigue la posición del jugador poco a poco
+                e.shadowX += (player.x - e.shadowX) * 0.055;
+                e.shadowY += (player.y - e.shadowY) * 0.055;
+                e.x = e.shadowX;
+                e.y = e.shadowY;
+
+                if (e.stompTimer <= 0) {
+                    e.stompState = 'slam';
+                    e.stompTimer = 16; // Caída rápida
+                }
+            } else if (e.stompState === 'slam') {
+                if (e.stompTimer <= 0) {
+                    e.stompState = 'vulnerable';
+                    e.stompTimer = 110; // Ventana para atacarle
+                    screenShake = 22; // Sacudida fuerte!
+                    playSound('hit');
+                    spawnBlood(e.x, e.y, 35, 7);
+
+                    // Onda expansiva circular de lágrimas
+                    for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+                        enemyTears.push({
+                            x: e.x, y: e.y,
+                            vx: Math.cos(a) * 5,
+                            vy: Math.sin(a) * 5,
+                            radius: 10,
+                            life: 90
+                        });
+                    }
+
+                    // Daño si aplasta a Isaac
+                    if (player.invincible === 0) {
+                        let pDist = Math.hypot(player.x - e.x, player.y - e.y);
+                        if (pDist < player.radius + e.radius) {
+                            damagePlayer(2); // Aplastamiento quita 1 corazón entero
+                            spawnBlood(player.x, player.y, 15, 4);
+                        }
+                    }
+                }
+            } else if (e.stompState === 'vulnerable') {
+                e.x = e.shadowX;
+                e.y = e.shadowY;
+
+                if (e.stompTimer <= 0) {
+                    e.stompState = 'rise';
+                    e.stompTimer = 35; // Sube de nuevo
+                }
+            } else if (e.stompState === 'rise') {
+                if (e.stompTimer <= 0) {
+                    e.stompState = 'shadow';
+                    e.stompTimer = 90;
+                    e.shadowX = player.x;
+                    e.shadowY = player.y;
+                }
+            }
+        }
+
+        e.x = Math.max(MARGIN + e.radius, Math.min(canvas.width - MARGIN - e.radius, e.x));
+        e.y = Math.max(MARGIN + e.radius, Math.min(canvas.height - MARGIN - e.radius, e.y));
+
+        // Colisión Enemigo vs Lágrimas de Isaac
+        for (let j = tears.length - 1; j >= 0; j--) {
+            let t = tears[j];
+
+            // Si el Pie de Mamá está arriba, no recibe daño de lágrimas
+            if (e.type === 'moms_foot' && e.stompState === 'shadow') continue;
+
+            let hitDist = Math.hypot(e.x - t.x, e.y - t.y);
+            if (hitDist < e.radius + t.radius) {
+                e.hp -= player.damage;
+                e.flash = 5;
+                spawnBlood(t.x, t.y, 4, 2);
+                tears.splice(j, 1);
+                playSound('hit');
+
+                if (e.hp <= 0) {
+                    spawnBlood(e.x, e.y, 14, 5);
+                    room.enemies.splice(i, 1);
+                    score += e.type === 'boss' || e.type === 'moms_foot' ? 100 : 15;
+                        updatePythonScore();
+
+                    if (e.type === 'moms_foot') {
+                        gameWon = true; // Derrotar a Mamá finaliza la partida con victoria
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Colisión Física de Isaac con Enemigos
+        if (player.invincible === 0 && e.type !== 'moms_foot') {
+            let pDist = Math.hypot(player.x - e.x, player.y - e.y);
+            if (pDist < player.radius + e.radius) {
+                damagePlayer(2);
+                spawnBlood(player.x, player.y, 8, 4);
+            }
+        }
+    }
+
+    // Colisión Pedestal
+    if (room.type === 'item' && !room.itemCollected) {
+        let px = canvas.width / 2;
+        let py = canvas.height / 2;
+        if (Math.hypot(player.x - px, player.y - py) < 26) {
+            room.itemCollected = true;
+            collectItem(room.itemOnPedestal);
+        }
+    }
+
+    // Partículas
+    for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.94;
+        p.vy *= 0.94;
+        p.life--;
+        if (p.life <= 0) particles.splice(i, 1);
+    }
+
+    // Puertas
+    if (room.cleared) {
+        let doorTrigger = 28;
+        let triggerDistance = player.radius + 5;
+
+        if (room.doors.top && player.y <= MARGIN + triggerDistance && Math.abs(player.x - canvas.width/2) < 40) {
+            changeRoom(0, -1);
+            player.y = canvas.height - MARGIN - doorTrigger;
+        } else if (room.doors.bottom && player.y >= canvas.height - MARGIN - triggerDistance && Math.abs(player.x - canvas.width/2) < 40) {
+            changeRoom(0, 1);
+            player.y = MARGIN + doorTrigger;
+        } else if (room.doors.left && player.x <= MARGIN + triggerDistance && Math.abs(player.y - canvas.height/2) < 40) {
+            changeRoom(-1, 0);
+            player.x = canvas.width - MARGIN - doorTrigger;
+        } else if (room.doors.right && player.x >= canvas.width - MARGIN - triggerDistance && Math.abs(player.y - canvas.height/2) < 40) {
+            changeRoom(1, 0);
+            player.x = MARGIN + doorTrigger;
+        }
+
+        // Trampilla al vencer boss
+        if (room.type === 'boss' && room.enemies.length === 0 && currentFloorIndex < FLOORS.length - 1) {
+            let trapX = canvas.width / 2;
+            let trapY = canvas.height / 2;
+            if (Math.hypot(player.x - trapX, player.y - trapY) < 24) {
+                advanceFloor();
+            }
+        }
+    }
+}
+
+function collectItem(item) {
+    celebratingItem = item;
+    itemCelebrationTimer = 100;
+    playSound('pickup');
+
+    if (item.id === "onion") {
+        player.damage += 3;
+    } else if (item.id === "max_head") {
+        player.damage += 5;
+    } else if (item.id === "cricket_head") {
+        player.damage *= 2;
+    } else if (item.id === "spoon_bender") {
+        player.hasHoming = true;
+    } else if (item.id === "brimstone") {
+        player.hasBrimstone = true;
+    } else if (item.id === "halo") {
+        player.maxHp += 2;
+        player.hp = player.maxHp;
+    }
+}
+
+function damagePlayer(amount) {
+    if (player.invincible > 0) return;
+    player.hp -= amount;
+    player.invincible = 45;
+    playSound('hurt');
+    if (player.hp <= 0) {
+        gameOver = true;
+    }
+}
+
+function changeRoom(dx, dy) {
+    let nx = currentRoom.x + dx;
+    let ny = currentRoom.y + dy;
+    let next = floorMap[`${nx},${ny}`];
+    if (next) {
+        currentRoom = next;
+        tears = [];
+        enemyTears = [];
+        particles = [];
+        playSound('clear');
+    }
+}
+
+function advanceFloor() {
+    currentFloorIndex++;
+    if (currentFloorIndex >= FLOORS.length) {
+        gameWon = true;
+    } else {
+        player.hp = Math.min(player.maxHp, player.hp + 2);
+        generateFloor();
+    }
+}
+
+function restartEntireGame() {
+    currentFloorIndex = 0;
+    score = 0; updatePythonScore('restart');
+    player.hp = 6;
+    player.maxHp = 6;
+    player.damage = 4;
+    player.hasHoming = false;
+    player.hasBrimstone = false;
+    player.brimstoneCharge = 0;
+    player.brimstoneActiveTimer = 0;
+    gameOver = false;
+    gameWon = false;
+    generateFloor();
+}
+
+// --- RENDERIZADO ---
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+
+    // Aplicación del temblor de pantalla (Screen Shake)
+    if (screenShake > 0) {
+        let shakeX = (Math.random() - 0.5) * screenShake;
+        let shakeY = (Math.random() - 0.5) * screenShake;
+        ctx.translate(shakeX, shakeY);
+        screenShake *= 0.9;
+        if (screenShake < 0.4) screenShake = 0;
+    }
+
+    // Suelo
+    ctx.fillStyle = currentFloor.wall;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = currentFloor.bg;
+    ctx.fillRect(MARGIN, MARGIN, canvas.width - MARGIN*2, canvas.height - MARGIN*2);
+
+    // Rejillas
+    ctx.strokeStyle = currentFloor.grid;
+    ctx.lineWidth = 1.5;
+    for (let i = MARGIN; i < canvas.width - MARGIN; i += 50) {
+        ctx.beginPath(); ctx.moveTo(i, MARGIN); ctx.lineTo(i, canvas.height - MARGIN); ctx.stroke();
+    }
+    for (let j = MARGIN; j < canvas.height - MARGIN; j += 50) {
+        ctx.beginPath(); ctx.moveTo(MARGIN, j); ctx.lineTo(canvas.width - MARGIN, j); ctx.stroke();
+    }
+
+    drawDoors();
+
+    // Trampilla
+    if (currentRoom.type === 'boss' && currentRoom.cleared && currentFloorIndex < FLOORS.length - 1) {
+        let tx = canvas.width / 2;
+        let ty = canvas.height / 2;
+        ctx.fillStyle = "#120907";
+        ctx.beginPath();
+        ctx.ellipse(tx, ty, 20, 12, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#3e2723";
+        ctx.stroke();
+
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(tx - 10, ty - 4, 20, 8);
+    }
+
+    // Pedestal Item Room
+    if (currentRoom.type === 'item') {
+        let px = canvas.width / 2;
+        let py = canvas.height / 2;
+
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath();
+        ctx.ellipse(px, py + 12, 18, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#6d4c41";
+        ctx.fillRect(px - 10, py - 6, 20, 18);
+        ctx.fillStyle = "#8d6e63";
+        ctx.fillRect(px - 14, py - 12, 28, 6);
+        ctx.fillStyle = "#4e342e";
+        ctx.fillRect(px - 10, py + 12, 20, 4);
+
+        if (!currentRoom.itemCollected) {
+            let item = currentRoom.itemOnPedestal;
+            let bob = Math.sin(Date.now() / 220) * 5;
+
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = item.color;
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "28px Arial";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(item.emoji, px, py - 24 + bob);
+
+            ctx.shadowBlur = 0;
+            ctx.textBaseline = "alphabetic";
+        }
+    }
+
+    // Pintar charcos de sangre del suelo
+    particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius * (p.life / 20), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+    });
+
+    // Dibujar Corazones en el suelo
+    if (currentRoom.pickups) {
+        currentRoom.pickups.forEach(p => {
+            if (!p.collected) {
+                let bob = Math.sin((Date.now() / 150) + p.bounceOffset) * 4;
+                ctx.save();
+
+                // Sombra del corazón
+                ctx.fillStyle = "rgba(0,0,0,0.3)";
+                ctx.beginPath();
+                ctx.ellipse(p.x, p.y + 12, p.value === 2 ? 10 : 7, p.value === 2 ? 4 : 3, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Emoji del corazón (Pequeño para medio corazón, grande para entero)
+                ctx.font = p.value === 2 ? "22px Arial" : "15px Arial";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("❤️", p.x, p.y + bob);
+                ctx.restore();
+            }
+        });
+    }
+
+    // Lágrimas
+    tears.forEach(t => {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2);
+        let grad = ctx.createRadialGradient(t.x, t.y, 1, t.x, t.y, t.radius);
+        if (player.hasHoming) {
+            grad.addColorStop(0, "#ffffff");
+            grad.addColorStop(0.5, "#e040fb");
+            grad.addColorStop(1, "#7b1fa2");
+        } else {
+            grad.addColorStop(0, "#ffffff");
+            grad.addColorStop(0.5, "#9ad5ff");
+            grad.addColorStop(1, "#1c8adb");
+        }
+        ctx.fillStyle = grad;
+        ctx.fill();
+    });
+
+    enemyTears.forEach(et => {
+        ctx.beginPath();
+        ctx.arc(et.x, et.y, et.radius, 0, Math.PI * 2);
+        let grad = ctx.createRadialGradient(et.x, et.y, 1, et.x, et.y, et.radius);
+        grad.addColorStop(0, "#ff8a8a");
+        grad.addColorStop(0.4, "#d32f2f");
+        grad.addColorStop(1, "#5f0909");
+        ctx.fillStyle = grad;
+        ctx.fill();
+    });
+
+    // Azufre (Brimstone)
+    if (player.hasBrimstone && player.brimstoneActiveTimer > 0) {
+        let startX = player.x;
+        let startY = player.y - 12;
+        let endX = startX + player.brimstoneDirection.x * 800;
+        let endY = startY + player.brimstoneDirection.y * 800;
+
+        if (player.brimstoneDirection.x > 0) endX = canvas.width - MARGIN;
+        if (player.brimstoneDirection.x < 0) endX = MARGIN;
+        if (player.brimstoneDirection.y > 0) endY = canvas.height - MARGIN;
+        if (player.brimstoneDirection.y < 0) endY = MARGIN;
+
+        ctx.strokeStyle = "#ff1744";
+        ctx.lineWidth = 26 + Math.sin(Date.now() / 20) * 4;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 10 + Math.sin(Date.now() / 20) * 2;
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+    }
+
+    // Enemigos
+    currentRoom.enemies.forEach(e => {
+        if (e.flash > 0) {
+            ctx.fillStyle = "#ffffff";
+        } else {
+            ctx.fillStyle = e.type === 'fly' ? "#37474f" : (e.type === 'pooter' ? "#2e7d32" : "#d84315");
+        }
+
+        ctx.save();
+        if (e.type === 'fly') {
+            ctx.beginPath();
+            ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "rgba(220, 240, 255, 0.7)";
+            let wingY = Math.sin(e.animTimer * 2) * 10;
+            ctx.beginPath();
+            ctx.ellipse(e.x - 7, e.y - 4 + wingY/2, 5, 8, -0.4, 0, Math.PI*2);
+            ctx.ellipse(e.x + 7, e.y - 4 - wingY/2, 5, 8, 0.4, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = "#c2185b";
+            ctx.beginPath();
+            ctx.arc(e.x - 3, e.y - 2, 2.5, 0, Math.PI * 2);
+            ctx.arc(e.x + 3, e.y - 2, 2.5, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (e.type === 'gaper') {
+            let wobble = Math.sin(e.animTimer) * 2;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y - wobble, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#d84315";
+            ctx.fillRect(e.x - 8, e.y + 4 - wobble, 16, 12);
+            ctx.fillStyle = "#5d0c0c";
+            ctx.beginPath();
+            ctx.arc(e.x - 4, e.y - 2 - wobble, 3, 0, Math.PI * 2);
+            ctx.arc(e.x + 4, e.y - 2 - wobble, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ff1744";
+            ctx.fillRect(e.x - 2, e.y + 12 - wobble, 4, 5 + wobble);
+        } else if (e.type === 'pooter') {
+            let bobbing = Math.sin(e.animTimer) * 3;
+            ctx.beginPath();
+            ctx.arc(e.x, e.y + bobbing, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#ffeb3b";
+            ctx.beginPath();
+            ctx.arc(e.x - 4, e.y - 1 + bobbing, 3.5, 0, Math.PI * 2);
+            ctx.arc(e.x + 4, e.y - 1 + bobbing, 3.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(e.x - 3, e.y + bobbing, 1.5, 0, Math.PI*2);
+            ctx.arc(e.x + 3, e.y + bobbing, 1.5, 0, Math.PI*2);
+            ctx.fill();
+        }
+        // MONSTRO RENDERING
+        else if (e.type === 'boss') {
+            let shadowSize = Math.max(10, 32 + e.jumpY / 3);
+            ctx.fillStyle = "rgba(0,0,0,0.3)";
+            ctx.beginPath();
+            ctx.ellipse(e.x, e.y + 24, shadowSize, shadowSize / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (e.flash > 0) ctx.fillStyle = "#ffffff";
+            else ctx.fillStyle = "#f59a85";
+
+            let headY = e.y + e.jumpY;
+            ctx.beginPath();
+            ctx.arc(e.x, headY, e.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#3e1c14";
+            ctx.beginPath();
+            ctx.ellipse(e.x, headY + 12, 18, 8, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.beginPath();
+            ctx.arc(e.x - 12, headY - 8, 8, 0, Math.PI * 2);
+            ctx.arc(e.x + 10, headY - 6, 6, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = "#000000";
+            ctx.beginPath();
+            ctx.arc(e.x - 14, headY - 8, 3, 0, Math.PI*2);
+            ctx.arc(e.x + 9, headY - 6, 2, 0, Math.PI*2);
+            ctx.fill();
+
+            // Boss lifebar
+            ctx.fillStyle = "rgba(0,0,0,0.5)";
+            ctx.fillRect(canvas.width / 2 - 150, 490, 300, 16);
+            ctx.fillStyle = "#c62828";
+            let bossLifeRatio = Math.max(0, e.hp / e.maxHp);
+            ctx.fillRect(canvas.width / 2 - 148, 492, 296 * bossLifeRatio, 12);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 11px Arial";
+            ctx.fillText("MONSTRO", canvas.width / 2 - 140, 502);
+        }
+        // PIE DE MAMÁ RENDERING (CUSTOM BOSS)
+        else if (e.type === 'moms_foot') {
+            if (e.stompState === 'shadow') {
+                // Sombra creciente
+                let shadowProgress = 1 - (e.stompTimer / 90);
+                let shadowRadius = 30 + shadowProgress * 45;
+                ctx.fillStyle = `rgba(0,0,0, ${0.15 + shadowProgress * 0.45})`;
+                ctx.beginPath();
+                ctx.ellipse(e.shadowX, e.shadowY, shadowRadius, shadowRadius / 2, 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                let heightOffset = 0;
+                if (e.stompState === 'slam') {
+                    heightOffset = (e.stompTimer / 16) * 450; // Baja del techo
+                } else if (e.stompState === 'rise') {
+                    heightOffset = (1 - (e.stompTimer / 35)) * 450; // Sube al techo
+                }
+
+                // Sombra proyectada en el suelo
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.beginPath();
+                ctx.ellipse(e.shadowX, e.shadowY, 65, 30, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                let footY = e.shadowY - heightOffset;
+
+                // Pierna Fleshy / Stockings de Mamá (Purpura con detalles)
+                ctx.fillStyle = e.flash > 0 ? "#ffffff" : "#4a148c"; // Púrpura oscuro
+                ctx.fillRect(e.shadowX - 30, 0, 60, footY - 10);
+
+                // Forro o detalle de vestido
+                ctx.fillStyle = "#311b92";
+                ctx.fillRect(e.shadowX - 35, footY - 15, 70, 8);
+
+                // Pie / Zapato clásico de tacón alto rojo (Red Pump Shoe)
+                ctx.fillStyle = e.flash > 0 ? "#ffffff" : "#b71c1c"; // Rojo Carmesí
+                ctx.beginPath();
+                // Cuerpo del zapato de tacón apuntando al lado izquierdo
+                ctx.ellipse(e.shadowX - 10, footY, 55, 30, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Puntera afilada
+                ctx.beginPath();
+                ctx.moveTo(e.shadowX - 65, footY);
+                ctx.lineTo(e.shadowX - 40, footY - 15);
+                ctx.lineTo(e.shadowX - 40, footY + 15);
+                ctx.fill();
+
+                // Tacón de aguja
+                ctx.fillRect(e.shadowX + 25, footY, 10, 40);
+            }
+
+            // Lifebar del Boss final (Pie de Mamá)
+            ctx.fillStyle = "rgba(0,0,0,0.5)";
+            ctx.fillRect(canvas.width / 2 - 150, 490, 300, 16);
+            ctx.fillStyle = "#c62828";
+            let bossLifeRatio = Math.max(0, e.hp / e.maxHp);
+            ctx.fillRect(canvas.width / 2 - 148, 492, 296 * bossLifeRatio, 12);
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 11px Arial";
+            ctx.fillText("MOM'S FOOT (PIE DE MAMÁ)", canvas.width / 2 - 140, 502);
+        }
+        ctx.restore();
+    });
+
+    // ISAAC
+    if (!gameOver && !gameWon) {
+        ctx.save();
+        if (player.invincible > 0 && Math.floor(player.invincible / 4) % 2 === 0) {
+            ctx.globalAlpha = 0.35;
+        }
+
+        let bobY = Math.sin(player.walkCycle) * 3.5;
+
+        // Piernas
+        ctx.fillStyle = "#7ca2ff";
+        if (player.walkCycle > 0) {
+            ctx.fillRect(player.x - 10, player.y + 4 + bobY, 7, 10);
+            ctx.fillRect(player.x + 3, player.y + 4 - bobY, 7, 10);
+        } else {
+            ctx.fillRect(player.x - 10, player.y + 4, 7, 10);
+            ctx.fillRect(player.x + 3, player.y + 4, 7, 10);
+        }
+
+        // Cabeza
+        ctx.fillStyle = "#ffdfd5";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y - 4 + bobY/2, player.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Ojos
+        ctx.fillStyle = player.hasBrimstone ? "#ff1744" : "#000000";
+        let eyeOffsetY = -2 + (bobY/4);
+        ctx.beginPath();
+        ctx.arc(player.x - 6, player.y + eyeOffsetY, 3.5, 0, Math.PI * 2);
+        ctx.arc(player.x + 6, player.y + eyeOffsetY, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Lágrimas en las mejillas
+        ctx.fillStyle = player.hasHoming ? "rgba(123, 31, 162, 0.65)" : "rgba(0, 162, 255, 0.6)";
+        ctx.fillRect(player.x - 7.5, player.y + eyeOffsetY + 2, 2.5, 7 - (bobY/2));
+        ctx.fillRect(player.x + 4.5, player.y + eyeOffsetY + 2, 2.5, 7 - (bobY/2));
+
+        // Boca triste
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y + 4 + eyeOffsetY, 3, 0, Math.PI, true);
+        ctx.stroke();
+
+        // Barra Brimstone
+        if (player.hasBrimstone && player.brimstoneCharge > 0 && player.brimstoneActiveTimer <= 0) {
+            let barW = 34;
+            let barH = 5;
+            let bx = player.x - barW / 2;
+            let by = player.y - player.radius - 20 + bobY/2;
+
+            ctx.fillStyle = "rgba(0,0,0,0.6)";
+            ctx.fillRect(bx, by, barW, barH);
+
+            ctx.fillStyle = "#ff1744";
+            let pct = player.brimstoneCharge / player.brimstoneMaxCharge;
+            ctx.fillRect(bx, by, barW * pct, barH);
+        }
+
+        ctx.restore();
+    }
+
+    ctx.restore(); // Restablecer tras screenShake
+
+    // HUD Superior
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(0, 0, canvas.width, MARGIN);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 15px 'Courier New'";
+    ctx.fillText(`SCORE: ${score}`, 20, 28);
+
+    ctx.fillStyle = "#e57373";
+    ctx.fillText(`DAÑO: ${player.damage.toFixed(1)}`, 140, 28);
+
+    let itemsAcquiredStr = "";
+    if (player.hasHoming) itemsAcquiredStr += " 🥄";
+    if (player.hasBrimstone) itemsAcquiredStr += " 🐐";
+    if (player.damage > 4) itemsAcquiredStr += " 🧅";
+    if (itemsAcquiredStr) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`ITEMS: ${itemsAcquiredStr}`, 280, 28);
+    }
+
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(`${currentFloor.name}`, canvas.width / 2 - 100, 28);
+
+    // Corazones
+    let hpX = canvas.width - 200;
+    for (let i = 0; i < player.maxHp / 2; i++) {
+        let leftHp = player.hp - (i * 2);
+        let hSymbol = "🖤";
+        if (leftHp >= 2) hSymbol = "❤️";
+        else if (leftHp === 1) hSymbol = "💔";
+        ctx.fillText(hSymbol, hpX + (i * 28), 28);
+    }
+
+    drawMinimap();
+
+    // BANNER CELEBRACIÓN DE ITEMS
+    if (itemCelebrationTimer > 0 && celebratingItem) {
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y - 10, 80, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.save();
+        ctx.fillStyle = "#7ca2ff";
+        ctx.fillRect(player.x - 10, player.y + 4, 7, 10);
+        ctx.fillRect(player.x + 3, player.y + 4, 7, 10);
+        ctx.fillStyle = "#ffdfd5";
+        ctx.beginPath();
+        ctx.arc(player.x, player.y - 4, player.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#000";
+        ctx.beginPath();
+        ctx.arc(player.x - 6, player.y - 2, 3.5, 0, Math.PI * 2);
+        ctx.arc(player.x + 6, player.y - 2, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        let item = celebratingItem;
+        ctx.fillStyle = item.color;
+        ctx.font = "64px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(item.emoji, player.x, player.y - 75);
+
+        ctx.fillStyle = "#ffd54f";
+        ctx.font = "bold 28px 'Courier New'";
+        ctx.fillText(item.name, canvas.width / 2, canvas.height / 2 + 70);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "16px 'Courier New'";
+        ctx.fillText(item.desc, canvas.width / 2, canvas.height / 2 + 110);
+
+        ctx.textAlign = "left";
+    }
+
+    // Transición de Piso
+    if (floorTransitionTimer > 0) {
+        ctx.fillStyle = "#000000";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#f5ebd5";
+        ctx.font = "30px 'Courier New'";
+        ctx.textAlign = "center";
+        ctx.fillText(`PISO ${currentFloorIndex + 1}`, canvas.width / 2, canvas.height / 2 - 30);
+        ctx.font = "18px 'Courier New'";
+        ctx.fillStyle = "#ca3232";
+        ctx.fillText(currentFloor.name.toUpperCase(), canvas.width / 2, canvas.height / 2 + 15);
+        ctx.textAlign = "left";
+    }
+
+    if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.9)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#d32f2f";
+        ctx.font = "bold 45px 'Courier New'";
+        ctx.textAlign = "center";
+        ctx.fillText("ISAAC DIED", canvas.width / 2, canvas.height / 2 - 30);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "20px 'Courier New'";
+        ctx.fillText("La agonía nunca acaba. Presiona 'R' para revivir", canvas.width / 2, canvas.height / 2 + 30);
+        ctx.fillText(`SCORE FINAL: ${score}`, canvas.width / 2, canvas.height / 2 + 70);
+        ctx.textAlign = "left";
+    }
+
+    if (gameWon) {
+        ctx.fillStyle = "rgba(20, 5, 10, 0.95)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ffd700";
+        ctx.font = "bold 45px 'Courier New'";
+        ctx.textAlign = "center";
+        ctx.fillText("¡VICTORIA ABSOLUTA!", canvas.width / 2, canvas.height / 2 - 30);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "18px 'Courier New'";
+        ctx.fillText("Has derrotado al Pie de Mamá y escapado de sus garras.", canvas.width / 2, canvas.height / 2 + 20);
+        ctx.fillText(`SCORE FINAL: ${score}`, canvas.width / 2, canvas.height / 2 + 60);
+        ctx.fillStyle = "#4caf50";
+        ctx.fillText("Presiona 'R' para empezar un nuevo reto procedimental", canvas.width / 2, canvas.height / 2 + 110);
+        ctx.textAlign = "left";
+    }
+}
+
+function drawDoors() {
+    let room = currentRoom;
+    let doorW = 55;
+    let doorH = 15;
+    ctx.lineWidth = 4;
+
+    let doorColor = room.cleared ? "#8d6e63" : "#37474f";
+
+    function getDoorColor(neighborRoomType, defaultCol) {
+        if (neighborRoomType === 'item') return "#ffca28";
+        return defaultCol;
+    }
+
+    if (room.doors.top) {
+        let nType = floorMap[`${room.x},${room.y-1}`]?.type;
+        ctx.fillStyle = getDoorColor(nType, doorColor);
+        ctx.fillRect(canvas.width / 2 - doorW / 2, MARGIN - 8, doorW, doorH);
+        if (room.cleared) {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(canvas.width / 2 - doorW / 2 + 5, MARGIN - 4, doorW - 10, doorH);
+        }
+    }
+    if (room.doors.bottom) {
+        let nType = floorMap[`${room.x},${room.y+1}`]?.type;
+        ctx.fillStyle = getDoorColor(nType, doorColor);
+        ctx.fillRect(canvas.width / 2 - doorW / 2, canvas.height - MARGIN - 7, doorW, doorH);
+        if (room.cleared) {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(canvas.width / 2 - doorW / 2 + 5, canvas.height - MARGIN - 11, doorW - 10, doorH);
+        }
+    }
+    if (room.doors.left) {
+        let nType = floorMap[`${room.x-1},${room.y}`]?.type;
+        ctx.fillStyle = getDoorColor(nType, doorColor);
+        ctx.fillRect(MARGIN - 8, canvas.height / 2 - doorW / 2, doorH, doorW);
+        if (room.cleared) {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(MARGIN - 4, canvas.height / 2 - doorW / 2 + 5, doorH, doorW - 10);
+        }
+    }
+    if (room.doors.right) {
+        let nType = floorMap[`${room.x+1},${room.y}`]?.type;
+        ctx.fillStyle = getDoorColor(nType, doorColor);
+        ctx.fillRect(canvas.width - MARGIN - 7, canvas.height / 2 - doorW / 2, doorH, doorW);
+        if (room.cleared) {
+            ctx.fillStyle = "#000000";
+            ctx.fillRect(canvas.width - MARGIN - 11, canvas.height / 2 - doorW / 2 + 5, doorH, doorW - 10);
+        }
+    }
+}
+
+function drawMinimap() {
+    let mapSize = 14;
+    let startMapX = 25;
+    let startMapY = 70;
+
+    for (let key in floorMap) {
+        let r = floorMap[key];
+
+        let drawX = startMapX + (r.x + 2) * (mapSize + 4);
+        let drawY = startMapY + (r.y + 2) * (mapSize + 4);
+
+        if (r === currentRoom) {
+            ctx.fillStyle = "#ffffff";
+        } else if (r.type === 'boss') {
+            ctx.fillStyle = "#d32f2f";
+        } else if (r.type === 'item') {
+            ctx.fillStyle = "#ffd700";
+        } else if (r.cleared) {
+            ctx.fillStyle = "#5d4037";
+        } else {
+            ctx.fillStyle = "#37474f";
+        }
+
+        ctx.fillRect(drawX, drawY, mapSize, mapSize);
+        ctx.strokeStyle = "rgba(255,255,255,0.15)";
+        ctx.strokeRect(drawX, drawY, mapSize, mapSize);
+
+        if (r.type === 'item' && !r.itemCollected) {
+            ctx.fillStyle = "#ffd700";
+            ctx.font = "bold 9px Arial";
+            ctx.fillText("💛", drawX + 1, drawY + 11);
+        }
+    }
+}
+
+// Iniciar Partida
+generateFloor();
+gameLoop();
+</script>
+
+</body>
+</html>

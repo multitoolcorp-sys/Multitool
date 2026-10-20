@@ -1,0 +1,43 @@
+{
+    "name": "Reproductor",
+    "position": 7,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🎬 Reproductor ARK",
+            "file_name": "submodulos/reproductor_multimedia.py",
+            "class_name": "ReproductorMultimediaSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🔍 Buscador & Descargas",
+            "file_name": "submodulos/descargas_snaptube.py",
+            "class_name": "DescargasSnaptubeSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🎵 Playlists & Biblioteca",
+            "file_name": "submodulos/listas_reproduccion.py",
+            "class_name": "ListasReproduccionSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📻 Radio Online",
+            "file_name": "submodulos/radio_streaming.py",
+            "class_name": "RadioStreamingSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📺 Televisión Online",
+            "file_name": "submodulos/television_online.py",
+            "class_name": "TelevisionOnlineSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🎛️ Ecualizador & Efectos",
+            "file_name": "submodulos/ecualizador_efectos.py",
+            "class_name": "EcualizadorEfectosSubmodule",
+            "visible": true
+        }
+    ]
+}

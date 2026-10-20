@@ -1,0 +1,14 @@
+{
+    "name": "Terminal",
+    "position": 6,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Terminal",
+            "file_name": "terminal_main.py",
+            "class_name": "TabTerminal",
+            "position": 0,
+            "visible": true
+        }
+    ]
+}

@@ -1,0 +1,14 @@
+{
+    "name": "Seguridad",
+    "position": 5,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Seguridad",
+            "file_name": "seguridad_main.py",
+            "class_name": "TabSeguridad",
+            "position": 0,
+            "visible": true
+        }
+    ]
+}

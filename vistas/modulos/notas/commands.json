@@ -1,0 +1,46 @@
+{
+  "module": "notas",
+  "name": "Bloc de Notas & Apuntes Rápidos",
+  "description": "Comandos de notas rápidas, etiquetas y archivo de texto",
+  "commands": [
+    {
+      "name": "abrir notas",
+      "command": "/notes",
+      "command_sudo": "/notes",
+      "aliases": ["/notas", "/notepad", "/memo"],
+      "description": "Abre la vista de notas y apuntes rápidos",
+      "syntax": "/notes",
+      "actions": [
+        "goto: notas",
+        "tab: 0",
+        "message: §a[Notas] Bloc de notas activo para %user%."
+      ]
+    },
+    {
+      "name": "nueva nota",
+      "command": "/newnote",
+      "command_sudo": "/newnote",
+      "aliases": ["/nuevanota", "/crearnota"],
+      "description": "Crea una nueva nota vacía de forma rápida",
+      "syntax": "/newnote",
+      "actions": [
+        "goto: notas",
+        "action: nueva_nota",
+        "message: §b[Notas] Nueva nota creada correctamente."
+      ]
+    },
+    {
+      "name": "etiquetas de notas",
+      "command": "/tags",
+      "command_sudo": "/tags",
+      "aliases": ["/etiquetas", "/categorias"],
+      "description": "Abre el panel de categorías y etiquetas organizativas",
+      "syntax": "/tags",
+      "actions": [
+        "goto: notas",
+        "tab: 1",
+        "message: §e[Notas] Clasificación por categorías y etiquetas activa."
+      ]
+    }
+  ]
+}

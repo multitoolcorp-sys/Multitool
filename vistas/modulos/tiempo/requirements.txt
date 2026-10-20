@@ -1,0 +1,1 @@
+# Módulo tiempo: Utiliza únicamente componentes del Core de MultiTool y PyQt6.

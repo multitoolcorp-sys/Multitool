@@ -1,0 +1,46 @@
+{
+  "module": "calculadora",
+  "name": "Calculadora Científica & Financiera",
+  "description": "Comandos de cálculo matemático, científico y conversiones",
+  "commands": [
+    {
+      "name": "calculadora basica",
+      "command": "/calc",
+      "command_sudo": "/calc",
+      "aliases": ["/calculadora", "/math"],
+      "description": "Abre el modo estándar de calculadora aritmética",
+      "syntax": "/calc",
+      "actions": [
+        "goto: calculadora",
+        "tab: 0",
+        "message: §a[Calculadora] Modo estándar listo para operaciones."
+      ]
+    },
+    {
+      "name": "calculadora cientifica",
+      "command": "/scientific",
+      "command_sudo": "/scientific",
+      "aliases": ["/cientifica", "/trig"],
+      "description": "Abre el modo científico con funciones trigonométricas y logarítmicas",
+      "syntax": "/scientific",
+      "actions": [
+        "goto: calculadora",
+        "tab: 1",
+        "message: §b[Calculadora] Modo científico activo."
+      ]
+    },
+    {
+      "name": "finanzas",
+      "command": "/finance",
+      "command_sudo": "/finance",
+      "aliases": ["/finanzas", "/convert"],
+      "description": "Abre la calculadora de conversiones y cálculos financieros",
+      "syntax": "/finance",
+      "actions": [
+        "goto: calculadora",
+        "tab: 2",
+        "message: §e[Calculadora] Módulo financiero y conversiones activado."
+      ]
+    }
+  ]
+}

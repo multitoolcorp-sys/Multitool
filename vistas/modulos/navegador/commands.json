@@ -1,0 +1,46 @@
+{
+  "module": "navegador",
+  "name": "Navegador Web Integrado",
+  "description": "Comandos de navegación web, marcadores e historial",
+  "commands": [
+    {
+      "name": "abrir navegador",
+      "command": "/browser",
+      "command_sudo": "/browser",
+      "aliases": ["/navegador", "/web", "/surf"],
+      "description": "Abre el navegador web integrado",
+      "syntax": "/browser",
+      "actions": [
+        "goto: navegador",
+        "tab: 0",
+        "message: §a[Navegador] Sesión de navegación web activa para %user%."
+      ]
+    },
+    {
+      "name": "marcadores web",
+      "command": "/bookmarks",
+      "command_sudo": "/bookmarks",
+      "aliases": ["/marcadores", "/favoritos"],
+      "description": "Abre el panel de páginas web guardadas y favoritos",
+      "syntax": "/bookmarks",
+      "actions": [
+        "goto: navegador",
+        "tab: 1",
+        "message: §b[Navegador] Marcadores y páginas favoritas cargadas."
+      ]
+    },
+    {
+      "name": "historial web",
+      "command": "/history",
+      "command_sudo": "/history",
+      "aliases": ["/historialweb"],
+      "description": "Abre el historial de navegación web",
+      "syntax": "/history",
+      "actions": [
+        "goto: navegador",
+        "tab: 2",
+        "message: §e[Navegador] Historial de visitas y sesiones desplegado."
+      ]
+    }
+  ]
+}

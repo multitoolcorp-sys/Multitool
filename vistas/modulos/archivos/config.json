@@ -1,0 +1,14 @@
+{
+    "name": "Archivos",
+    "position": 6,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Archivos",
+            "file_name": "archivos.py",
+            "class_name": "TabArchivos",
+            "position": 0,
+            "visible": true
+        }
+    ]
+}

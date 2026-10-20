@@ -1,0 +1,61 @@
+{
+    "name": "General",
+    "position": 0,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Dashboard",
+            "file_name": "submodulos/dashboard.py",
+            "class_name": "TabInicioGUI",
+            "visible": true
+        },
+        {
+            "name": "Briefing Diario",
+            "file_name": "submodulos/briefing_diario.py",
+            "class_name": "BriefingDiarioGUI",
+            "visible": true
+        },
+        {
+            "name": "Productividad",
+            "file_name": "submodulos/productividad.py",
+            "class_name": "ProductividadGUI",
+            "visible": true
+        },
+        {
+            "name": "Analytics",
+            "file_name": "submodulos/tab_analytics.py",
+            "class_name": "TabAnalyticsGUI",
+            "visible": true
+        },
+        {
+            "name": "Hábitos",
+            "file_name": "submodulos/habitos.py",
+            "class_name": "TabHabitosGUI",
+            "visible": true
+        },
+        {
+            "name": "Metas & OKRs",
+            "file_name": "submodulos/metas.py",
+            "class_name": "TabMetasGUI",
+            "visible": true
+        },
+        {
+            "name": "Notificaciones",
+            "file_name": "submodulos/centro_notificaciones.py",
+            "class_name": "CentroNotificacionesGUI",
+            "visible": true
+        },
+        {
+            "name": "Modo Reposo",
+            "file_name": "submodulos/tab_reposo.py",
+            "class_name": "TabModoReposoGUI",
+            "visible": true
+        },
+        {
+            "name": "Actualizaciones",
+            "file_name": "submodulos/tab_actualizaciones.py",
+            "class_name": "TabActualizaciones",
+            "visible": true
+        }
+    ]
+}

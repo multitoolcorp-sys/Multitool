@@ -1,0 +1,46 @@
+{
+  "module": "terminal",
+  "name": "Terminal & Línea de Comandos",
+  "description": "Comandos de emulador de terminal, scripts y variables de entorno",
+  "commands": [
+    {
+      "name": "abrir terminal",
+      "command": "/cli",
+      "command_sudo": "/cli",
+      "aliases": ["/terminal", "/cmd", "/shell", "/bash"],
+      "description": "Abre la consola de comandos interactiva del sistema",
+      "syntax": "/cli",
+      "actions": [
+        "goto: terminal",
+        "tab: 0",
+        "message: §a[Terminal] Línea de comandos activa para %user%."
+      ]
+    },
+    {
+      "name": "historial de ejecucion",
+      "command": "/historycmd",
+      "command_sudo": "/historycmd",
+      "aliases": ["/historialcmd"],
+      "description": "Abre el registro de instrucciones y comandos pasados",
+      "syntax": "/historycmd",
+      "actions": [
+        "goto: terminal",
+        "tab: 1",
+        "message: §b[Terminal] Historial de instrucciones del terminal desplegado."
+      ]
+    },
+    {
+      "name": "variables de entorno",
+      "command": "/envs",
+      "command_sudo": "/envs",
+      "aliases": ["/entorno", "/variables"],
+      "description": "Muestra el visor de variables de entorno del sistema operativo",
+      "syntax": "/envs",
+      "actions": [
+        "goto: terminal",
+        "tab: 2",
+        "message: §e[Terminal] Visor de variables de entorno abierto."
+      ]
+    }
+  ]
+}

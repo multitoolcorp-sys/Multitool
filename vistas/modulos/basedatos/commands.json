@@ -1,0 +1,46 @@
+{
+  "module": "basedatos",
+  "name": "Gestor de Bases de Datos",
+  "description": "Comandos de administración, consultas SQL y esquemas",
+  "commands": [
+    {
+      "name": "consola sql",
+      "command": "/sql",
+      "command_sudo": "/sql",
+      "aliases": ["/query", "/database", "/db"],
+      "description": "Abre la consola y editor de consultas SQL",
+      "syntax": "/sql",
+      "actions": [
+        "goto: basedatos",
+        "tab: 0",
+        "message: §a[Base de Datos] Editor SQL activo para %user%."
+      ]
+    },
+    {
+      "name": "explorar tablas",
+      "command": "/tables",
+      "command_sudo": "/tables",
+      "aliases": ["/tablas", "/schema"],
+      "description": "Abre el explorador de esquemas y tablas",
+      "syntax": "/tables",
+      "actions": [
+        "goto: basedatos",
+        "tab: 1",
+        "message: §b[Base de Datos] Explorador de tablas y esquemas activo."
+      ]
+    },
+    {
+      "name": "exportar bd",
+      "command": "/dbexport",
+      "command_sudo": "/dbexport",
+      "aliases": ["/dump", "/backupdb"],
+      "description": "Abre el asistente de respaldo y exportación de bases de datos",
+      "syntax": "/dbexport",
+      "actions": [
+        "goto: basedatos",
+        "tab: 2",
+        "message: §e[Base de Datos] Asistente de exportación de base de datos iniciado."
+      ]
+    }
+  ]
+}

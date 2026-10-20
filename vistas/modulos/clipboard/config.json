@@ -1,0 +1,25 @@
+{
+    "name": "Clipboard",
+    "position": 14,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🗃️ Historial",
+            "file_name": "submodulos/historial_clip.py",
+            "class_name": "TabHistorialClipboard",
+            "visible": true
+        },
+        {
+            "name": "📌 Snippets & Plantillas",
+            "file_name": "submodulos/snippets_clip.py",
+            "class_name": "TabSnippetsClipboard",
+            "visible": true
+        },
+        {
+            "name": "⚙️ Herramientas de Texto",
+            "file_name": "submodulos/herramientas_texto.py",
+            "class_name": "TabHerramientasTextoClipboard",
+            "visible": true
+        }
+    ]
+}

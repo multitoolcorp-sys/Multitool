@@ -1,0 +1,46 @@
+{
+  "module": "sistema",
+  "name": "Monitor de Sistema & Hardware",
+  "description": "Comandos de diagnóstico de hardware, CPU, memoria y procesos",
+  "commands": [
+    {
+      "name": "informacion de sistema",
+      "command": "/sysinfo",
+      "command_sudo": "/sysinfo",
+      "aliases": ["/sistema", "/specs", "/telemetria"],
+      "description": "Muestra el panel de métricas de CPU, RAM y hardware",
+      "syntax": "/sysinfo",
+      "actions": [
+        "goto: sistema",
+        "tab: 0",
+        "message: §a[Sistema] Telemetría de hardware en tiempo real activa."
+      ]
+    },
+    {
+      "name": "administrador de procesos",
+      "command": "/processes",
+      "command_sudo": "/processes",
+      "aliases": ["/procesos", "/taskmgr"],
+      "description": "Abre el monitor de tareas y procesos activos",
+      "syntax": "/processes",
+      "actions": [
+        "goto: sistema",
+        "tab: 1",
+        "message: §b[Sistema] Monitor de procesos y consumo de recursos abierto."
+      ]
+    },
+    {
+      "name": "uso de disco",
+      "command": "/disk",
+      "command_sudo": "/disk",
+      "aliases": ["/disco", "/storage"],
+      "description": "Abre el panel de análisis de espacio en discos duros",
+      "syntax": "/disk",
+      "actions": [
+        "goto: sistema",
+        "tab: 2",
+        "message: §e[Sistema] Diagnóstico de almacenamiento en disco cargado."
+      ]
+    }
+  ]
+}
