@@ -1,0 +1,95 @@
+# ==============================================================================
+# .gitignore para Multitool1
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. EJECUTABLES Y MOTORES BINARIOS (Ollama, OCR, Dist)
+# ------------------------------------------------------------------------------
+# Instalador de Ollama y binarios de IA
+**/OllamaSetup.exe
+**/*ollama*.exe
+**/*Ollama*
+
+# Motor OCR (Tesseract / img-texto)
+**/tesseract-ocr-*.exe
+**/tesseract*.exe
+**/img-texto-main/dist/
+**/img_texto.exe
+**/img_texto
+
+# Binarios y librerías compiladas en general
+*.exe
+*.msi
+*.dll
+*.so
+*.dylib
+*.bin
+
+# ------------------------------------------------------------------------------
+# 2. CARPETAS DE COMPILACIÓN Y PAQUETES PESADOS
+# ------------------------------------------------------------------------------
+/build_out/
+/DISTRIBUCION/
+dist/
+build/
+*.spec.bak
+
+# Archivos comprimidos y respaldos (evita sobrepasar el límite de 100MB de GitHub)
+*.zip
+*.rar
+*.7z
+*.tar.gz
+*.tar
+*.iso
+
+# ------------------------------------------------------------------------------
+# 3. DATOS DE USUARIO, CUENTAS Y PRIVACIDAD (SOLO NIVEL RAÍZ)
+# ------------------------------------------------------------------------------
+/cuentas/
+/usuarios/
+/browser_data/
+/test_user_db/
+
+# ------------------------------------------------------------------------------
+# 4. CARPETAS DE DESCARGAS, AUDIO Y ARCHIVOS TEMPORALES
+# ------------------------------------------------------------------------------
+/scratch/
+/temp_test_grabadora/
+/descargas/
+/ambiental_sounds/
+/notas/
+/playlists/
+
+# ------------------------------------------------------------------------------
+# 5. ARCHIVOS EN LA RAÍZ (.json y .txt generados en runtime o no requeridos)
+# ------------------------------------------------------------------------------
+/*.json
+/*.txt
+
+# ------------------------------------------------------------------------------
+# 6. CACHÉ DE PYTHON, LOGS Y ESTADO DINÁMICO
+# ------------------------------------------------------------------------------
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Archivos de caché/log generados en submódulos
+vistas/modulos/traductor/utils/traductor_cache.json
+vistas/modulos/tiempo/log_tiempo.json
+vistas/modulos/general/submodulos/update_web_log.json
+tiempo/alarmas.json
+
+# ------------------------------------------------------------------------------
+# 7. ENTORNO LOCAL Y ARCHIVOS DE EDITORES
+# ------------------------------------------------------------------------------
+.env
+.venv/
+env/
+venv/
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store
