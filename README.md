@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12%2B-blue?logo=python&logoColor=white)
 ![GUI](https://img.shields.io/badge/GUI-PyQt6-green?logo=qt&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
+![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?logo=windows&logoColor=white)
 ![Architecture](https://img.shields.io/badge/Architecture-Modular%20MVC-orange)
 ![License](https://img.shields.io/badge/License-Proprietary-red)
 ![Version](https://img.shields.io/badge/Version-2.5%20Premium-purple)
@@ -24,7 +24,7 @@
 
 ## 📖 Descripción General
 
-**MultiTool** es una aplicación de escritorio diseñada para centralizar las tareas cotidianas de desarrollo, gestión de sistemas, productividad personal y entretenimiento en una única plataforma fluida, personalizable y reactiva. Desarrollada íntegramente con **Python** y **PyQt6**, ofrece una experiencia de usuario cuidada con soporte para temas dinámicos de alto contraste, widgets desacoplables en el escritorio y aceleración gráfica por hardware.
+**MultiTool** es una aplicación de escritorio diseñada para centralizar las tareas cotidianas de desarrollo, gestión de sistemas, productividad personal y entretenimiento en una única plataforma fluida, personalizable y reactiva. Desarrollada íntegramente con **Python** y **PyQt6**, ofrece una experiencia de usuario cuidada con soporte para temas dinámicos de alto contraste, widgets desacoplables en el escritorio y aceleración gráfica por hardware en sistemas Windows.
 
 ---
 
@@ -64,8 +64,8 @@
 
 ### Prerrequisitos
 
-- **Python 3.10 o superior** (Recomendado Python 3.12).
-- Sistema Operativo: **Windows 10/11** (o distribuciones Linux compatibles con PyQt6).
+- **Sistema Operativo:** Windows 10 u 11 (64-bit). *(Actualmente no es compatible con Linux ni macOS)*.
+- **Python:** 3.10 o superior (Recomendado Python 3.12).
 - [Opcional] Herramientas Android SDK Platform-Tools (`adb`) y `scrcpy` para el submódulo de Espejo Celular.
 
 ### 1. Clonar el Repositorio
@@ -77,17 +77,13 @@ cd Multitool
 
 ### 2. Crear y Activar un Entorno Virtual
 
-En Windows (PowerShell):
+En PowerShell:
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 ```
 
-En Linux/macOS:
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+*(Si utilizas CMD estándar: `.venv\Scripts\activate.bat`)*.
 
 ### 3. Instalar Dependencias
 
