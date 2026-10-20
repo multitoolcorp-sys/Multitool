@@ -159,8 +159,8 @@ class GoogleOAuthManager(QObject):
     auth_error = pyqtSignal(str)       # Alias para compatibilidad
     logout_completed = pyqtSignal()
 
-    DEFAULT_CLIENT_ID = ""
-    DEFAULT_CLIENT_SECRET = ""
+    DEFAULT_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    DEFAULT_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
 
     def __init__(self, ruta_usuario=None):
         super().__init__()

@@ -1,0 +1,12 @@
+Multitool
+Versión: 2.5 (Premium)
+Estado: Estable
+
+Una aplicación multitarea de alto rendimiento diseñada para la productividad diaria.
+Desarrollado integralmente con Python 3.12 y PyQt6 (Modern UI/UX).
+
+Autor: Juan Luna (NariyukiStudio)
+Contacto: multitoolcorp@gmail.com
+Soporte: GitHub / NariyukiStudio
+Fecha de actualización: 31 de Marzo de 2026
+Licencia: Propietario (Juan Luna)
