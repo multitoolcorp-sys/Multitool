@@ -1,0 +1,37 @@
+{
+    "name": "Traductor",
+    "position": 9,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🔤 Texto & Voz",
+            "file_name": "submodulos/traductor_texto.py",
+            "class_name": "TraductorTextoSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🗣️ Conversación",
+            "file_name": "submodulos/modo_conversacion.py",
+            "class_name": "ModoConversacionSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📄 Documentos",
+            "file_name": "submodulos/traductor_documentos.py",
+            "class_name": "TraductorDocumentosSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📖 Diccionario",
+            "file_name": "submodulos/diccionario_glosario.py",
+            "class_name": "DiccionarioGlosarioSubmodule",
+            "visible": true
+        },
+        {
+            "name": "⭐ Historial & Favoritos",
+            "file_name": "submodulos/historial_favoritos.py",
+            "class_name": "HistorialFavoritosSubmodule",
+            "visible": true
+        }
+    ]
+}

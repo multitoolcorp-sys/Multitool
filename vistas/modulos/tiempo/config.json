@@ -1,0 +1,49 @@
+{
+    "name": "Tiempo",
+    "position": 6,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "🌐 Reloj Mundial",
+            "file_name": "submodulos/reloj_mundial.py",
+            "class_name": "RelojMundialSubmodule",
+            "visible": true
+        },
+        {
+            "name": "⏰ Alarmas & Temporizador",
+            "file_name": "submodulos/alarmas_timer.py",
+            "class_name": "AlarmasTimerSubmodule",
+            "visible": true
+        },
+        {
+            "name": "⏱️ Cronómetro & Vueltas",
+            "file_name": "submodulos/cronometro.py",
+            "class_name": "CronometroSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🍅 Pomodoro & Enfoque",
+            "file_name": "submodulos/pomodoro.py",
+            "class_name": "PomodoroSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📅 Calendario & Eventos",
+            "file_name": "submodulos/calendario_eventos.py",
+            "class_name": "CalendarioEventosSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📊 Time Tracker",
+            "file_name": "submodulos/time_tracker.py",
+            "class_name": "TimeTrackerSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🧮 Calculadora de Fechas",
+            "file_name": "submodulos/calculadora_fechas.py",
+            "class_name": "CalculadoraFechasSubmodule",
+            "visible": true
+        }
+    ]
+}

@@ -1,0 +1,46 @@
+{
+  "module": "clipboard",
+  "name": "Gestor de Portapapeles",
+  "description": "Comandos de historial de copiado, fragmentos y elementos fijados",
+  "commands": [
+    {
+      "name": "historial copiado",
+      "command": "/clips",
+      "command_sudo": "/clips",
+      "aliases": ["/clipboard", "/portapapeles", "/historyclips"],
+      "description": "Abre el historial de elementos copiados al portapapeles",
+      "syntax": "/clips",
+      "actions": [
+        "goto: clipboard",
+        "tab: 0",
+        "message: §a[Portapapeles] Historial de texto y fragmentos copiado activo."
+      ]
+    },
+    {
+      "name": "elementos fijados",
+      "command": "/pinned",
+      "command_sudo": "/pinned",
+      "aliases": ["/fijados", "/snippets"],
+      "description": "Muestra los fragmentos de texto marcados como favoritos",
+      "syntax": "/pinned",
+      "actions": [
+        "goto: clipboard",
+        "tab: 1",
+        "message: §b[Portapapeles] Elementos favoritos fijados desplegados."
+      ]
+    },
+    {
+      "name": "vaciar portapapeles",
+      "command": "/clearclips",
+      "command_sudo": "/clearclips",
+      "aliases": ["/vaciarclips"],
+      "description": "Limpia el historial de texto copiado",
+      "syntax": "/clearclips",
+      "actions": [
+        "goto: clipboard",
+        "action: vaciar_historial",
+        "message: §c[Portapapeles] Historial temporal vaciado con éxito."
+      ]
+    }
+  ]
+}

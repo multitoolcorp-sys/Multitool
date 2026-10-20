@@ -1,0 +1,3 @@
+# Dependencias requeridas para el módulo cuaderno
+numpy>=1.24.0
+matplotlib>=3.7.0

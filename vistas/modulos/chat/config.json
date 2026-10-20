@@ -1,0 +1,37 @@
+{
+    "name": "Chat",
+    "position": 10,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "💬 Sala de Chat",
+            "file_name": "submodulos/sala_chat.py",
+            "class_name": "SalaChatSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🌐 Servidor & Conexión LAN",
+            "file_name": "submodulos/conexion_lan.py",
+            "class_name": "ConexionLanSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🎨 Stickers & Emojis",
+            "file_name": "submodulos/stickers_emojis.py",
+            "class_name": "StickersEmojisSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📜 Historial de Chats",
+            "file_name": "submodulos/historial_chats.py",
+            "class_name": "HistorialChatsSubmodule",
+            "visible": true
+        },
+        {
+            "name": "🤖 Asistente IA (Privado)",
+            "file_name": "submodulos/asistente_ia.py",
+            "class_name": "AsistenteIASubmodule",
+            "visible": true
+        }
+    ]
+}

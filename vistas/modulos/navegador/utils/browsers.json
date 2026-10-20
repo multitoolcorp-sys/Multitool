@@ -1,0 +1,67 @@
+[
+    {
+        "nombre": "Google",
+        "url": "https://www.google.com",
+        "desc": "El buscador más popular del mundo.",
+        "tipo": "Seguro",
+        "icon": "🔍"
+    },
+    {
+        "nombre": "Bing",
+        "url": "https://www.bing.com",
+        "desc": "Buscador de Microsoft con IA integrada.",
+        "tipo": "Seguro",
+        "icon": "🦋"
+    },
+    {
+        "nombre": "DuckDuckGo",
+        "url": "https://duckduckgo.com",
+        "desc": "Buscador enfocado en la privacidad.",
+        "tipo": "Privado",
+        "icon": "🦆"
+    },
+    {
+        "nombre": "Brave Search",
+        "url": "https://search.brave.com",
+        "desc": "Búsqueda independiente y sin rastreo.",
+        "tipo": "Privado",
+        "icon": "🦁"
+    },
+    {
+        "nombre": "Ecosia",
+        "url": "https://www.ecosia.org",
+        "desc": "Buscador que planta árboles con sus beneficios.",
+        "tipo": "Ecológico",
+        "icon": "🌳"
+    },
+    {
+        "nombre": "Yandex",
+        "url": "https://yandex.com",
+        "desc": "El portal y buscador más grande de Rusia.",
+        "tipo": "Regional",
+        "icon": "🇷🇺"
+    },
+    {
+        "nombre": "Baidu",
+        "url": "https://www.baidu.com",
+        "desc": "El principal motor de búsqueda en China.",
+        "tipo": "Regional",
+        "icon": "🇨🇳"
+    },
+    {
+        "nombre": "Tor Bridge (Onion.pet)",
+        "url": "https://onion.pet",
+        "desc": "Acceso a la red Onion desde un navegador normal.",
+        "tipo": "Peligroso",
+        "icon": "🧅",
+        "warning": "¡ADVERTENCIA CRÍTICA!\n\nEstás intentando acceder a un puente de la red Tor (Dark Web) desde la red abierta.\n\n1. Tu privacidad NO es total en este modo.\n2. Puedes encontrar contenido ilegal, perturbador o malware.\n3. Multitool no se hace responsable del uso de este enlace.\n\n¿Deseas continuar bajo tu propio riesgo?"
+    },
+    {
+        "nombre": "DarkSearch",
+        "url": "https://darksearch.io",
+        "desc": "Buscador de sitios en la Dark Web.",
+        "tipo": "Peligroso",
+        "icon": "🌑",
+        "warning": "¡ADVERTENCIA!\n\nEste buscador indexa sitios de la Dark Web. Muchos de estos sitios pueden ser peligrosos, estafas o contener malware.\n\n¿Deseas proceder?"
+    }
+]

@@ -1,0 +1,46 @@
+{
+  "module": "tiempo",
+  "name": "Clima & Pronóstico Meteorológico",
+  "description": "Comandos meteorológicos, previsiones climáticas y radares",
+  "commands": [
+    {
+      "name": "clima actual",
+      "command": "/weather",
+      "command_sudo": "/weather",
+      "aliases": ["/clima", "/tiempo", "/temp"],
+      "description": "Abre el panel de condiciones climáticas actuales",
+      "syntax": "/weather",
+      "actions": [
+        "goto: tiempo",
+        "tab: 0",
+        "message: §a[Clima] Reporte meteorológico en tiempo real para %user%."
+      ]
+    },
+    {
+      "name": "pronostico extendido",
+      "command": "/forecast",
+      "command_sudo": "/forecast",
+      "aliases": ["/pronostico", "/semana"],
+      "description": "Muestra el pronóstico extendido de los próximos días",
+      "syntax": "/forecast",
+      "actions": [
+        "goto: tiempo",
+        "tab: 1",
+        "message: §b[Clima] Pronóstico extendido cargado."
+      ]
+    },
+    {
+      "name": "radar meteorologico",
+      "command": "/radar",
+      "command_sudo": "/radar",
+      "aliases": ["/satelite", "/lluvia"],
+      "description": "Abre la vista satelital y radar de precipitaciones",
+      "syntax": "/radar",
+      "actions": [
+        "goto: tiempo",
+        "tab: 2",
+        "message: §e[Clima] Radar satelital y mapa de precipitación abierto."
+      ]
+    }
+  ]
+}

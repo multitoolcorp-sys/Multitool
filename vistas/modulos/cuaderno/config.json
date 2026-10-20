@@ -1,0 +1,31 @@
+{
+    "name": "Cuaderno",
+    "position": 13,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "📊 Editor Grid & Gráficos",
+            "file_name": "submodulos/editor_grid.py",
+            "class_name": "EditorGridSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📝 Editor Notas & Markdown",
+            "file_name": "submodulos/editor_texto.py",
+            "class_name": "EditorTextoSubmodule",
+            "visible": true
+        },
+        {
+            "name": "👁️ Vista Previa & Impresión",
+            "file_name": "submodulos/vista_previa.py",
+            "class_name": "VistaPreviaSubmodule",
+            "visible": true
+        },
+        {
+            "name": "📤 Exportador & Plantillas",
+            "file_name": "submodulos/exportador_plantillas.py",
+            "class_name": "ExportadorPlantillasSubmodule",
+            "visible": true
+        }
+    ]
+}

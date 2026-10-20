@@ -1,0 +1,46 @@
+{
+  "module": "seguridad",
+  "name": "Centro de Seguridad & Protección",
+  "description": "Comandos de diagnóstico de seguridad, firewall y escaneo",
+  "commands": [
+    {
+      "name": "estado de seguridad",
+      "command": "/secstatus",
+      "command_sudo": "/secstatus",
+      "aliases": ["/seguridad", "/securitycenter", "/shield"],
+      "description": "Muestra el estado general de protección y privacidad",
+      "syntax": "/secstatus",
+      "actions": [
+        "goto: seguridad",
+        "tab: 0",
+        "message: §a[Seguridad] Centro de seguridad activo para %user%."
+      ]
+    },
+    {
+      "name": "cortafuegos",
+      "command": "/firewall",
+      "command_sudo": "/firewall",
+      "aliases": ["/red", "/networksec"],
+      "description": "Abre el panel de inspección de conexiones de red y firewall",
+      "syntax": "/firewall",
+      "actions": [
+        "goto: seguridad",
+        "tab: 1",
+        "message: §b[Seguridad] Monitor de firewall y puertos de red activo."
+      ]
+    },
+    {
+      "name": "escanear sistema",
+      "command": "/scan",
+      "command_sudo": "/scan",
+      "aliases": ["/escanear", "/checksec"],
+      "description": "Ejecuta un análisis de integridad del entorno",
+      "syntax": "/scan",
+      "actions": [
+        "goto: seguridad",
+        "action: iniciar_escaneo",
+        "message: §e[Seguridad] Análisis de integridad del sistema iniciado."
+      ]
+    }
+  ]
+}
