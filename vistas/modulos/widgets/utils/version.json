@@ -1,0 +1,44 @@
+{
+  "modulo": "widgets",
+  "version": "21.2.4",
+  "fecha": "2026-08-17",
+  "descripcion": "Actualización del módulo Widgets v21.2.4",
+  "ultima_actualizacion": "2026-10-17",
+  "historial": [
+    {
+      "version": "21.2.4",
+      "fecha": "2026-10-17 01:39:35",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.3",
+      "fecha": "2026-10-15 19:22:40",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.2",
+      "fecha": "2026-10-15 19:05:00",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.1",
+      "fecha": "2026-10-15 18:58:56",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.0",
+      "fecha": "2026-08-19 17:35:22",
+      "descripcion": "===============================================================================\n                  RESUMEN GENERAL DE CAMBIOS Y CORRECCIONES - MULTITOOL\n===============================================================================\n\n-------------------------------------------------------------------------------\n1. 🧩 MÓDULO DE WIDGETS Y VENTANAS FLOTANTES\n-------------------------------------------------------------------------------\n+ Agregados todos los submódulos de Extras (Espejo Celular, Ruleta, Soundboard, Kanban, Pizarra y Lanzador) directamente dentro del widget.\n+ Agregada navegación interna directa al presionar \"Abrir\": los módulos se abren dentro de la app principal en lugar de forzar ventanas flotantes.\n+ Agregado modo persiana ultra compacto al colapsar widgets fijados: la barra se reduce automáticamente a 160px de ancho por 26px de alto sin dejar espacio sobrante.\n- Solucionado el error de importación (ImportError AppsGUI) que impedía la correcta apertura e instanciación del módulo Widgets.\n- Solucionado el fallo al presionar el botón de cierre (✕) asegurando que las ventanas flotantes se oculten y cierren limpiamente de inmediato.\n- Solucionada la duplicación de estado en el botón de colapso (▼/▲) permitiendo desplegar y ocultar los widgets de forma suave y sin bloqueos.\n\n-------------------------------------------------------------------------------\n2. 📱 MÓDULO DE EXTRAS Y ESPEJO CELULAR (PHONE MIRRORING)\n-------------------------------------------------------------------------------\n+ Agregado nuevo submódulo \"Espejo Celular\" para duplicar y controlar teléfonos Android por USB y Wi-Fi en pantalla grande.\n+ Agregada ejecución 100% silenciosa en segundo plano para las herramientas ADB y scrcpy sin abrir ventanas molestas de consola CMD.\n+ Agregado modo de duplicación profesional a 60 FPS sin latencia.\n+ Agregadas funciones estilo Enlace Móvil: apagar pantalla física del celular para ahorro de batería, transmisión de audio a la PC y prevención de suspensión.\n+ Agregado \"Modo Gamer & Periféricos\" (Teclado y Mouse UHID) para jugar a Roblox, Minecraft y juegos 3D usando WASD y rotación de cámara a 360°.\n+ Agregado instalador automático de herramientas ADB y motor HD en 1 solo clic.\n- Solucionado el problema de bloqueos de seguridad y permisos en teléfonos Xiaomi, POCO y Samsung."
+    },
+    {
+      "version": "21.1.0",
+      "fecha": "2026-08-19 17:33:37",
+      "descripcion": "===============================================================================\n                  RESUMEN GENERAL DE CAMBIOS Y CORRECCIONES - MULTITOOL\n===============================================================================\n\n-------------------------------------------------------------------------------\n1. 🧩 MÓDULO DE WIDGETS Y VENTANAS FLOTANTES\n-------------------------------------------------------------------------------\n+ Agregados todos los submódulos de Extras (Espejo Celular, Ruleta, Soundboard, Kanban, Pizarra y Lanzador) directamente dentro del widget.\n+ Agregada navegación interna directa al presionar \"Abrir\": los módulos se abren dentro de la app principal en lugar de forzar ventanas flotantes.\n+ Agregado modo persiana ultra compacto al colapsar widgets fijados: la barra se reduce automáticamente a 160px de ancho por 26px de alto sin dejar espacio sobrante.\n- Solucionado el error de importación (ImportError AppsGUI) que impedía la correcta apertura e instanciación del módulo Widgets.\n- Solucionado el fallo al presionar el botón de cierre (✕) asegurando que las ventanas flotantes se oculten y cierren limpiamente de inmediato.\n- Solucionada la duplicación de estado en el botón de colapso (▼/▲) permitiendo desplegar y ocultar los widgets de forma suave y sin bloqueos.\n\n-------------------------------------------------------------------------------\n2. 📱 MÓDULO DE EXTRAS Y ESPEJO CELULAR (PHONE MIRRORING)\n-------------------------------------------------------------------------------\n+ Agregado nuevo submódulo \"Espejo Celular\" para duplicar y controlar teléfonos Android por USB y Wi-Fi en pantalla grande.\n+ Agregada ejecución 100% silenciosa en segundo plano para las herramientas ADB y scrcpy sin abrir ventanas molestas de consola CMD.\n+ Agregado modo de duplicación profesional a 60 FPS sin latencia.\n+ Agregadas funciones estilo Enlace Móvil: apagar pantalla física del celular para ahorro de batería, transmisión de audio a la PC y prevención de suspensión.\n+ Agregado \"Modo Gamer & Periféricos\" (Teclado y Mouse UHID) para jugar a Roblox, Minecraft y juegos 3D usando WASD y rotación de cámara a 360°.\n+ Agregado instalador automático de herramientas ADB y motor HD en 1 solo clic.\n- Solucionado el problema de bloqueos de seguridad y permisos en teléfonos Xiaomi, POCO y Samsung."
+    },
+    {
+      "version": "21.0.1",
+      "fecha": "2026-08-19 17:17:02",
+      "descripcion": "Actualización de módulo."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+    "name": "Widgets",
+    "file_name": "widgets_main.py",
+    "position": 15,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Widgets",
+            "file_name": "widgets_main.py",
+            "class_name": "TabWidgets",
+            "position": 0,
+            "visible": true
+        }
+    ]
+}
