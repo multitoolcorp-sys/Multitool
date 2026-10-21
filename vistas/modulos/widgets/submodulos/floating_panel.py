@@ -10,16 +10,16 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QFrame, QMenu, QApplication
+    QFrame, QMenu, QApplication, QSizeGrip
 )
-from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, QPoint, pyqtSignal
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QRect, QPoint, pyqtSignal, QEvent
 from PyQt6.QtGui import QFont, QCursor, QGuiApplication, QAction
 
 from ..utils.dock_math import calculate_dock_position, get_screen_geometry
 
 
 class DesktopWidgetWindow(QWidget):
-    """Ventana independiente para widgets fijados en el escritorio con modo puerta (roll-up)"""
+    """Ventana independiente para widgets fijados en el escritorio con modo puerta (roll-up) y redimensión libre por bordes"""
     TITLE_BAR_H = 26
 
     def __init__(self, key, widget, parent_drawer):
@@ -31,14 +31,22 @@ class DesktopWidgetWindow(QWidget):
         self._is_closing = False
         self._collapsed = False
         self._expanded_height = 280
+        self._expanded_width = 370
 
-        # Ventana transparente siempre en primer plano
+        # Estados de redimensionamiento libre (estilo notas adhesivas)
+        self._resize_edge = None
+        self._resize_start_geom = None
+        self._resize_start_pos = None
+
+        # Ventana transparente siempre en primer plano con seguimiento de ratón
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setMouseTracking(True)
+        self.setMinimumSize(160, self.TITLE_BAR_H)
 
         self.init_ui()
         self.drag_position = QPoint()
@@ -54,6 +62,7 @@ class DesktopWidgetWindow(QWidget):
 
         self.container = QFrame()
         self.container.setObjectName("DesktopWidgetFrame")
+        self.container.setMouseTracking(True)
         self.container.setStyleSheet(f"""
             QFrame#DesktopWidgetFrame {{
                 background-color: rgba(18, 18, 24, 0.95);
@@ -62,23 +71,25 @@ class DesktopWidgetWindow(QWidget):
             }}
         """)
         self.container_layout = QVBoxLayout(self.container)
-        self.container_layout.setContentsMargins(8, 6, 8, 8)
+        self.container_layout.setContentsMargins(8, 6, 8, 6)
         self.container_layout.setSpacing(4)
 
-        # Barra de título
+        # Barra de título personalizada
         self._title_bar_widget = QWidget()
         self._title_bar_widget.setFixedHeight(22)
         self._title_bar_widget.setStyleSheet("background: transparent;")
+        self._title_bar_widget.installEventFilter(self)
         title_bar = QHBoxLayout(self._title_bar_widget)
         title_bar.setContentsMargins(0, 0, 0, 0)
         title_bar.setSpacing(4)
 
-        lbl_title = QLabel(f"📌 {self.parent_drawer.get_widget_display_name(self.key)}")
-        lbl_title.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
+        self.lbl_title = QLabel(f"📌 {self.parent_drawer.get_widget_display_name(self.key)}")
+        self.lbl_title.setStyleSheet("color: white; font-weight: bold; font-size: 10px;")
+        self.lbl_title.setToolTip("Doble clic en la barra para minimizar / restaurar")
 
         self.btn_door = QPushButton("▼")
         self.btn_door.setFixedSize(18, 18)
-        self.btn_door.setToolTip("Colapsar / Expandir (Modo Puerta)")
+        self.btn_door.setToolTip("Minimizar / Reducir tamaño (o doble clic en la barra)")
         self.btn_door.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_door.setStyleSheet(f"""
             QPushButton {{
@@ -108,7 +119,7 @@ class DesktopWidgetWindow(QWidget):
         """)
         btn_unpin.clicked.connect(self.close_and_redock)
 
-        title_bar.addWidget(lbl_title)
+        title_bar.addWidget(self.lbl_title)
         title_bar.addStretch()
         title_bar.addWidget(self.btn_door)
         title_bar.addWidget(btn_unpin)
@@ -128,7 +139,20 @@ class DesktopWidgetWindow(QWidget):
         cw_layout.setSpacing(0)
         cw_layout.addWidget(self.widget)
         self.widget.show()
-        self.container_layout.addWidget(self._content_wrapper)
+        self.container_layout.addWidget(self._content_wrapper, 1)
+
+        # Barra inferior con QSizeGrip para redimensionamiento en esquina
+        self._bottom_bar = QWidget()
+        self._bottom_bar.setFixedHeight(12)
+        bb_layout = QHBoxLayout(self._bottom_bar)
+        bb_layout.setContentsMargins(0, 0, 0, 0)
+        bb_layout.addStretch()
+        self.size_grip = QSizeGrip(self)
+        self.size_grip.setFixedSize(12, 12)
+        self.size_grip.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self.size_grip.setToolTip("Arrastra para redimensionar")
+        bb_layout.addWidget(self.size_grip)
+        self.container_layout.addWidget(self._bottom_bar)
 
         layout.addWidget(self.container)
 
@@ -144,16 +168,93 @@ class DesktopWidgetWindow(QWidget):
         self._expanded_height = h
         self.resize(w, h)
 
-    def mousePressEvent(self, event):
+    def eventFilter(self, obj, event):
+        # Doble clic en la barra de título personalizada para minimizar/expandir
+        if obj == self._title_bar_widget and event.type() == QEvent.Type.MouseButtonDblClick:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.toggle_door()
+                return True
+        return super().eventFilter(obj, event)
+
+    def mouseDoubleClickEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             pos_y = event.position().y()
-            if pos_y <= 30:
+            if pos_y <= (self.TITLE_BAR_H + 8):
+                self.toggle_door()
+                event.accept()
+                return
+        super().mouseDoubleClickEvent(event)
+
+    def _get_resize_edge(self, pos):
+        """Detecta si el cursor está sobre algún borde exterior para estirar libremente (estilo notas adhesivas)"""
+        if self._collapsed:
+            return None
+        margin = 8
+        w, h = self.width(), self.height()
+        x, y = pos.x(), pos.y()
+
+        on_left = x <= margin
+        on_right = x >= w - margin
+        on_top = y <= margin
+        on_bottom = y >= h - margin
+
+        if on_top and on_left: return "top_left"
+        if on_top and on_right: return "top_right"
+        if on_bottom and on_left: return "bottom_left"
+        if on_bottom and on_right: return "bottom_right"
+        if on_left: return "left"
+        if on_right: return "right"
+        if on_top: return "top"
+        if on_bottom: return "bottom"
+        return None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.position().toPoint()
+            if not self._collapsed:
+                edge = self._get_resize_edge(pos)
+                if edge:
+                    self._resize_edge = edge
+                    self._resize_start_geom = self.geometry()
+                    self._resize_start_pos = event.globalPosition().toPoint()
+                    event.accept()
+                    return
+
+            if pos.y() <= (self.TITLE_BAR_H + 8):
                 self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-            event.accept()
+                event.accept()
+                return
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        g_pos = event.globalPosition().toPoint()
+
+        # 1. Redimensionamiento libre por bordes (ancho, alto o diagonales)
+        if self._resize_edge and self._resize_start_geom and self._resize_start_pos:
+            dx = g_pos.x() - self._resize_start_pos.x()
+            dy = g_pos.y() - self._resize_start_pos.y()
+            geom = QRect(self._resize_start_geom)
+            min_w, min_h = 180, 100
+
+            if "right" in self._resize_edge:
+                geom.setWidth(max(min_w, self._resize_start_geom.width() + dx))
+            elif "left" in self._resize_edge:
+                new_w = max(min_w, self._resize_start_geom.width() - dx)
+                geom.setLeft(self._resize_start_geom.right() - new_w)
+
+            if "bottom" in self._resize_edge:
+                geom.setHeight(max(min_h, self._resize_start_geom.height() + dy))
+            elif "top" in self._resize_edge:
+                new_h = max(min_h, self._resize_start_geom.height() - dy)
+                geom.setTop(self._resize_start_geom.bottom() - new_h)
+
+            self.setGeometry(geom)
+            event.accept()
+            return
+
+        # 2. Arrastre de posición por la barra superior
         if event.buttons() == Qt.MouseButton.LeftButton and not self.drag_position.isNull():
-            new_pos = event.globalPosition().toPoint() - self.drag_position
+            new_pos = g_pos - self.drag_position
             # Magnet Snap-to-Edge (Ajuste magnético de bordes)
             screen = QGuiApplication.primaryScreen().geometry()
             snap_dist = 15
@@ -168,6 +269,39 @@ class DesktopWidgetWindow(QWidget):
 
             self.move(x, y)
             event.accept()
+            return
+
+        # 3. Cursor dinámico interactivo según borde
+        if not self._collapsed:
+            edge = self._get_resize_edge(event.position().toPoint())
+            if edge in ("left", "right"):
+                self.setCursor(Qt.CursorShape.SizeHorCursor)
+            elif edge in ("top", "bottom"):
+                self.setCursor(Qt.CursorShape.SizeVerCursor)
+            elif edge in ("top_left", "bottom_right"):
+                self.setCursor(Qt.CursorShape.SizeFDiagCursor)
+            elif edge in ("top_right", "bottom_left"):
+                self.setCursor(Qt.CursorShape.SizeBDiagCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+        else:
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._resize_edge:
+            self._resize_edge = None
+            self._resize_start_geom = None
+            self._resize_start_pos = None
+            if not self._collapsed:
+                self._expanded_width = self.width()
+                self._expanded_height = self.height()
+            event.accept()
+            return
+
+        self.drag_position = QPoint()
+        super().mouseReleaseEvent(event)
 
     def toggle_door(self):
         cur_geom = self.geometry()
@@ -177,20 +311,26 @@ class DesktopWidgetWindow(QWidget):
             target_w = 160
             target_h = self.TITLE_BAR_H
             self.btn_door.setText("▲")
+            self.btn_door.setToolTip("Expandir / Restaurar tamaño")
             self.container_layout.setContentsMargins(6, 2, 6, 2)
             self._title_bar_widget.setFixedHeight(20)
             self._collapsed = True
             self._content_wrapper.hide()
             self._div.hide()
+            if hasattr(self, "_bottom_bar"):
+                self._bottom_bar.hide()
         else:
             target_w = getattr(self, "_expanded_width", 370)
             target_h = self._expanded_height
             self.btn_door.setText("▼")
-            self.container_layout.setContentsMargins(8, 6, 8, 8)
+            self.btn_door.setToolTip("Minimizar / Reducir tamaño")
+            self.container_layout.setContentsMargins(8, 6, 8, 6)
             self._title_bar_widget.setFixedHeight(22)
             self._collapsed = False
             self._content_wrapper.show()
             self._div.show()
+            if hasattr(self, "_bottom_bar"):
+                self._bottom_bar.show()
 
         target_geom = QRect(cur_geom.x(), cur_geom.y(), target_w, target_h)
         self._anim.stop()
