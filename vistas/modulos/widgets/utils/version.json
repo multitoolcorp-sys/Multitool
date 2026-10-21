@@ -1,10 +1,30 @@
 {
   "modulo": "widgets",
-  "version": "21.2.4",
-  "fecha": "2026-08-17",
-  "descripcion": "Actualización del módulo Widgets v21.2.4",
-  "ultima_actualizacion": "2026-10-17",
+  "version": "21.2.8",
+  "fecha": "2026-10-21",
+  "descripcion": "Actualización del módulo Widgets v21.2.8",
+  "ultima_actualizacion": "2026-10-21",
   "historial": [
+    {
+      "version": "21.2.8",
+      "fecha": "2026-10-21 11:40:09",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.7",
+      "fecha": "2026-10-21 11:40:09",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.6",
+      "fecha": "2026-10-21 11:40:08",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.2.5",
+      "fecha": "2026-10-21 11:35:00",
+      "descripcion": "Soporte de redimensionamiento libre por bordes y esquinas con cursores dinámicos y minimizado suave por botón o doble clic en barra de título."
+    },
     {
       "version": "21.2.4",
       "fecha": "2026-10-17 01:39:35",
