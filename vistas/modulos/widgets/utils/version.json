@@ -1,10 +1,20 @@
 {
   "modulo": "widgets",
-  "version": "21.2.8",
+  "version": "21.3.0",
   "fecha": "2026-10-21",
-  "descripcion": "Actualización del módulo Widgets v21.2.8",
+  "descripcion": "1. Modificacion general para todos los widgets registrados\n+ Los widgets ahora pueden abrirse haciendo doble click en su pestaña al fijarlos\n+ Se añadio un boton para cambiar el tamaño de un widget de forma propia",
   "ultima_actualizacion": "2026-10-21",
   "historial": [
+    {
+      "version": "21.3.0",
+      "fecha": "2026-10-21 11:54:51",
+      "descripcion": "1. Modificacion general para todos los widgets registrados\n+ Los widgets ahora pueden abrirse haciendo doble click en su pestaña al fijarlos\n+ Se añadio un boton para cambiar el tamaño de un widget de forma propia"
+    },
+    {
+      "version": "21.2.9",
+      "fecha": "2026-10-21 11:49:44",
+      "descripcion": "Actualización de módulo."
+    },
     {
       "version": "21.2.8",
       "fecha": "2026-10-21 11:40:09",
