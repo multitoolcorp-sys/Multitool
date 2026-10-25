@@ -183,7 +183,7 @@ class BrowserTabBar(QTabBar):
 
 class BrowserContainer(QWidget):
     """Contenedor de pestaña individual que aloja el WebView2Widget o la pantalla de reposo con historial de navegación propio."""
-    def __init__(self, web_view, parent_browser, zoom=1.0, is_sleeping=False, saved_url="", nav_history=None, nav_index=None):
+    def __init__(self, web_view, parent_browser, zoom=1.0, is_sleeping=False, saved_url="", nav_history=None, nav_index=None, sleep_mode="default"):
         super().__init__()
         self._web_view = web_view
         self.parent_browser = parent_browser
@@ -192,10 +192,18 @@ class BrowserContainer(QWidget):
         self.cached_icon = None
         self.zoom_level = float(zoom)
         self.is_sleeping = is_sleeping
+        self.sleep_mode = str(sleep_mode or "default") # 'default' (según modo reposo general) o 'always_active' (siempre activa)
         self.saved_url = saved_url or (web_view.url().toString() if web_view and hasattr(web_view, "url") else "")
         self.last_active_time = time.time()
         self.is_pip_active = False
         self._placeholder_widget = None
+
+    def set_sleep_mode(self, mode: str):
+        """Configura el comportamiento de reposo de esta pestaña: 'default' o 'always_active'."""
+        self.sleep_mode = str(mode or "default")
+        self.last_active_time = time.time()
+        if self.sleep_mode == "always_active" and self.is_sleeping:
+            self.despertar()
 
         # Historial de navegación propio e independiente de esta pestaña
         self.nav_history_stack = list(nav_history or [])
@@ -314,6 +322,8 @@ class BrowserContainer(QWidget):
         """Suspende el WebView2 liberando toda la memoria RAM y procesos Chromium."""
         if self.is_sleeping:
             return
+        if getattr(self, "sleep_mode", "default") == "always_active":
+            return # Esta pestaña está configurada para permanecer siempre activa
 
         if self._web_view:
             if hasattr(self._web_view, "url"):

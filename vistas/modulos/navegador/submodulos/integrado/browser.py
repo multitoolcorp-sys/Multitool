@@ -298,7 +298,7 @@ class MultiTabBrowser(QWidget):
         if hasattr(self, "tabs") and hasattr(self.tabs, "tabBar"):
             self.tabs.tabBar().setVisible(not target_fullscreen)
 
-    def add_new_tab(self, qurl=None, label="Nueva Pestaña", is_pinned=False, zoom=None, start_sleeping=False, nav_history=None, nav_index=None):
+    def add_new_tab(self, qurl=None, label="Nueva Pestaña", is_pinned=False, zoom=None, start_sleeping=False, nav_history=None, nav_index=None, sleep_mode="default"):
         """Crea una nueva pestaña con WebView2 incrustado o suspendida en modo reposo."""
         if qurl is None:
             qurl = QUrl("https://www.google.com")
@@ -309,14 +309,18 @@ class MultiTabBrowser(QWidget):
 
         tab_zoom = float(zoom) if zoom is not None else self.zoom_level
 
+        # Si está configurada como 'Siempre activa', no debe iniciar en reposo
+        if sleep_mode == "always_active":
+            start_sleeping = False
+
         # Si inicia suspendida (lazy loading al restaurar), no cargamos WebView2 para ahorrar RAM y CPU
         if start_sleeping:
-            container = BrowserContainer(None, self, zoom=tab_zoom, is_sleeping=True, saved_url=url_str, nav_history=nav_history, nav_index=nav_index)
+            container = BrowserContainer(None, self, zoom=tab_zoom, is_sleeping=True, saved_url=url_str, nav_history=nav_history, nav_index=nav_index, sleep_mode=sleep_mode)
             container.full_title = label
             tab_ico = obtener_o_generar_icono(url_str, label, self.data_dir, callback=container.actualizar_icono)
             container.cached_icon = tab_ico
             idx = self.tabs.addTab(container, tab_ico, f"💤 {label}" if not is_pinned else "")
-            self.tabs.setTabToolTip(idx, f"💤 [En reposo para ahorrar recursos]\n{label}\nHaz clic para reactivar")
+            self._actualizar_tooltip_pestana(idx)
             if is_pinned:
                 self.toggle_pin_tab(idx)
             else:
@@ -325,7 +329,7 @@ class MultiTabBrowser(QWidget):
             return None
 
         browser = WebView2Widget(self, url_str, str(self.data_dir), initial_zoom=tab_zoom)
-        container = BrowserContainer(browser, self, zoom=tab_zoom, nav_history=nav_history, nav_index=nav_index)
+        container = BrowserContainer(browser, self, zoom=tab_zoom, nav_history=nav_history, nav_index=nav_index, sleep_mode=sleep_mode)
         container.full_title = label
 
         tab_ico = obtener_o_generar_icono(url_str, label, self.data_dir, callback=container.actualizar_icono)
@@ -335,6 +339,7 @@ class MultiTabBrowser(QWidget):
 
         idx = self.tabs.addTab(container, tab_ico, label)
         self.tabs.setCurrentIndex(idx)
+        self._actualizar_tooltip_pestana(idx)
 
         if hasattr(browser, "setZoomFactor"):
             browser.setZoomFactor(tab_zoom)
@@ -574,6 +579,52 @@ class MultiTabBrowser(QWidget):
         super().hideEvent(event)
         self.desenfocar_todo()
 
+    def establecer_modo_reposo_pestana(self, tab_idx, mode):
+        """Establece la política de reposo de la pestaña: 'default' (general) o 'always_active' (siempre activa)."""
+        if tab_idx < 0 or tab_idx >= self.tabs.count():
+            return
+        container = self.tabs.widget(tab_idx)
+        if not container:
+            return
+
+        container.set_sleep_mode(mode)
+        if mode == "always_active":
+            if getattr(container, "is_sleeping", False):
+                self.despertar_pestana(tab_idx)
+            else:
+                self._actualizar_tooltip_pestana(tab_idx)
+        else:
+            self._actualizar_tooltip_pestana(tab_idx)
+
+        self.guardar_estado_pestanas()
+
+    def _actualizar_tooltip_pestana(self, idx):
+        """Genera y asigna un tooltip descriptivo con los estados de fijado, reposo y política activa."""
+        if idx < 0 or idx >= self.tabs.count():
+            return
+        container = self.tabs.widget(idx)
+        if not container:
+            return
+
+        title = getattr(container, "full_title", "Página Web")
+        is_pinned = getattr(container, "is_pinned", False)
+        is_sleeping = getattr(container, "is_sleeping", False)
+        sleep_mode = getattr(container, "sleep_mode", "default")
+
+        lines = []
+        if is_sleeping:
+            lines.append("💤 [En reposo para ahorrar RAM - Haz clic para reactivar]")
+        elif sleep_mode == "always_active":
+            lines.append("🛡️ [Modo Reposo: Siempre Activa (Nunca suspender)]")
+        else:
+            mins = getattr(self, "sleep_timeout_minutes", 15)
+            lines.append(f"🌐 [Modo Reposo: General ({mins} min)]")
+
+        pin_str = "📌 (Pestaña Fijada) " if is_pinned else ""
+        lines.append(f"{pin_str}{title}")
+
+        self.tabs.setTabToolTip(idx, "\n".join(lines))
+
     def dormir_pestana(self, tab_idx):
         """Pone una pestaña en reposo liberando recursos de WebView2."""
         if tab_idx < 0 or tab_idx >= self.tabs.count():
@@ -581,6 +632,8 @@ class MultiTabBrowser(QWidget):
         container = self.tabs.widget(tab_idx)
         if not container or getattr(container, "is_sleeping", False):
             return
+        if getattr(container, "sleep_mode", "default") == "always_active":
+            return # Pestaña configurada como 'Siempre activa'
         if getattr(container, "is_pip_active", False):
             return # Nunca suspender pestañas en modo Imagen en Imagen (PiP)
 
@@ -592,10 +645,8 @@ class MultiTabBrowser(QWidget):
             prefix = "💤 " if not t.startswith("💤 ") else ""
             short = (t[:16] + "...") if len(t) > 16 else t
             self.tabs.setTabText(tab_idx, f"{prefix}{short}")
-            self.tabs.setTabToolTip(tab_idx, f"💤 [En reposo para ahorrar recursos]\n{t}\nHaz clic para reactivar")
-        else:
-            self.tabs.setTabToolTip(tab_idx, f"💤 📌 [En reposo] {container.full_title}")
 
+        self._actualizar_tooltip_pestana(tab_idx)
         self._actualizar_botones_pestanas()
 
     def despertar_pestana(self, tab_idx):
@@ -618,11 +669,10 @@ class MultiTabBrowser(QWidget):
                 t = getattr(container, "full_title", "Página Web").replace("💤 ", "").strip()
                 short = (t[:18] + "...") if len(t) > 18 else t
                 self.tabs.setTabText(idx, short)
-                self.tabs.setTabToolTip(idx, t)
             else:
                 self.tabs.setTabText(idx, "")
-                self.tabs.setTabToolTip(idx, f"📌 {container.full_title}")
 
+            self._actualizar_tooltip_pestana(idx)
             self._actualizar_botones_pestanas()
             b = getattr(container, "_web_view", None)
             if b and hasattr(b, "url"):
@@ -802,12 +852,11 @@ class MultiTabBrowser(QWidget):
                 is_pinned = getattr(container, "is_pinned", False)
                 if is_pinned:
                     self.tabs.setTabText(i, "")
-                    self.tabs.setTabToolTip(i, f"📌 {title} (Pestaña Fijada)")
                     self.tabs.tabBar().setTabButton(i, QTabBar.ButtonPosition.RightSide, None)
                 else:
                     short_title = title[:20] + "..." if len(title) > 20 else title
                     self.tabs.setTabText(i, short_title or "Página Web")
-                    self.tabs.setTabToolTip(i, title)
+                self._actualizar_tooltip_pestana(i)
                 break
 
         if hasattr(browser, "url"):

@@ -19,13 +19,19 @@ class BrowserPopupWindow(QDialog):
     """Ventana emergente nativa para autenticación OAuth (Google Sign-In, Discord, etc.) y popups web."""
     def __init__(self, parent_browser=None, width=520, height=650, user_data_folder=None, colores=None):
         super().__init__(parent_browser)
+        self.parent_browser = parent_browser
         self.colores = colores or {
             "bg_principal": "#121218", "bg_secundario": "#1E1E2E", "bg_terciario": "#2D2D3D",
             "fg_principal": "#FFFFFF", "acento": "#6366F1"
         }
         self.setWindowTitle("Iniciar sesión - MultiTool")
         self.resize(max(420, width), max(500, height))
-        self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowCloseButtonHint | Qt.WindowType.WindowTitleHint)
+        self.setWindowFlags(
+            Qt.WindowType.Window |
+            Qt.WindowType.WindowCloseButtonHint |
+            Qt.WindowType.WindowTitleHint |
+            Qt.WindowType.WindowMinMaxButtonsHint
+        )
         self.setStyleSheet(f"""
             QDialog {{
                 background-color: {self.colores.get('bg_principal', '#121218')};
@@ -54,6 +60,12 @@ class BrowserPopupWindow(QDialog):
         if hasattr(self.browser, "windowCloseRequested"):
             self.browser.windowCloseRequested.connect(self._on_window_close)
         self.browser.titleChanged.connect(self._on_title_changed)
+        if hasattr(self.browser, "newWindowRequested"):
+            self.browser.newWindowRequested.connect(self._on_sub_popup_requested)
+
+    def _on_sub_popup_requested(self, uri_str):
+        if self.parent_browser and hasattr(self.parent_browser, "add_new_tab"):
+            self.parent_browser.add_new_tab(QUrl(uri_str), "Enlace")
 
     def _on_title_changed(self, title):
         if title and title.strip():
@@ -64,6 +76,12 @@ class BrowserPopupWindow(QDialog):
         self.deleteLater()
 
     def closeEvent(self, event):
+        try:
+            if self.parent_browser and hasattr(self.parent_browser, "_active_popups"):
+                if self in self.parent_browser._active_popups:
+                    self.parent_browser._active_popups.remove(self)
+        except Exception:
+            pass
         try:
             if hasattr(self, "browser") and hasattr(self.browser, "dispose_browser"):
                 self.browser.dispose_browser()

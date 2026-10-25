@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.1.13",
-  "fecha": "2026-08-17",
-  "descripcion": "Actualización del módulo Navegador v21.1.13",
-  "ultima_actualizacion": "2026-10-17",
+  "version": "21.1.14",
+  "fecha": "2026-10-25",
+  "descripcion": "Actualización del módulo Navegador v21.1.14: Modo reposo configurable por pestaña y corrección completa de autenticación OAuth (Google Sign-In, etc.) en ventanas emergentes.",
+  "ultima_actualizacion": "2026-10-25",
   "historial": [
+    {
+      "version": "21.1.14",
+      "fecha": "2026-10-25 16:05:00",
+      "descripcion": "Configuración de política de modo reposo por pestaña (Siempre activa vs General) y soporte de ventanas emergentes con deferral para flujos OAuth (Google, Discord, etc.)."
+    },
     {
       "version": "21.1.13",
       "fecha": "2026-10-17 01:34:38",

@@ -50,9 +50,11 @@ class WebView2Widget(QWidget):
     fullscreenRequested = pyqtSignal(bool)
     hotkeyPressed = pyqtSignal(str, bool)
     pipStatusChanged = pyqtSignal(bool)
+    coreWebView2Ready = pyqtSignal(object)
 
     def __init__(self, parent=None, initial_url="https://www.google.com", user_data_folder=None, initial_zoom=1.0):
         super().__init__(parent)
+        self.bridge = self
         self.is_pip_active = False
         self._current_url = QUrl(initial_url)
         self._title = "Página Web"
@@ -334,8 +336,26 @@ class WebView2Widget(QWidget):
                     target = self._pending_url
                     self._pending_url = None
                     self.load(target)
+
+                # Notificar que CoreWebView2 está completamente listo
+                try:
+                    self.coreWebView2Ready.emit(core)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[WebView2Widget] Error en _on_core_init_completed: {e}")
+
+    @property
+    def is_ready(self):
+        """Devuelve True si el control nativo CoreWebView2 ya se encuentra inicializado."""
+        return bool(self._is_ready and self.wv_control and getattr(self.wv_control, "CoreWebView2", None) is not None)
+
+    @property
+    def core_webview2(self):
+        """Acceso directo seguro al objeto CoreWebView2 nativo subyacente."""
+        if self.wv_control and hasattr(self.wv_control, "CoreWebView2"):
+            return self.wv_control.CoreWebView2
+        return None
 
     def _on_web_message_received(self, sender, args):
         """Intercepta mensajes de JavaScript, procesando notificaciones web para mostrarlas en MultiTool."""
@@ -410,7 +430,7 @@ class WebView2Widget(QWidget):
                     pix = QPixmap()
                     if pix.loadFromData(data):
                         icon = QIcon(pix)
-                        self.bridge.iconChanged.emit(icon)
+                        self.iconChanged.emit(icon)
             except Exception:
                 pass
 
@@ -431,7 +451,7 @@ class WebView2Widget(QWidget):
             args.Handled = True
             uri = args.Uri
             if uri:
-                self.bridge.newWindowRequested.emit(str(uri))
+                self.newWindowRequested.emit(str(uri))
         except Exception as e:
             print(f"[WebView2Widget] Error en NewWindowRequested: {e}")
 

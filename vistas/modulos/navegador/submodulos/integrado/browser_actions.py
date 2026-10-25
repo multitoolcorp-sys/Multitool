@@ -4,8 +4,8 @@ browser_actions.py - Manejadores de acciones, menús contextuales, descargas y a
 
 from pathlib import Path
 from PyQt6.QtWidgets import QMenu
-from PyQt6.QtCore import QUrl, Qt
-from PyQt6.QtGui import QKeySequence, QShortcut
+from PyQt6.QtCore import QUrl, Qt, QTimer
+from PyQt6.QtGui import QKeySequence, QShortcut, QActionGroup
 from PyQt6.sip import isdeleted
 
 from .container import generar_icono_por_defecto, obtener_o_generar_icono
@@ -19,7 +19,7 @@ class BrowserActionsHandler:
         self.b = browser
 
     def mostrar_menu_pestanas(self, pos):
-        """Muestra el menú contextual de la pestaña (fijar, reposo, cerrar, etc.)."""
+        """Muestra el menú contextual de la pestaña (fijar, política de reposo, cerrar, etc.)."""
         tab_bar = self.b.tabs.tabBar()
         tab_idx = tab_bar.tabAt(pos)
         if tab_idx < 0:
@@ -28,6 +28,7 @@ class BrowserActionsHandler:
         container = self.b.tabs.widget(tab_idx)
         is_pinned = getattr(container, "is_pinned", False) if container else False
         is_sleeping = getattr(container, "is_sleeping", False) if container else False
+        sleep_mode = getattr(container, "sleep_mode", "default") if container else "default"
 
         menu = QMenu(self.b)
         menu.setStyleSheet(f"""
@@ -63,12 +64,33 @@ class BrowserActionsHandler:
 
         menu.addSeparator()
 
+        # --- POLÍTICA DE MODO REPOSO POR PESTAÑA ---
+        group_sleep = QActionGroup(menu)
+        group_sleep.setExclusive(True)
+
+        act_mode_default = menu.addAction("🌐 Modo reposo: General (según ajustes)")
+        act_mode_default.setCheckable(True)
+        act_mode_default.setChecked(sleep_mode == "default")
+        act_mode_default.triggered.connect(lambda: self.b.establecer_modo_reposo_pestana(tab_idx, "default"))
+        group_sleep.addAction(act_mode_default)
+
+        act_mode_always = menu.addAction("🛡️ Modo reposo: Siempre activa (Sin reposo)")
+        act_mode_always.setCheckable(True)
+        act_mode_always.setChecked(sleep_mode == "always_active")
+        act_mode_always.triggered.connect(lambda: self.b.establecer_modo_reposo_pestana(tab_idx, "always_active"))
+        group_sleep.addAction(act_mode_always)
+
+        menu.addSeparator()
+
         if is_sleeping:
             act_wake = menu.addAction("⚡ Despertar Pestaña")
             act_wake.triggered.connect(lambda: self.b.despertar_pestana(tab_idx))
         else:
             act_sleep = menu.addAction("💤 Poner en Reposo (Suspender)")
             act_sleep.triggered.connect(lambda: self.b.dormir_pestana(tab_idx))
+            if sleep_mode == "always_active":
+                act_sleep.setEnabled(False)
+                act_sleep.setText("💤 Poner en Reposo (Deshabilitado: Siempre activa)")
 
         act_cfg_sleep = menu.addAction("⚙️ Configurar Ahorro de RAM...")
         act_cfg_sleep.triggered.connect(self.b.mostrar_dialogo_configuracion_reposo)
@@ -254,27 +276,129 @@ class BrowserActionsHandler:
         )
 
     def handle_new_window_requested(self, sender, args, browser):
+        """Maneja solicitudes de nuevas ventanas; si es un diálogo OAuth (Google, Discord, etc.) o popup modal,
+        usa BrowserPopupWindow con CoreWebView2 deferral para preservar window.opener y cookies de sesión."""
         try:
-            target_uri = str(args.Uri)
+            target_uri = str(getattr(args, "Uri", "") or "")
+            target_lower = target_uri.lower()
             popup_features = getattr(args, "WindowFeatures", None)
-            has_size = popup_features and (popup_features.HasSize or popup_features.Width > 0)
 
-            if has_size or "login" in target_uri.lower() or "oauth" in target_uri.lower() or "auth" in target_uri.lower():
-                w = int(popup_features.Width) if popup_features and popup_features.Width > 0 else 520
-                h = int(popup_features.Height) if popup_features and popup_features.Height > 0 else 650
-                popup = BrowserPopupWindow(self.b, width=w, height=h, user_data_folder=str(self.b.data_dir), colores=self.b.colores)
+            # 1. Detección por propiedades de ventana (dimensiones explícitas, popups JS)
+            has_size = popup_features and (
+                getattr(popup_features, "HasSize", False) or
+                (getattr(popup_features, "Width", 0) > 0 and getattr(popup_features, "Height", 0) > 0)
+            )
+            has_pos = popup_features and getattr(popup_features, "HasPosition", False)
+            no_chrome = popup_features and (
+                not getattr(popup_features, "ShouldDisplayMenuBar", True) or
+                not getattr(popup_features, "ShouldDisplayToolbar", True) or
+                not getattr(popup_features, "ShouldDisplayScrollBars", True)
+            )
+
+            # 2. Detección exhaustiva de URLs de login / OAuth / SSO
+            auth_keywords = (
+                "accounts.google.com", "google.com/signin", "google.com/o/oauth2", "google.com/gsi",
+                "appleid.apple.com", "login.live.com", "login.microsoftonline.com", "login.microsoft.com",
+                "discord.com/oauth2", "discord.com/login", "facebook.com/v", "facebook.com/dialog/oauth",
+                "github.com/login", "x.com/i/oauth", "twitter.com/i/oauth", "id.twitch.tv/oauth2",
+                "oauth", "login", "auth", "signin", "signup", "sso", "authenticate"
+            )
+            is_auth_flow = any(kw in target_lower for kw in auth_keywords)
+            is_dialog = has_size or has_pos or no_chrome or is_auth_flow
+
+            # Si es un popup, ventana modal o flujo de autenticación, crear ventana nativa emergente BrowserPopupWindow
+            if is_dialog:
+                deferral = None
+                try:
+                    if hasattr(args, "GetDeferral") and callable(args.GetDeferral):
+                        deferral = args.GetDeferral()
+                except Exception:
+                    deferral = None
+
+                w = int(popup_features.Width) if popup_features and getattr(popup_features, "Width", 0) > 0 else 520
+                h = int(popup_features.Height) if popup_features and getattr(popup_features, "Height", 0) > 0 else 660
+                w = max(420, min(1200, w))
+                h = max(480, min(900, h))
+
+                popup = BrowserPopupWindow(
+                    self.b,
+                    width=w,
+                    height=h,
+                    user_data_folder=str(self.b.data_dir),
+                    colores=self.b.colores
+                )
                 self.b._active_popups.append(popup)
-                if hasattr(popup.browser, "wv_control") and hasattr(popup.browser.wv_control, "CoreWebView2"):
-                    args.NewWindow = popup.browser.wv_control.CoreWebView2
-                    args.Handled = True
-                    popup.show()
-                    return True
+                popup.finished.connect(lambda: self._limpiar_popup_activo(popup))
 
+                def vincular_y_mostrar(core_wv):
+                    try:
+                        args.NewWindow = core_wv
+                        args.Handled = True
+                    except Exception as ex_bind:
+                        print(f"[BrowserActions] Advertencia asignando NewWindow a popup: {ex_bind}")
+                        if target_uri and target_uri != "about:blank":
+                            popup.browser.load(QUrl(target_uri))
+                    finally:
+                        if deferral:
+                            try:
+                                deferral.Complete()
+                            except Exception:
+                                pass
+                        popup.show()
+                        popup.raise_()
+                        popup.activateWindow()
+
+                # Si el popup ya tiene su CoreWebView2 listo
+                if hasattr(popup.browser, "is_ready") and popup.browser.is_ready and popup.browser.core_webview2:
+                    vincular_y_mostrar(popup.browser.core_webview2)
+                else:
+                    # Esperar inicialización con temporizador de seguridad
+                    safety_timer = QTimer(popup)
+                    safety_timer.setSingleShot(True)
+
+                    def on_timeout():
+                        try:
+                            if deferral:
+                                deferral.Complete()
+                        except Exception:
+                            pass
+                        if target_uri and target_uri != "about:blank":
+                            popup.browser.load(QUrl(target_uri))
+                        popup.show()
+                        popup.raise_()
+                        popup.activateWindow()
+
+                    safety_timer.timeout.connect(on_timeout)
+                    safety_timer.start(3500)
+
+                    def on_core_ready(core_wv):
+                        if safety_timer.isActive():
+                            safety_timer.stop()
+                        vincular_y_mostrar(core_wv)
+
+                    popup.browser.coreWebView2Ready.connect(on_core_ready)
+
+                return True
+
+            # Si es un enlace común a otra pestaña
             self.b.add_new_tab(QUrl(target_uri), "Cargando...")
             args.Handled = True
             return True
-        except Exception:
+        except Exception as e:
+            print(f"[BrowserActions] Error en handle_new_window_requested: {e}")
+            try:
+                args.Handled = False
+            except Exception:
+                pass
             return False
+
+    def _limpiar_popup_activo(self, popup):
+        """Elimina la referencia del popup cerrado de la lista de ventanas activas."""
+        try:
+            if hasattr(self.b, "_active_popups") and popup in self.b._active_popups:
+                self.b._active_popups.remove(popup)
+        except Exception:
+            pass
 
     def on_web_notification(self, container, title, body, icon_url, url):
         try:

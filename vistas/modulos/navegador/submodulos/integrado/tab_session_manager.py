@@ -33,7 +33,8 @@ class TabSessionManager:
                             "title": title,
                             "zoom": float(zoom),
                             "nav_stack": nav_stack,
-                            "nav_index": nav_index
+                            "nav_index": nav_index,
+                            "sleep_mode": getattr(container, "sleep_mode", "default")
                         })
 
             with open(self.b.state_file, "w", encoding="utf-8") as f:
@@ -69,14 +70,17 @@ class TabSessionManager:
 
                             if u:
                                 # Las pestañas en segundo plano se restauran en reposo para acelerar el inicio
-                                should_sleep = (idx_tab != active_idx)
+                                # (a menos que estén configuradas como 'Siempre activa')
+                                sleep_mode = t.get("sleep_mode", "default")
+                                should_sleep = (idx_tab != active_idx) and (sleep_mode != "always_active")
                                 self.b.add_new_tab(
                                     QUrl(u), title,
                                     is_pinned=is_pin,
                                     zoom=tab_zoom,
                                     start_sleeping=should_sleep,
                                     nav_history=nav_stack,
-                                    nav_index=nav_index
+                                    nav_index=nav_index,
+                                    sleep_mode=sleep_mode
                                 )
                     finally:
                         self.b.tabs.blockSignals(False)
@@ -110,6 +114,11 @@ class TabSessionManager:
 
             container = self.b.tabs.widget(i)
             if not container or getattr(container, "is_sleeping", False):
+                continue
+
+            # Si la pestaña está configurada como 'Siempre activa', nunca suspenderla automáticamente
+            if getattr(container, "sleep_mode", "default") == "always_active":
+                container.last_active_time = ahora
                 continue
 
             if getattr(container, "is_pip_active", False):
