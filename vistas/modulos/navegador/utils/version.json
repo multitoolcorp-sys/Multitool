@@ -1,10 +1,20 @@
 {
   "modulo": "navegador",
-  "version": "21.1.14",
+  "version": "21.1.16",
   "fecha": "2026-10-25",
-  "descripcion": "Actualización del módulo Navegador v21.1.14: Modo reposo configurable por pestaña y corrección completa de autenticación OAuth (Google Sign-In, etc.) en ventanas emergentes.",
+  "descripcion": "Actualización del módulo Navegador v21.1.16",
   "ultima_actualizacion": "2026-10-25",
   "historial": [
+    {
+      "version": "21.1.16",
+      "fecha": "2026-10-25 16:16:15",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.15",
+      "fecha": "2026-10-25 16:13:12",
+      "descripcion": "Actualización de módulo."
+    },
     {
       "version": "21.1.14",
       "fecha": "2026-10-25 16:05:00",

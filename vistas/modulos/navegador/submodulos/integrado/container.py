@@ -198,13 +198,6 @@ class BrowserContainer(QWidget):
         self.is_pip_active = False
         self._placeholder_widget = None
 
-    def set_sleep_mode(self, mode: str):
-        """Configura el comportamiento de reposo de esta pestaña: 'default' o 'always_active'."""
-        self.sleep_mode = str(mode or "default")
-        self.last_active_time = time.time()
-        if self.sleep_mode == "always_active" and self.is_sleeping:
-            self.despertar()
-
         # Historial de navegación propio e independiente de esta pestaña
         self.nav_history_stack = list(nav_history or [])
         if self.saved_url and (not self.nav_history_stack or self.saved_url not in self.nav_history_stack):
@@ -219,6 +212,13 @@ class BrowserContainer(QWidget):
             self._mostrar_pantalla_reposo()
         else:
             self.layout.addWidget(self._web_view)
+
+    def set_sleep_mode(self, mode: str):
+        """Configura el comportamiento de reposo de esta pestaña: 'default' o 'always_active'."""
+        self.sleep_mode = str(mode or "default")
+        self.last_active_time = time.time()
+        if self.sleep_mode == "always_active" and self.is_sleeping:
+            self.despertar()
 
     def _mostrar_pantalla_reposo(self):
         """Muestra una tarjeta elegante de reposo cuando la pestaña está suspendida para ahorrar RAM."""
