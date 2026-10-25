@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.1.16",
+  "version": "21.2.0",
   "fecha": "2026-10-25",
-  "descripcion": "Actualización del módulo Navegador v21.1.16",
+  "descripcion": "1 Actualziacion de pestañas\n+ modo sin reposo: Evita que se coloque en modo reposo una pestaña exacta\n2 Actualizacion de cuentas Oauth\n+ Oauth: Ahora los logeos Oauth por cuentas de google o gmail abren una nueva ventana",
   "ultima_actualizacion": "2026-10-25",
   "historial": [
+    {
+      "version": "21.2.0",
+      "fecha": "2026-10-25 16:28:42",
+      "descripcion": "1 Actualziacion de pestañas\n+ modo sin reposo: Evita que se coloque en modo reposo una pestaña exacta\n2 Actualizacion de cuentas Oauth\n+ Oauth: Ahora los logeos Oauth por cuentas de google o gmail abren una nueva ventana"
+    },
     {
       "version": "21.1.16",
       "fecha": "2026-10-25 16:16:15",
