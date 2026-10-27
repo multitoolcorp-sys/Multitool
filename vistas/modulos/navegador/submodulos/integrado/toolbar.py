@@ -150,9 +150,6 @@ class BrowserToolbar(QFrame):
         self.btn_home = self._crear_boton("🏠", "Página principal (Google)", self.browser_parent.go_home)
         self.layout_toolbar.addWidget(self.btn_home)
 
-        self.btn_new_tab_toolbar = self._crear_boton("➕", "Nueva Pestaña (Ctrl+T)", lambda: self.browser_parent.add_new_tab())
-        self.layout_toolbar.addWidget(self.btn_new_tab_toolbar)
-
         # 2. Barra de Direcciones URL + Badge de Zoom integrado
         url_frame = QFrame()
         url_frame.setStyleSheet(f"""
@@ -283,6 +280,33 @@ class BrowserToolbar(QFrame):
         """)
         btn.clicked.connect(callback)
         return btn
+
+    def iniciar_animacion_recarga(self):
+        """Inicia el spinner dinámico rotatorio en el botón de recarga en lugar de un icono estático."""
+        if not hasattr(self, "_timer_reload_anim"):
+            self._timer_reload_anim = QTimer(self)
+            self._timer_reload_anim.setInterval(40)
+            self._reload_angle = 0
+            self._timer_reload_anim.timeout.connect(self._on_reload_anim_tick)
+        self.btn_reload.setText("")
+        self.btn_reload.setToolTip("Detener carga (Esc)")
+        if not self._timer_reload_anim.isActive():
+            self._reload_angle = 0
+            self._timer_reload_anim.start()
+
+    def detener_animacion_recarga(self):
+        """Detiene el spinner y vuelve al icono estándar de recargar página."""
+        if hasattr(self, "_timer_reload_anim") and self._timer_reload_anim.isActive():
+            self._timer_reload_anim.stop()
+        self.btn_reload.setIcon(QIcon())
+        self.btn_reload.setText("🔄")
+        self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+
+    def _on_reload_anim_tick(self):
+        self._reload_angle = (self._reload_angle + 30) % 360
+        from .container import generar_icono_cargando
+        ico = generar_icono_cargando(self._reload_angle, self.colores.get("acento", "#6366F1"))
+        self.btn_reload.setIcon(ico)
 
     def actualizar_badge_zoom(self, zoom_factor):
         factor = round(float(zoom_factor), 2)

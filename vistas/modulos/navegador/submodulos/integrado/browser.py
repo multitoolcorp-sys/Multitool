@@ -215,8 +215,12 @@ class MultiTabBrowser(QWidget):
 
         self.main_layout.addWidget(self.tabs, 1)
 
+    def _actualizar_botones_pestanas(self):
+        """Mantiene sincronizados los botones de las pestañas."""
+        pass
+
     def _on_tab_moved(self, from_idx, to_idx):
-        """Mantiene sincronizados los botones de cierre y el botón '+' tras reordenar pestañas."""
+        """Mantiene sincronizados los botones tras reordenar pestañas."""
         self._actualizar_botones_pestanas()
         self._reposition_new_tab_button()
         self.guardar_estado_pestanas()
@@ -588,15 +592,13 @@ class MultiTabBrowser(QWidget):
                 self._mru_tab_history.remove(container)
             self._mru_tab_history.append(container)
 
-            # Sincronizar el botón de recarga exactamente con el estado de ESTA pestaña
+            # Sincronizar el botón de recarga con spinner dinámico según el estado de ESTA pestaña
             is_loading = getattr(container, "is_loading", False)
-            if hasattr(self, "btn_reload") and self.btn_reload:
+            if hasattr(self, "toolbar"):
                 if is_loading:
-                    self.btn_reload.setText("🛑")
-                    self.btn_reload.setToolTip("Detener carga (Esc)")
+                    self.toolbar.iniciar_animacion_recarga()
                 else:
-                    self.btn_reload.setText("🔄")
-                    self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+                    self.toolbar.detener_animacion_recarga()
 
             if getattr(container, "is_sleeping", False):
                 self.despertar_pestana(index)
@@ -833,14 +835,15 @@ class MultiTabBrowser(QWidget):
                     pass
             if hasattr(curr_container, "detener_animacion_carga"):
                 curr_container.detener_animacion_carga()
-            if hasattr(self, "btn_reload") and self.btn_reload:
-                self.btn_reload.setText("🔄")
-                self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+            if hasattr(self, "toolbar"):
+                self.toolbar.detener_animacion_recarga()
             return
 
         b = self.current_browser()
         if b and hasattr(b, "reload"):
             b.reload()
+            if hasattr(self, "toolbar"):
+                self.toolbar.iniciar_animacion_recarga()
 
 
     def navigate_reload(self):
@@ -977,9 +980,8 @@ class MultiTabBrowser(QWidget):
                     container.iniciar_animacion_carga()
                 break
 
-        if browser == self.current_browser() and hasattr(self, "btn_reload") and self.btn_reload:
-            self.btn_reload.setText("🛑")
-            self.btn_reload.setToolTip("Detener carga (Esc)")
+        if browser == self.current_browser() and hasattr(self, "toolbar"):
+            self.toolbar.iniciar_animacion_recarga()
 
     def _on_tab_load_finished(self, is_success, browser, *args):
         for i in range(self.tabs.count()):
@@ -998,9 +1000,8 @@ class MultiTabBrowser(QWidget):
             title = browser.title() if hasattr(browser, "title") else getattr(browser, "_title", None)
             self._registrar_en_historial(browser.url(), title)
 
-        if browser == self.current_browser() and hasattr(self, "btn_reload") and self.btn_reload:
-            self.btn_reload.setText("🔄")
-            self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+        if browser == self.current_browser() and hasattr(self, "toolbar"):
+            self.toolbar.detener_animacion_recarga()
 
     def mostrar_permisos_sitio_actual(self):
         """Muestra el diálogo de permisos y seguridad para el sitio activo en la barra de URL."""

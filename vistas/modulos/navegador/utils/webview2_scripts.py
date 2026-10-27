@@ -5,7 +5,109 @@ webview2_scripts.py - Scripts inyectados, User-Agent y configuración de argumen
 import json
 from pathlib import Path
 
-EDGE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0"
+def obtener_version_edge_instalada():
+    try:
+        import clr
+        dlls = list(Path(__file__).resolve().parent.parent.parent.parent.glob("**/Microsoft.Web.WebView2.Core.dll"))
+        if dlls:
+            clr.AddReference(str(dlls[0].resolve()))
+            import Microsoft.Web.WebView2.Core as wv
+            v = wv.CoreWebView2Environment.GetAvailableBrowserVersionString()
+            if v:
+                return v.split(" ")[0]
+    except Exception:
+        pass
+    return "155.0.4283.62"
+
+EDGE_VERSION = obtener_version_edge_instalada()
+EDGE_MAJOR = EDGE_VERSION.split(".")[0]
+EDGE_USER_AGENT = f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{EDGE_MAJOR}.0.0.0 Safari/537.36 Edg/{EDGE_VERSION}"
+
+EXTENSION_STORE_COMPAT_SCRIPT = """
+(function() {
+    function fixExtensionStore() {
+        try {
+            const host = (window.location.hostname || '').toLowerCase();
+            if (host.includes("microsoftedge.microsoft.com")) {
+                // 1. Eliminar advertencias de incompatibilidad
+                const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_ELEMENT, null, false);
+                let node;
+                while (node = walker.nextNode()) {
+                    const t = (node.innerText || '').toLowerCase();
+                    if (t.includes("incompatible con tu explorador") || 
+                        t.includes("incompatible with your browser") || 
+                        t.includes("no se puede instalar ya que no es compatible") ||
+                        t.includes("cannot be installed as it is not compatible")) {
+                        if (node.children.length <= 2) {
+                            node.style.setProperty('display', 'none', 'important');
+                        }
+                    }
+                }
+
+                // 2. Habilitar botón Obtener / Get
+                const buttons = document.querySelectorAll("button, a, div[role='button']");
+                for (let btn of buttons) {
+                    const txt = (btn.innerText || "").trim().toLowerCase();
+                    if (txt === "obtener" || txt === "get" || txt.includes("obtener") || txt.includes("get")) {
+                        btn.removeAttribute("disabled");
+                        btn.removeAttribute("aria-disabled");
+                        btn.style.setProperty('pointer-events', 'auto', 'important');
+                        btn.style.setProperty('opacity', '1', 'important');
+                        btn.classList.remove("disabled");
+
+                        if (!btn.__multitool_click_bound) {
+                            btn.__multitool_click_bound = true;
+                            btn.addEventListener("click", function(e) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const m = window.location.href.match(/([a-z]{32})/i);
+                                if (m && m[1]) {
+                                    const extId = m[1].toLowerCase();
+                                    const crxUrl = "https://edge.microsoft.com/extensionwebstorebase/v1/crx?response=redirect&prod=chromiumcrx&prodchannel=&x=id%3D" + extId + "%26installsource%3Dondemand%26uc";
+                                    window.location.href = crxUrl;
+                                }
+                            }, true);
+                        }
+                    }
+                }
+            } else if (host.includes("chromewebstore.google.com")) {
+                // Habilitar botón Añadir a Chrome en Chrome Web Store
+                const buttons = document.querySelectorAll("button, div[role='button']");
+                for (let btn of buttons) {
+                    const txt = (btn.innerText || "").trim().toLowerCase();
+                    if (txt.includes("añadir a chrome") || txt.includes("add to chrome") || txt.includes("instalar")) {
+                        btn.removeAttribute("disabled");
+                        btn.removeAttribute("aria-disabled");
+                        btn.style.setProperty('pointer-events', 'auto', 'important');
+                        btn.style.setProperty('opacity', '1', 'important');
+
+                        if (!btn.__multitool_click_bound) {
+                            btn.__multitool_click_bound = true;
+                            btn.addEventListener("click", function(e) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                const m = window.location.href.match(/([a-z]{32})/i);
+                                if (m && m[1]) {
+                                    const extId = m[1].toLowerCase();
+                                    const crxUrl = "https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=unknown&prodversion=130.0.6723.117&acceptformat=crx2,crx3&x=id%3D" + extId + "%26uc";
+                                    window.location.href = crxUrl;
+                                }
+                            }, true);
+                        }
+                    }
+                }
+            }
+        } catch(ex) {}
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", fixExtensionStore);
+    } else {
+        fixExtensionStore();
+    }
+    setInterval(fixExtensionStore, 800);
+})();
+"""
 
 NOTIFICATION_INTERCEPTOR_SCRIPT = """
 (function() {

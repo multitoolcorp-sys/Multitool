@@ -22,6 +22,7 @@ from .webview2_scripts import (
     cargar_ensamblados_webview2,
     EDGE_USER_AGENT,
     NOTIFICATION_INTERCEPTOR_SCRIPT,
+    EXTENSION_STORE_COMPAT_SCRIPT,
     obtener_argumentos_navegador,
     desempaquetar_crx_en_perfil
 )
@@ -358,11 +359,12 @@ class WebView2Widget(QWidget):
                     # Configurar User-Agent oficial de Microsoft Edge para Edge Rewards
                     settings.UserAgent = EDGE_USER_AGENT
 
-                # Inyectar interceptor de Notificaciones web para ToastNotification con icono y navegación exacta
+                # Inyectar interceptor de Notificaciones y compatibilidad de Tiendas de Extensiones
                 try:
                     core.AddScriptToExecuteOnDocumentCreatedAsync(NOTIFICATION_INTERCEPTOR_SCRIPT)
+                    core.AddScriptToExecuteOnDocumentCreatedAsync(EXTENSION_STORE_COMPAT_SCRIPT)
                 except Exception as ex_script:
-                    print(f"[WebView2Widget] Advertencia inyectando interceptor de notificaciones: {ex_script}")
+                    print(f"[WebView2Widget] Advertencia inyectando scripts: {ex_script}")
 
                 # Aplicar el factor de zoom configurado inicialmente si difiere de 1.0
                 if hasattr(self, "_zoom_factor") and self._zoom_factor != 1.0:
