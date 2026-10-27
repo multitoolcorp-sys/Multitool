@@ -1,17 +1,19 @@
 """
 descargas.py - Submódulo visual de Gestión de Descargas Asíncronas e Instalación de Archivos
-Diseño responsivo de dos columnas lado a lado (QSplitter) para evitar colisiones.
+Diseño responsivo de dos columnas lado a lado (QSplitter) con soporte para descargas
+locales fuera del predeterminado, sincronización con WebView2 y botones de acción nunca ocultos.
 """
 import os
 import subprocess
+import time
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton,
     QProgressBar, QFrame, QScrollArea, QListWidget, QListWidgetItem,
-    QMessageBox, QSplitter
+    QMessageBox, QSplitter, QSizePolicy
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QSize, QTimer, QUrl
+from PyQt6.QtGui import QFont, QDesktopServices
 
 from ..utils.download_manager import DownloadManager
 
@@ -26,9 +28,31 @@ class TabNavegadorDescargas(QWidget):
         
         ruta_usuario = getattr(context, "ruta_usuario", ".") if context else "."
         self.mgr = DownloadManager(ruta_usuario)
-        self.active_cards = {} # {download_id: {"frame": ..., "pbar": ..., "lbl": ...}}
+        self.active_cards = {} # {download_id: {"frame": ..., "pbar": ..., "lbl": ..., "is_browser": bool}}
+
+        # Temporizador para mantener sincronizadas descargas activas del navegador integrado
+        self.timer_sync = QTimer(self)
+        self.timer_sync.setInterval(1200)
+        self.timer_sync.timeout.connect(self._sincronizar_activas_en_vivo)
 
         self.init_ui()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        # Sincronizar descargas de carpetas del sistema y descargas activas al abrir la pestaña
+        try:
+            self.mgr.sincronizar_descargas_locales()
+        except Exception:
+            pass
+        self._refrescar_historial()
+        self._sincronizar_activas_en_vivo()
+        if not self.timer_sync.isActive():
+            self.timer_sync.start()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if self.timer_sync.isActive():
+            self.timer_sync.stop()
 
     def init_ui(self):
         bg_p = self.colores.get('bg_principal', '#1E1E1E')
@@ -41,28 +65,53 @@ class TabNavegadorDescargas(QWidget):
         main_lay.setContentsMargins(14, 14, 14, 14)
         main_lay.setSpacing(12)
 
-        # Header y acciones rápidas
+        # 1. Header y acciones rápidas
         header_bar = QHBoxLayout()
-        lbl_t = QLabel("⚡ GESTOR DE DESCARGAS E INSTALADORES HTTP")
+        header_bar.setSpacing(8)
+
+        lbl_t = QLabel("⚡ GESTOR DE DESCARGAS E INSTALADORES")
         lbl_t.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        lbl_t.setStyleSheet(f"color: {acento};")
+        lbl_t.setStyleSheet(f"color: {acento}; border: none;")
         header_bar.addWidget(lbl_t)
         header_bar.addStretch()
 
+        # Botón para sincronizar descargas guardadas fuera de la carpeta predeterminada
+        btn_sync = QPushButton("🔄 Sincronizar")
+        btn_sync.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_sync.setToolTip("Buscar descargas recientes en tu carpeta Descargas del sistema y rutas personalizadas")
+        btn_sync.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {bg_sec};
+                color: #A5B4FC;
+                border: 1px solid rgba(99, 102, 241, 0.4);
+                border-radius: 6px;
+                padding: 6px 13px;
+                font-size: 11px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {acento};
+                color: #FFFFFF;
+            }}
+        """)
+        btn_sync.clicked.connect(self._sincronizar_descargas)
+        header_bar.addWidget(btn_sync)
+
         btn_open_folder = QPushButton("📂 Abrir Carpeta")
         btn_open_folder.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_open_folder.setToolTip("Abrir la carpeta principal de descargas")
         btn_open_folder.setStyleSheet(f"""
             QPushButton {{
                 background-color: {bg_sec};
                 color: #FFFFFF;
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
-                padding: 5px 12px;
+                padding: 6px 13px;
                 font-size: 11px;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background-color: {acento};
+                background-color: rgba(255, 255, 255, 0.15);
             }}
         """)
         btn_open_folder.clicked.connect(self._abrir_directorio_descargas)
@@ -76,7 +125,7 @@ class TabNavegadorDescargas(QWidget):
                 color: #AAB0B8;
                 border: 1px solid rgba(255, 255, 255, 0.1);
                 border-radius: 6px;
-                padding: 5px 12px;
+                padding: 6px 13px;
                 font-size: 11px;
             }}
             QPushButton:hover {{
@@ -89,7 +138,7 @@ class TabNavegadorDescargas(QWidget):
 
         main_lay.addLayout(header_bar)
 
-        # Barra de inicio de descarga
+        # 2. Barra para iniciar descarga directa mediante enlace
         box_dl = QFrame()
         box_dl.setStyleSheet(f"background: {bg_sec}; border-radius: 8px; padding: 6px 10px; border: 1px solid rgba(255, 255, 255, 0.06);")
         b_lay = QHBoxLayout(box_dl)
@@ -97,20 +146,20 @@ class TabNavegadorDescargas(QWidget):
         b_lay.setSpacing(8)
 
         self.txt_url = QLineEdit()
-        self.txt_url.setPlaceholderText("Pega aquí el enlace directo (URL HTTP/HTTPS)...")
-        self.txt_url.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#3D3D3D')}; color: white; border-radius: 6px; padding: 7px 10px; border: none;")
+        self.txt_url.setPlaceholderText("Pega aquí el enlace directo (URL HTTP/HTTPS) para descargar...")
+        self.txt_url.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#3D3D3D')}; color: white; border-radius: 6px; padding: 7px 10px; border: none; font-size: 12px;")
         self.txt_url.returnPressed.connect(self._iniciar_descarga)
         b_lay.addWidget(self.txt_url, 1)
 
         btn_dl = QPushButton("⬇️ Descargar")
         btn_dl.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_dl.setStyleSheet(f"background: {acento}; color: white; border-radius: 6px; padding: 7px 16px; font-weight: bold; border: none;")
+        btn_dl.setStyleSheet(f"background: {acento}; color: white; border-radius: 6px; padding: 7px 16px; font-weight: bold; border: none; font-size: 11px;")
         btn_dl.clicked.connect(self._iniciar_descarga)
         b_lay.addWidget(btn_dl)
 
         main_lay.addWidget(box_dl)
 
-        # SPLITTER PRINCIPAL: Dos Columnas Paralelas Lado a Lado (Evita colisiones)
+        # 3. SPLITTER PRINCIPAL: Dos Columnas Paralelas Lado a Lado
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setStyleSheet(f"""
             QSplitter::handle {{
@@ -131,7 +180,7 @@ class TabNavegadorDescargas(QWidget):
         izq_lay.setContentsMargins(10, 10, 10, 10)
         izq_lay.setSpacing(8)
 
-        lbl_act = QLabel("⏳ Descargas Activas en Tiempo Real")
+        lbl_act = QLabel("⏳ Descargas en Curso")
         lbl_act.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         lbl_act.setStyleSheet(f"color: {self.colores.get('fg_principal', '#FFFFFF')}; border: none;")
         izq_lay.addWidget(lbl_act)
@@ -146,7 +195,7 @@ class TabNavegadorDescargas(QWidget):
         self.active_layout.setSpacing(8)
 
         # Placeholder cuando no hay descargas activas
-        self.lbl_empty_active = QLabel("No hay descargas en curso.\nPega una URL arriba para comenzar.")
+        self.lbl_empty_active = QLabel("No hay descargas en curso.\nLas descargas que inicies desde el navegador o pegues arriba aparecerán aquí en vivo.")
         self.lbl_empty_active.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_empty_active.setStyleSheet("color: #7E7E8F; font-size: 11px; padding: 40px 10px; border: none;")
         self.active_layout.addWidget(self.lbl_empty_active)
@@ -171,12 +220,13 @@ class TabNavegadorDescargas(QWidget):
 
         # Buscador en historial
         self.txt_buscar_hist = QLineEdit()
-        self.txt_buscar_hist.setPlaceholderText("🔍 Filtrar historial...")
-        self.txt_buscar_hist.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#3D3D3D')}; color: white; border-radius: 6px; padding: 5px 10px; border: none;")
+        self.txt_buscar_hist.setPlaceholderText("🔍 Filtrar descargas por nombre o carpeta...")
+        self.txt_buscar_hist.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#3D3D3D')}; color: white; border-radius: 6px; padding: 6px 10px; border: none; font-size: 11px;")
         self.txt_buscar_hist.textChanged.connect(self._refrescar_historial)
         der_lay.addWidget(self.txt_buscar_hist)
 
         self.list_historial = QListWidget()
+        self.list_historial.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list_historial.setStyleSheet(f"""
             QListWidget {{
                 background: {bg_p};
@@ -187,17 +237,68 @@ class TabNavegadorDescargas(QWidget):
             QListWidget::item {{
                 background: transparent;
                 border: none;
-                margin-bottom: 4px;
+                margin-bottom: 6px;
             }}
         """)
         der_lay.addWidget(self.list_historial, 1)
 
         self.splitter.addWidget(col_der)
-        self.splitter.setSizes([400, 520])
+        self.splitter.setSizes([400, 560])
 
         main_lay.addWidget(self.splitter, 1)
 
         self._refrescar_historial()
+
+    def _sincronizar_descargas(self):
+        """Escanea las carpetas de descargas y actualiza el historial."""
+        try:
+            self.mgr.sincronizar_descargas_locales()
+            self._refrescar_historial()
+        except Exception as e:
+            print(f"[Descargas] Error al sincronizar descargas: {e}")
+
+    def _sincronizar_activas_en_vivo(self):
+        """Mantiene sincronizadas las descargas que se están realizando desde el navegador integrado (WebView2)."""
+        browser_active = {}
+        try:
+            p = self.parent()
+            sub_int = getattr(p, "sub_integrado", None)
+            if sub_int and hasattr(sub_int, "active_downloads"):
+                browser_active = sub_int.active_downloads
+        except Exception:
+            pass
+
+        # 1. Agregar o actualizar tarjetas de descargas del navegador
+        for path, info in list(browser_active.items()):
+            dl_id = f"wv2_{path}"
+            recv = info.get("recv", 0)
+            total = info.get("total", 0)
+            url = info.get("url", "")
+
+            if dl_id not in self.active_cards:
+                self._crear_tarjeta_activa(dl_id, path, is_browser_dl=True)
+
+            card_info = self.active_cards[dl_id]
+            if total > 0:
+                pct = int((recv / total) * 100)
+                card_info["pbar"].setValue(pct)
+                recv_mb = recv / (1024 * 1024)
+                tot_mb = total / (1024 * 1024)
+                card_info["lbl"].setText(f"{recv_mb:.1f} MB de {tot_mb:.1f} MB ({pct}%)")
+            else:
+                recv_mb = recv / (1024 * 1024)
+                card_info["lbl"].setText(f"{recv_mb:.1f} MB transferidos")
+
+        # 2. Remover tarjetas de WebView2 que ya terminaron
+        wv2_keys_in_cards = [k for k in self.active_cards if k.startswith("wv2_")]
+        for k in wv2_keys_in_cards:
+            orig_path = k.replace("wv2_", "", 1)
+            if orig_path not in browser_active:
+                self.active_cards[k]["frame"].deleteLater()
+                del self.active_cards[k]
+
+        has_active = len(self.active_cards) > 0
+        self.lbl_empty_active.setVisible(not has_active)
 
     def _iniciar_descarga(self):
         url = self.txt_url.text().strip()
@@ -213,41 +314,63 @@ class TabNavegadorDescargas(QWidget):
             completed_cb=self._on_completed,
             error_cb=self._on_error
         )
-        self._crear_tarjeta_activa(dl_id, url)
+        self._crear_tarjeta_activa(dl_id, url, is_browser_dl=False)
         self.txt_url.clear()
 
-    def _crear_tarjeta_activa(self, dl_id, url):
+    def _crear_tarjeta_activa(self, dl_id, url_or_path, is_browser_dl=False):
         self.lbl_empty_active.setVisible(False)
         card = QFrame()
-        card.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#2D2D3D')}; border-radius: 8px; padding: 8px; border: 1px solid rgba(255, 255, 255, 0.08);")
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        card.setStyleSheet(f"background: {self.colores.get('bg_terciario', '#2D2D3D')}; border-radius: 8px; padding: 10px; border: 1px solid rgba(255, 255, 255, 0.08);")
         lay = QVBoxLayout(card)
-        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setContentsMargins(10, 8, 10, 8)
         lay.setSpacing(6)
 
         top_row = QHBoxLayout()
-        nom_archivo = url.split("?")[0].rstrip("/").split("/")[-1] or "archivo_descarga"
+        top_row.setSpacing(6)
+
+        if is_browser_dl:
+            nom_archivo = Path(url_or_path).name or "descarga_web"
+        else:
+            nom_archivo = url_or_path.split("?")[0].rstrip("/").split("/")[-1] or "archivo_descarga"
+
         lbl_info = QLabel(f"⬇️ <b>{nom_archivo}</b>")
         lbl_info.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         lbl_info.setStyleSheet("color: white; border: none;")
+        lbl_info.setToolTip(str(url_or_path))
         top_row.addWidget(lbl_info, 1)
 
         btn_cancelar = QPushButton("✕")
         btn_cancelar.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_cancelar.setFixedSize(20, 20)
-        btn_cancelar.setStyleSheet("background: transparent; color: #EF4444; border: none; font-weight: bold;")
-        btn_cancelar.clicked.connect(lambda _, d=dl_id: self._cancelar_descarga(d))
+        btn_cancelar.setFixedSize(22, 22)
+        btn_cancelar.setToolTip("Cancelar descarga")
+        btn_cancelar.setStyleSheet("""
+            QPushButton {
+                background: rgba(239, 68, 68, 0.15);
+                color: #EF4444;
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                border-radius: 11px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: #EF4444;
+                color: #FFFFFF;
+            }
+        """)
+        btn_cancelar.clicked.connect(lambda _, d=dl_id, is_b=is_browser_dl, p=url_or_path: self._cancelar_descarga(d, is_b, p))
         top_row.addWidget(btn_cancelar)
         lay.addLayout(top_row)
 
         pbar = QProgressBar()
         acento = self.colores.get('acento', '#6366F1')
+        pbar.setFixedHeight(8)
+        pbar.setTextVisible(False)
         pbar.setStyleSheet(f"""
             QProgressBar {{
                 background: {self.colores.get('bg_principal', '#121218')};
                 border-radius: 4px;
-                text-align: center;
-                height: 12px;
-                font-size: 9px;
+                border: none;
             }}
             QProgressBar::chunk {{
                 background: {acento};
@@ -263,13 +386,24 @@ class TabNavegadorDescargas(QWidget):
 
         # Insertar al inicio de la lista activa
         self.active_layout.insertWidget(0, card)
-        self.active_cards[dl_id] = {"frame": card, "pbar": pbar, "lbl": lbl_speed}
+        self.active_cards[dl_id] = {"frame": card, "pbar": pbar, "lbl": lbl_speed, "is_browser": is_browser_dl}
 
-    def _cancelar_descarga(self, dl_id):
-        if dl_id in self.active_cards:
+    def _cancelar_descarga(self, dl_id, is_browser_dl=False, file_path=""):
+        if is_browser_dl:
+            try:
+                p = self.parent()
+                sub_int = getattr(p, "sub_integrado", None)
+                if sub_int and hasattr(sub_int, "cancelar_descarga"):
+                    sub_int.cancelar_descarga(file_path)
+            except Exception as e:
+                print(f"[Descargas] Error cancelando descarga en navegador: {e}")
+        else:
             self.mgr.cancelar_descarga(dl_id)
+
+        if dl_id in self.active_cards:
             self.active_cards[dl_id]["frame"].deleteLater()
             del self.active_cards[dl_id]
+
         if not self.active_cards:
             self.lbl_empty_active.setVisible(True)
 
@@ -306,6 +440,7 @@ class TabNavegadorDescargas(QWidget):
         QMessageBox.warning(self, "Error de Descarga", f"No se pudo completar la descarga:\n{error_msg}")
 
     def _refrescar_historial(self):
+        """Renderiza las descargas del historial con diseño altamente responsivo y botones fijos."""
         self.list_historial.clear()
         filtro = self.txt_buscar_hist.text().strip().lower() if hasattr(self, "txt_buscar_hist") else ""
 
@@ -324,42 +459,179 @@ class TabNavegadorDescargas(QWidget):
             f_path = item.get("path", "")
             f_nombre = item.get("nombre", "archivo")
             f_fecha = item.get("fecha", "")
+            f_size = item.get("size", "")
+            f_id = item.get("id", f_path)
 
             widget_item = QListWidgetItem()
+            # Altura fija garantizada para que cada item se muestre sin desbordarse
+            widget_item.setSizeHint(QSize(0, 68))
+
             card = QFrame()
+            card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             bg_c = self.colores.get('bg_secundario', '#2D2D3D')
-            card.setStyleSheet(f"background: {bg_c}; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.05);")
+            card.setStyleSheet(f"""
+                QFrame {{
+                    background: {bg_c};
+                    border-radius: 6px;
+                    border: 1px solid rgba(255, 255, 255, 0.06);
+                }}
+                QFrame:hover {{
+                    border-color: rgba(99, 102, 241, 0.35);
+                    background: rgba(255, 255, 255, 0.03);
+                }}
+            """)
+
             lay = QHBoxLayout(card)
             lay.setContentsMargins(10, 8, 10, 8)
-            lay.setSpacing(10)
+            lay.setSpacing(8)
 
-            lbl_desc = QLabel(f"📄 <b>{f_nombre}</b><br><small style='color:#AAB0B8;'>{f_fecha} • {f_path}</small>")
-            lbl_desc.setStyleSheet("border: none;")
-            lay.addWidget(lbl_desc, 1)
+            # 1. Icono temático según extensión
+            ext = Path(f_nombre).suffix.lower()
+            ico = "📄"
+            if ext in (".exe", ".msi", ".bat", ".cmd"):
+                ico = "⚙️"
+            elif ext in (".zip", ".rar", ".7z", ".tar", ".gz"):
+                ico = "📦"
+            elif ext in (".mp4", ".mkv", ".avi", ".mov", ".webm"):
+                ico = "🎬"
+            elif ext in (".mp3", ".wav", ".flac", ".ogg"):
+                ico = "🎵"
+            elif ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+                ico = "🖼️"
+            elif ext in (".pdf", ".docx", ".xlsx", ".txt"):
+                ico = "📑"
 
-            btn_run = QPushButton("▶️ Abrir")
+            lbl_ico = QLabel(ico)
+            lbl_ico.setStyleSheet("font-size: 16px; border: none; background: transparent;")
+            lbl_ico.setFixedWidth(24)
+            lay.addWidget(lbl_ico)
+
+            # 2. Información del archivo (Nombre arriba, detalles abajo)
+            info_layout = QVBoxLayout()
+            info_layout.setContentsMargins(0, 0, 0, 0)
+            info_layout.setSpacing(2)
+
+            # Nombre recortado para que no ensanche el layout con tooltip completo
+            display_name = f_nombre if len(f_nombre) <= 35 else (f_nombre[:32] + "...")
+            lbl_nombre = QLabel(display_name)
+            lbl_nombre.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+            lbl_nombre.setStyleSheet("color: #FFFFFF; border: none; background: transparent;")
+            lbl_nombre.setToolTip(f"{f_nombre}\nRuta: {f_path}")
+            lbl_nombre.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            info_layout.addWidget(lbl_nombre)
+
+            # Subtítulo con detalles y carpeta contenedora acortada
+            folder_name = Path(f_path).parent.name if f_path else "Descargas"
+            detalles_partes = []
+            if f_size:
+                detalles_partes.append(f_size)
+            if f_fecha:
+                short_fecha = f_fecha.split(" ")[0] if " " in f_fecha else f_fecha
+                detalles_partes.append(short_fecha)
+            detalles_partes.append(f"📁 {folder_name}")
+            sub_texto = " • ".join(detalles_partes)
+
+            lbl_sub = QLabel(sub_texto)
+            lbl_sub.setStyleSheet("color: #94A3B8; font-size: 10px; border: none; background: transparent;")
+            lbl_sub.setToolTip(f"Ruta completa:\n{f_path}")
+            lbl_sub.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+            info_layout.addWidget(lbl_sub)
+
+            lay.addLayout(info_layout, 1)
+
+            # 3. Botones de acción con dimensiones fijas (nunca aplastados ni ocultos)
+            btn_box = QHBoxLayout()
+            btn_box.setSpacing(6)
+            btn_box.setContentsMargins(0, 0, 0, 0)
+
+            is_executable = ext in (".exe", ".msi", ".bat", ".cmd")
+            run_title = "⚙️ Instalar" if is_executable else "▶️ Abrir"
+            btn_run = QPushButton(run_title)
             btn_run.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_run.setStyleSheet("background: #10B981; color: black; font-weight: bold; border-radius: 4px; padding: 5px 10px; font-size: 11px; border: none;")
+            btn_run.setToolTip(f"Abrir o ejecutar {f_nombre}")
+            btn_run.setFixedSize(70, 26)
+            btn_run.setStyleSheet("""
+                QPushButton {
+                    background: #10B981;
+                    color: #000000;
+                    font-weight: bold;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: #059669;
+                    color: #FFFFFF;
+                }
+            """)
             btn_run.clicked.connect(lambda ch, p=f_path: self._ejecutar_instalador_asincrono(p))
-            lay.addWidget(btn_run)
+            btn_box.addWidget(btn_run)
 
             btn_dir = QPushButton("📁 Carpeta")
             btn_dir.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_dir.setStyleSheet("background: rgba(255,255,255,0.08); color: white; border-radius: 4px; padding: 5px 10px; font-size: 11px; border: none;")
+            btn_dir.setToolTip("Abrir la carpeta contenedora en el Explorador")
+            btn_dir.setFixedSize(74, 26)
+            btn_dir.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.08);
+                    color: #FFFFFF;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: rgba(255, 255, 255, 0.18);
+                }
+            """)
             btn_dir.clicked.connect(lambda ch, p=f_path: self._abrir_carpeta(p))
-            lay.addWidget(btn_dir)
+            btn_box.addWidget(btn_dir)
 
-            widget_item.setSizeHint(card.sizeHint())
+            btn_del = QPushButton("🗑️")
+            btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_del.setToolTip("Quitar del historial (el archivo se conservará en disco)")
+            btn_del.setFixedSize(28, 26)
+            btn_del.setStyleSheet("""
+                QPushButton {
+                    background: rgba(239, 68, 68, 0.12);
+                    color: #EF4444;
+                    border-radius: 4px;
+                    font-size: 11px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    background: #EF4444;
+                    color: #FFFFFF;
+                }
+            """)
+            btn_del.clicked.connect(lambda ch, target=f_id: self._eliminar_item_historial(target))
+            btn_box.addWidget(btn_del)
+
+            lay.addLayout(btn_box)
+
             self.list_historial.addItem(widget_item)
             self.list_historial.setItemWidget(widget_item, card)
 
+    def _eliminar_item_historial(self, path_or_id):
+        """Elimina una descarga del historial y refresca la lista."""
+        self.mgr.eliminar_item_historial(path_or_id)
+        self._refrescar_historial()
+
     def _abrir_directorio_descargas(self):
+        """Abre la carpeta de descargas del usuario o la del sistema."""
         ruta_dl = getattr(self.mgr, "ruta_descargas", None)
         if ruta_dl and Path(ruta_dl).exists():
             try:
                 os.startfile(str(ruta_dl))
+                return
             except Exception:
-                subprocess.Popen(["explorer", os.path.normpath(str(ruta_dl))])
+                pass
+
+        dl_sys = Path.home() / "Downloads"
+        if dl_sys.exists():
+            try:
+                os.startfile(str(dl_sys))
+            except Exception:
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(dl_sys)))
 
     def _limpiar_historial(self):
         confirm = QMessageBox.question(
@@ -374,8 +646,8 @@ class TabNavegadorDescargas(QWidget):
             self._refrescar_historial()
 
     def _ejecutar_instalador_asincrono(self, file_path):
-        if not Path(file_path).exists():
-            QMessageBox.warning(self, "Error", f"El archivo '{file_path}' ya no existe.")
+        if not file_path or not Path(file_path).exists():
+            QMessageBox.warning(self, "Error", f"El archivo '{file_path}' ya no existe en el disco.")
             return
 
         self.mgr.ejecutar_instalador_asincrono(
@@ -386,12 +658,15 @@ class TabNavegadorDescargas(QWidget):
         )
 
     def _abrir_carpeta(self, file_path):
-        folder = os.path.dirname(file_path)
+        folder = os.path.dirname(file_path) if file_path else str(Path.home() / "Downloads")
         if os.path.exists(folder):
             try:
-                os.startfile(folder)
+                subprocess.Popen(["explorer", "/select,", os.path.normpath(str(file_path))])
             except Exception:
-                subprocess.Popen(["explorer", os.path.normpath(folder)])
+                try:
+                    os.startfile(folder)
+                except Exception:
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def actualizar_tema(self, colores):
         if isinstance(colores, dict):

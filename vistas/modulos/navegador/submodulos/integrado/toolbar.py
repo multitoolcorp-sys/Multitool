@@ -222,7 +222,7 @@ class BrowserToolbar(QFrame):
         self.btn_pin = self._crear_boton("📌", "Fijar / Desfijar pestaña actual", self.browser_parent.toggle_pin_current_tab)
         self.layout_toolbar.addWidget(self.btn_pin)
 
-        self.btn_downloads = self._crear_boton("📥", "Ver Descargas (Ctrl+J) / Clic der. para opciones", self.browser_parent.abrir_pestana_descargas)
+        self.btn_downloads = self._crear_boton("📥", "Descargas (Ctrl+J) / Clic para panel emergente", self.browser_parent.toggle_downloads_flyout)
         self.btn_downloads.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.btn_downloads.customContextMenuRequested.connect(self._mostrar_menu_descargas)
         self.layout_toolbar.addWidget(self.btn_downloads)
@@ -424,3 +424,40 @@ class BrowserToolbar(QFrame):
         act_cfg = menu.addAction("⚙️ Configuración de Descargas...")
         act_cfg.triggered.connect(self.browser_parent.mostrar_dialogo_configuracion_descargas)
         menu.exec(self.btn_downloads.mapToGlobal(pos))
+
+    def actualizar_descargas(self, count):
+        """Actualiza el indicador visual del botón de descargas en la barra en tiempo real."""
+        if not hasattr(self, "btn_downloads") or self.btn_downloads is None:
+            return
+        if count > 0:
+            self.btn_downloads.setText(f"📥 {count}")
+            self.btn_downloads.setStyleSheet(f"""
+                QPushButton {{
+                    background: {self.colores.get('acento', '#6366F1')};
+                    color: #FFFFFF;
+                    border-radius: 6px;
+                    font-size: 11px;
+                    font-weight: bold;
+                    padding: 0px 4px;
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background: {self.colores.get('acento_hover', '#818CF8')};
+                }}
+            """)
+            self.btn_downloads.setFixedWidth(48)
+        else:
+            self.btn_downloads.setText("📥")
+            self.btn_downloads.setStyleSheet(f"""
+                QPushButton {{
+                    background: transparent;
+                    color: {self.colores.get('fg_principal', '#FFFFFF')};
+                    border-radius: 6px;
+                    font-size: 12px;
+                    border: none;
+                }}
+                QPushButton:hover {{
+                    background: rgba(255, 255, 255, 0.1);
+                }}
+            """)
+            self.btn_downloads.setFixedWidth(32)

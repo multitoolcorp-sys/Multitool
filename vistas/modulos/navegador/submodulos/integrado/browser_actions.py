@@ -215,6 +215,8 @@ class BrowserActionsHandler:
         self.b.active_downloads[path] = {"url": uri, "recv": 0, "total": 0, "name": fname}
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
+        if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
+            self.b.downloads_flyout.notificar_descarga_iniciada(path, uri)
 
     def on_download_progress(self, path, recv, total, browser):
         if path in self.b.active_downloads:
@@ -222,20 +224,33 @@ class BrowserActionsHandler:
             self.b.active_downloads[path]["total"] = total
             if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
                 self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
+            if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
+                self.b.downloads_flyout.notificar_progreso(path, recv, total)
 
     def on_download_completed(self, path, uri, browser):
         if path in self.b.active_downloads:
             del self.b.active_downloads[path]
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
+        if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
+            self.b.downloads_flyout.notificar_completada(path, uri)
 
         fname = Path(path).name if path else "archivo"
+
+        # Registrar persistentemente en DownloadManager
+        try:
+            from ...utils.download_manager import DownloadManager
+            mgr = DownloadManager(self.b.ruta_usuario)
+            mgr.registrar_descarga_externa(path, url=uri)
+        except Exception as ex_mgr:
+            print(f"[Navegador] Error registrando en DownloadManager: {ex_mgr}")
+
         try:
             p = getattr(self.b, "parent_module", None)
             while p and not hasattr(p, "sub_descargas") and hasattr(p, "parent_module"):
                 p = getattr(p, "parent_module", None)
             if p and hasattr(p, "sub_descargas"):
-                p.sub_descargas.mgr.registrar_descarga_externa(path)
+                p.sub_descargas.mgr.registrar_descarga_externa(path, url=uri)
                 p.sub_descargas._refrescar_historial()
         except Exception as e:
             print(f"[Navegador] Error registrando descarga en gestor: {e}")
@@ -262,6 +277,9 @@ class BrowserActionsHandler:
             del self.b.active_downloads[path]
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
+        if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
+            self.b.downloads_flyout.refrescar_contenido()
+
         if "usercanceled" in str(reason).lower() or "cancel" in str(reason).lower():
             return
         fname = Path(path).name if path else "archivo"

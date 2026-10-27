@@ -152,16 +152,122 @@ class DownloadManager(QObject):
         worker.start()
         return download_id
 
-    def registrar_descarga_externa(self, file_path):
-        """Registra una descarga completada desde el navegador en el historial general"""
+    def registrar_descarga_externa(self, file_path, url=""):
+        """Registra una descarga completada desde el navegador en el historial general con cálculo de tamaño."""
+        if not file_path:
+            return
+        norm_path = os.path.normpath(str(file_path))
         download_id = f"ext_{int(time.time() * 1000)}"
+
+        size_str = ""
+        try:
+            p = Path(norm_path)
+            if p.exists():
+                sz = p.stat().st_size
+                if sz >= 1024 * 1024 * 1024:
+                    size_str = f"{sz / (1024**3):.2f} GB"
+                elif sz >= 1024 * 1024:
+                    size_str = f"{sz / (1024**2):.1f} MB"
+                elif sz >= 1024:
+                    size_str = f"{sz / 1024:.0f} KB"
+                else:
+                    size_str = f"{sz} B"
+        except Exception:
+            pass
+
+        # Evitar duplicados del mismo archivo exacto; si ya existe, actualizar y mover al frente
+        for i, it in enumerate(self.historial_descargas):
+            if os.path.normpath(str(it.get("path", ""))) == norm_path:
+                it["fecha"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                if size_str:
+                    it["size"] = size_str
+                if url:
+                    it["url"] = url
+                item = self.historial_descargas.pop(i)
+                self.historial_descargas.insert(0, item)
+                self.guardar_historial()
+                return
+
         item = {
             "id": download_id,
-            "path": str(file_path),
-            "nombre": os.path.basename(str(file_path)),
-            "fecha": time.strftime("%Y-%m-%d %H:%M:%S")
+            "path": norm_path,
+            "nombre": os.path.basename(norm_path),
+            "fecha": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "size": size_str,
+            "url": url
         }
         self.historial_descargas.insert(0, item)
+        self.guardar_historial()
+
+    def sincronizar_descargas_locales(self):
+        """Escanea las carpetas de descargas (predeterminada de Windows y local del usuario)
+        para asegurar que todos los archivos descargados aparezcan en el historial."""
+        carpetas = [self.ruta_descargas, Path.home() / "Downloads"]
+        
+        # Leer carpeta personalizada si existe en config
+        try:
+            cfg_path = self.ruta_usuario / "browser_data" / "config.json"
+            if cfg_path.exists():
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = json.load(f)
+                    c_dir = cfg.get("download_dir")
+                    if c_dir and Path(c_dir).exists():
+                        carpetas.append(Path(c_dir))
+        except Exception:
+            pass
+
+        rutas_registradas = {os.path.normpath(str(it.get("path", ""))) for it in self.historial_descargas}
+        archivos_encontrados = []
+
+        for carpeta in set(carpetas):
+            if not carpeta.exists():
+                continue
+            try:
+                for entry in carpeta.iterdir():
+                    if entry.is_file() and not entry.name.endswith((".tmp", ".crdownload", ".part", ".lock")):
+                        n_p = os.path.normpath(str(entry))
+                        if n_p not in rutas_registradas:
+                            try:
+                                mtime = entry.stat().st_mtime
+                                archivos_encontrados.append((entry, mtime))
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+        # Ordenar por fecha de modificación más reciente y agregar hasta los últimos 30 archivos
+        archivos_encontrados.sort(key=lambda x: x[1], reverse=True)
+        for entry, mtime in archivos_encontrados[:30]:
+            sz = entry.stat().st_size
+            if sz >= 1024 * 1024 * 1024:
+                size_str = f"{sz / (1024**3):.2f} GB"
+            elif sz >= 1024 * 1024:
+                size_str = f"{sz / (1024**2):.1f} MB"
+            elif sz >= 1024:
+                size_str = f"{sz / 1024:.0f} KB"
+            else:
+                size_str = f"{sz} B"
+
+            f_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(mtime))
+            self.historial_descargas.append({
+                "id": f"sync_{int(mtime)}",
+                "path": str(entry),
+                "nombre": entry.name,
+                "fecha": f_str,
+                "size": size_str,
+                "url": ""
+            })
+
+        if archivos_encontrados:
+            self.guardar_historial()
+
+    def eliminar_item_historial(self, path_or_id):
+        """Elimina una descarga específica del historial guardado."""
+        norm = os.path.normpath(str(path_or_id)).lower()
+        self.historial_descargas = [
+            it for it in self.historial_descargas
+            if str(it.get("id")) != str(path_or_id) and os.path.normpath(str(it.get("path", ""))).lower() != norm
+        ]
         self.guardar_historial()
 
     def ejecutar_instalador_asincrono(self, file_path, started_cb=None, finished_cb=None, error_cb=None):
@@ -177,11 +283,27 @@ class DownloadManager(QObject):
         return install_id
 
     def _on_download_completed_internal(self, download_id, file_path):
+        size_str = ""
+        try:
+            sz = os.path.getsize(file_path)
+            if sz >= 1024 * 1024 * 1024:
+                size_str = f"{sz / (1024**3):.2f} GB"
+            elif sz >= 1024 * 1024:
+                size_str = f"{sz / (1024**2):.1f} MB"
+            elif sz >= 1024:
+                size_str = f"{sz / 1024:.0f} KB"
+            else:
+                size_str = f"{sz} B"
+        except Exception:
+            pass
+
         item = {
             "id": download_id,
             "path": file_path,
             "nombre": os.path.basename(file_path),
-            "fecha": time.strftime("%Y-%m-%d %H:%M:%S")
+            "fecha": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "size": size_str,
+            "url": ""
         }
         self.historial_descargas.insert(0, item)
         self.guardar_historial()

@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.2.0",
-  "fecha": "2026-10-25",
-  "descripcion": "1 Actualziacion de pestañas\n+ modo sin reposo: Evita que se coloque en modo reposo una pestaña exacta\n2 Actualizacion de cuentas Oauth\n+ Oauth: Ahora los logeos Oauth por cuentas de google o gmail abren una nueva ventana",
-  "ultima_actualizacion": "2026-10-25",
+  "version": "21.2.1",
+  "fecha": "2026-10-27",
+  "descripcion": "1. 📥 Vista emergente flotante de descargas (Flyout tipo Chrome/Edge) anclada a la barra de navegación con progreso en vivo, apertura y cancelación rápida.\n2. ⚡ Corrección de descargas de archivos grandes: retención COM activa para evitar que se queden en 'descargando'.\n3. 🔄 Sincronización de descargas fuera del predeterminado: escaneo de carpeta Downloads del sistema y rutas personalizadas.\n4. 🎨 Rediseño responsivo del gestor de descargas: tarjetas adaptativas, botones fijos visibles (Abrir, Carpeta, Quitar) y monitoreo en vivo de descargas activas.",
+  "ultima_actualizacion": "2026-10-27",
   "historial": [
+    {
+      "version": "21.2.1",
+      "fecha": "2026-10-27 00:30:00",
+      "descripcion": "1. 📥 Vista emergente flotante de descargas (Flyout tipo Chrome/Edge) anclada a la barra de navegación con progreso en vivo, apertura y cancelación rápida.\n2. ⚡ Corrección de descargas de archivos grandes: retención COM activa para evitar que se queden en 'descargando'.\n3. 🔄 Sincronización de descargas fuera del predeterminado: escaneo de carpeta Downloads del sistema y rutas personalizadas.\n4. 🎨 Rediseño responsivo del gestor de descargas: tarjetas adaptativas, botones fijos visibles (Abrir, Carpeta, Quitar) y monitoreo en vivo de descargas activas."
+    },
     {
       "version": "21.2.0",
       "fecha": "2026-10-25 16:28:42",

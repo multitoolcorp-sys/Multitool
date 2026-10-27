@@ -28,6 +28,7 @@ from .dialogs import (
 from .extensions_dialog import ExtensionsDialog
 from .tab_session_manager import TabSessionManager
 from .browser_actions import BrowserActionsHandler
+from .downloads_flyout import DownloadsFlyoutWidget
 
 
 class MultiTabBrowser(QWidget):
@@ -68,6 +69,7 @@ class MultiTabBrowser(QWidget):
         self.actions_handler = BrowserActionsHandler(self)
 
         self.inicializar_ui()
+        self.downloads_flyout = DownloadsFlyoutWidget(self, self.colores)
         self.actions_handler.configurar_atajos_teclado()
         self.restaurar_estado_pestanas()
 
@@ -76,6 +78,24 @@ class MultiTabBrowser(QWidget):
         self.timer_reposo.setInterval(30000)
         self.timer_reposo.timeout.connect(self._verificar_pestanas_para_reposo)
         self.timer_reposo.start()
+
+    def toggle_downloads_flyout(self):
+        """Muestra u oculta la vista emergente de descargas tipo Chrome/Edge anclada a la barra."""
+        if hasattr(self, "downloads_flyout") and self.downloads_flyout:
+            if self.downloads_flyout.isVisible():
+                self.downloads_flyout.hide()
+            else:
+                btn = getattr(getattr(self, "toolbar", None), "btn_downloads", None)
+                self.downloads_flyout.mostrar_bajo_boton(btn)
+
+    def cancelar_descarga(self, path):
+        """Cancela la descarga activa en los webviews."""
+        for i in range(self.tabs.count()):
+            container = self.tabs.widget(i)
+            if container and hasattr(container, "browser") and hasattr(container.browser, "cancel_download"):
+                if container.browser.cancel_download(path):
+                    break
+
 
     def inicializar_ui(self):
         self.main_layout = QVBoxLayout(self)

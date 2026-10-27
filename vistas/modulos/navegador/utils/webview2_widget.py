@@ -64,6 +64,7 @@ class WebView2Widget(QWidget):
         self.is_fullscreen = False
         self.new_window_handler = None
         self._context_menu_opened_time = 0
+        self._active_dl_operations = {}  # Retiene referencias COM/.NET a DownloadOperation para evitar recolección de basura prematura
         
         # Ruta de datos persistentes para sesión de Google / YouTube / Cookies
         if user_data_folder is None:
@@ -498,10 +499,12 @@ class WebView2Widget(QWidget):
 
             filename = Path(result_path).name if result_path else "descarga"
 
-            # Conectar eventos de progreso y finalización
+            # Conectar eventos de progreso y finalización reteniendo referencia viva
             dl_op = getattr(args, "DownloadOperation", None)
             if dl_op:
                 try:
+                    op_key = id(dl_op)
+                    self._active_dl_operations[op_key] = dl_op
                     dl_op.BytesReceivedChanged += self._on_download_bytes_received
                     dl_op.StateChanged += self._on_download_state_changed
                 except Exception as ex_hook:
@@ -519,12 +522,14 @@ class WebView2Widget(QWidget):
             if from_context_menu or is_custom_path:
                 self._context_menu_opened_time = 0
                 args.Handled = True
+                if dl_op and result_path:
+                    self._active_dl_operations[result_path] = dl_op
                 if remember_last_dir and result_path:
                     try:
                         self._guardar_ultima_carpeta_descarga(config_file, str(Path(result_path).parent))
                     except Exception:
                         pass
-                self.bridge.downloadStarting.emit(uri, result_path)
+                self.downloadStarting.emit(uri, result_path)
                 return
 
             # 2. Descarga regular iniciada por clic en página:
@@ -535,7 +540,9 @@ class WebView2Widget(QWidget):
                 args.ResultFilePath = target_file
                 result_path = target_file
                 args.Handled = True
-                self.bridge.downloadStarting.emit(uri, result_path)
+                if dl_op and result_path:
+                    self._active_dl_operations[result_path] = dl_op
+                self.downloadStarting.emit(uri, result_path)
             else:
                 deferral = args.GetDeferral()
                 win_parent = self.window() or self
@@ -560,12 +567,16 @@ class WebView2Widget(QWidget):
                         args.ResultFilePath = target_file
                         result_path = target_file
                         args.Handled = True
+                        if dl_op and result_path:
+                            self._active_dl_operations[result_path] = dl_op
                         if remember_last_dir:
                             self._guardar_ultima_carpeta_descarga(config_file, str(Path(target_file).parent))
-                        self.bridge.downloadStarting.emit(uri, result_path)
+                        self.downloadStarting.emit(uri, result_path)
                     else:
                         args.Cancel = True
                         args.Handled = True
+                        if dl_op and id(dl_op) in self._active_dl_operations:
+                            del self._active_dl_operations[id(dl_op)]
                 finally:
                     if deferral:
                         try:
@@ -585,9 +596,9 @@ class WebView2Widget(QWidget):
         """Notifica el progreso de bytes descargados en tiempo real."""
         try:
             recv = int(sender.BytesReceived)
-            total = int(sender.TotalBytesToReceive)
+            total = int(getattr(sender, "TotalBytesToReceive", 0) or 0)
             fpath = str(sender.ResultFilePath or "")
-            self.bridge.downloadProgress.emit(fpath, recv, total)
+            self.downloadProgress.emit(fpath, recv, total)
         except Exception:
             pass
 
@@ -598,12 +609,37 @@ class WebView2Widget(QWidget):
             fpath = str(sender.ResultFilePath or "")
             uri = str(sender.Uri or "")
             if "Completed" in state_str:
-                self.bridge.downloadCompleted.emit(fpath, uri)
+                self.downloadCompleted.emit(fpath, uri)
+                # Limpiar referencias retenidas para esta descarga completada
+                self._limpiar_dl_operation(sender, fpath)
             elif "Interrupted" in state_str:
                 reason = str(getattr(sender, "InterruptReason", "Cancelado o Error"))
-                self.bridge.downloadFailed.emit(fpath, reason)
+                self.downloadFailed.emit(fpath, reason)
+                self._limpiar_dl_operation(sender, fpath)
         except Exception:
             pass
+
+    def _limpiar_dl_operation(self, sender, fpath):
+        try:
+            op_id = id(sender)
+            if op_id in self._active_dl_operations:
+                del self._active_dl_operations[op_id]
+            if fpath in self._active_dl_operations:
+                del self._active_dl_operations[fpath]
+        except Exception:
+            pass
+
+    def cancel_download(self, fpath):
+        """Cancela una operación de descarga activa si existe."""
+        try:
+            dl_op = self._active_dl_operations.get(fpath)
+            if dl_op and hasattr(dl_op, "Cancel"):
+                dl_op.Cancel()
+                return True
+        except Exception as e:
+            print(f"[WebView2Widget] Error cancelando descarga {fpath}: {e}")
+        return False
+
 
     def _on_contains_fullscreen_element_changed(self, sender, args):
         try:
