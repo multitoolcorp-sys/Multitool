@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.2.2",
+  "version": "21.2.3",
   "fecha": "2026-10-27",
-  "descripcion": "🎨 Corrección de colores y temas en el panel flotante de descargas (Flyout):\n+ Fondo integrado con el tema de la aplicación (evita el fondo blanco nativo de Qt en popups).\n+ Corrección de efecto hover: iluminación sutil con el color terciario y borde de acento en lugar de volverse blanco.\n+ Transparencia completa en el viewport del scroll area y sincronización dinámica con el tema del usuario.",
+  "descripcion": "Actualización del módulo Navegador v21.2.3",
   "ultima_actualizacion": "2026-10-27",
   "historial": [
+    {
+      "version": "21.2.3",
+      "fecha": "2026-10-27 00:45:49",
+      "descripcion": "Actualización de módulo."
+    },
     {
       "version": "21.2.2",
       "fecha": "2026-10-27 00:34:14",
