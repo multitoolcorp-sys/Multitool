@@ -150,6 +150,9 @@ class BrowserToolbar(QFrame):
         self.btn_home = self._crear_boton("🏠", "Página principal (Google)", self.browser_parent.go_home)
         self.layout_toolbar.addWidget(self.btn_home)
 
+        self.btn_new_tab_toolbar = self._crear_boton("➕", "Nueva Pestaña (Ctrl+T)", lambda: self.browser_parent.add_new_tab())
+        self.layout_toolbar.addWidget(self.btn_new_tab_toolbar)
+
         # 2. Barra de Direcciones URL + Badge de Zoom integrado
         url_frame = QFrame()
         url_frame.setStyleSheet(f"""
@@ -166,9 +169,25 @@ class BrowserToolbar(QFrame):
         url_lay.setContentsMargins(8, 2, 6, 2)
         url_lay.setSpacing(6)
 
-        lbl_lock = QLabel("🔒")
-        lbl_lock.setStyleSheet("background: transparent; border: none; font-size: 11px;")
-        url_lay.addWidget(lbl_lock)
+        self.btn_site_info = QPushButton("🔒")
+        self.btn_site_info.setFixedSize(22, 22)
+        self.btn_site_info.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_site_info.setToolTip("Ver permisos y seguridad de este sitio")
+        self.btn_site_info.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                border: none;
+                font-size: 11px;
+                padding: 0px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.15);
+            }
+        """)
+        self.btn_site_info.clicked.connect(self.browser_parent.mostrar_permisos_sitio_actual)
+        url_lay.addWidget(self.btn_site_info)
+
 
         self.url_bar = QLineEdit()
         self.url_bar.setPlaceholderText("Busca en Google o escribe una dirección URL...")

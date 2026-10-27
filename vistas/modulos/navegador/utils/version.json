@@ -7,8 +7,8 @@
   "historial": [
     {
       "version": "21.2.3",
-      "fecha": "2026-10-27 00:45:49",
-      "descripcion": "Actualización de módulo."
+      "fecha": "2026-10-27 01:25:00",
+      "descripcion": "1. 🗂️ Historial MRU en pestañas: Al cerrar la pestaña actual, el navegador regresa a la última pestaña enfocada en la que estuvo el usuario.\n2. ⚡ Descargas en tiempo real en Flyout: Registro inmediato al completarse la descarga y actualización dinámica de progreso en vivo.\n3. 🔄 Animación fluida de carga: Spinner circular vectorial renderizado dinámicamente; el botón de recarga respeta de forma independiente el estado de la pestaña enfocada.\n4. 🔒 Gestor de permisos por sitio: Botón de seguridad en la barra de direcciones que despliega el panel de control de permisos (cámara, micrófono, notificaciones, ubicación, sonido) persistente por dominio.\n5. ➕ Botón Nueva Pestaña accesible: Botón directo en la barra de navegación para crear pestañas de inmediato.\n6. 🧩 Descarga de extensiones (.CRX / Web Store): Compatibilidad con Chrome Web Store y Edge Add-ons con instalación automática en el perfil."
     },
     {
       "version": "21.2.2",

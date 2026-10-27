@@ -232,12 +232,9 @@ class BrowserActionsHandler:
             del self.b.active_downloads[path]
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
-        if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
-            self.b.downloads_flyout.notificar_completada(path, uri)
-
         fname = Path(path).name if path else "archivo"
 
-        # Registrar persistentemente en DownloadManager
+        # Registrar persistentemente en DownloadManager PRIMERO para que esté listo al refrescar
         try:
             from ...utils.download_manager import DownloadManager
             mgr = DownloadManager(self.b.ruta_usuario)
@@ -254,6 +251,11 @@ class BrowserActionsHandler:
                 p.sub_descargas._refrescar_historial()
         except Exception as e:
             print(f"[Navegador] Error registrando descarga en gestor: {e}")
+
+        # Ahora notificar al flyout en tiempo real cuando ya está en el historial
+        if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
+            self.b.downloads_flyout.notificar_completada(path, uri)
+
 
         try:
             from vistas.utils.notification import show_notification

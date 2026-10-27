@@ -10,8 +10,9 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QScrollArea, QFrame, QSizePolicy, QStyle, QStyleOption
 )
-from PyQt6.QtCore import Qt, QPoint, QUrl
+from PyQt6.QtCore import Qt, QPoint, QUrl, QTimer
 from PyQt6.QtGui import QFont, QDesktopServices, QIcon, QPainter
+
 
 
 class DownloadItemWidget(QFrame):
@@ -235,7 +236,14 @@ class DownloadsFlyoutWidget(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(380)
         self.active_items = {} # {path: DownloadItemWidget}
+
+        # Temporizador para monitoreo en tiempo real mientras el panel esté visible
+        self.timer_live = QTimer(self)
+        self.timer_live.setInterval(1000)
+        self.timer_live.timeout.connect(self._actualizar_en_vivo)
+
         self.init_ui()
+
 
     def init_ui(self):
         bg_p = self.colores.get('bg_principal', '#1E1E1E')
@@ -395,6 +403,9 @@ class DownloadsFlyoutWidget(QFrame):
     def mostrar_bajo_boton(self, target_widget):
         """Calcula las coordenadas y muestra el flyout flotante justo debajo del botón de descargas."""
         self.refrescar_contenido()
+        if not self.timer_live.isActive():
+            self.timer_live.start()
+
         if target_widget and target_widget.isVisible():
             geo = target_widget.geometry()
             bottom_left = target_widget.mapToGlobal(QPoint(0, geo.height()))
@@ -410,6 +421,24 @@ class DownloadsFlyoutWidget(QFrame):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def hideEvent(self, event):
+        if hasattr(self, "timer_live") and self.timer_live.isActive():
+            self.timer_live.stop()
+        super().hideEvent(event)
+
+    def _actualizar_en_vivo(self):
+        """Monitorea el progreso de descargas en vivo mientras el flyout está desplegado."""
+        active_dl = getattr(self.browser, "active_downloads", {})
+        if len(active_dl) != len(self.active_items):
+            self.refrescar_contenido()
+            return
+        for path, info in active_dl.items():
+            if path in self.active_items:
+                self.active_items[path].actualizar_progreso(info.get("recv", 0), info.get("total", 0))
+            else:
+                self.refrescar_contenido()
+                return
 
     def refrescar_contenido(self):
         """Reconstruye dinámicamente las tarjetas de descargas activas y las últimas completadas."""
@@ -487,8 +516,10 @@ class DownloadsFlyoutWidget(QFrame):
             self.active_items[path].actualizar_progreso(recv, total)
 
     def notificar_completada(self, path, uri):
-        """Llamado al terminar una descarga: actualiza la lista."""
+        """Llamado al terminar una descarga: actualiza la lista inmediatamente en vivo."""
         self.refrescar_contenido()
+        # Segundo refresco breve para garantizar lectura tras flush a disco
+        QTimer.singleShot(250, self.refrescar_contenido)
 
     def _obtener_historial_reciente(self):
         try:
@@ -496,21 +527,32 @@ class DownloadsFlyoutWidget(QFrame):
             while p and not hasattr(p, "sub_descargas") and hasattr(p, "parent_module"):
                 p = getattr(p, "parent_module", None)
             if p and hasattr(p, "sub_descargas") and hasattr(p.sub_descargas, "mgr"):
-                return p.sub_descargas.mgr.historial_descargas or []
+                if p.sub_descargas.mgr.historial_descargas:
+                    return p.sub_descargas.mgr.historial_descargas
         except Exception:
             pass
 
-        # Fallback directo a descargas.json
-        try:
-            ruta_usuario = getattr(self.browser, "ruta_usuario", ".")
-            json_file = Path(ruta_usuario) / "descargas.json"
-            if json_file.exists():
-                import json
-                with open(json_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception:
-            pass
+        # Búsqueda en rutas potenciales de descargas.json
+        candidatos = []
+        if hasattr(self.browser, "ruta_usuario"):
+            candidatos.append(Path(self.browser.ruta_usuario) / "descargas.json")
+        if hasattr(self.browser, "data_dir"):
+            candidatos.append(Path(self.browser.data_dir).parent / "descargas.json")
+            candidatos.append(Path(self.browser.data_dir) / "descargas.json")
+        candidatos.append(Path.cwd() / "descargas.json")
+
+        import json
+        for c in candidatos:
+            if c.exists():
+                try:
+                    with open(c, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if data and isinstance(data, list):
+                            return data
+                except Exception:
+                    pass
         return []
+
 
     def _abrir_carpeta_descargas(self):
         dl_dir = Path.home() / "Downloads"

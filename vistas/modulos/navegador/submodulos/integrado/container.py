@@ -7,8 +7,9 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QTabBar, QToolButton
 )
-from PyQt6.QtCore import QUrl, Qt, QSize
-from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QBrush
+from PyQt6.QtCore import QUrl, Qt, QSize, QTimer
+from PyQt6.QtGui import QFont, QIcon, QPixmap, QPainter, QColor, QBrush, QPen
+
 
 
 import hashlib
@@ -92,7 +93,29 @@ def generar_icono_por_defecto(url_str="", title=""):
     painter.end()
     return QIcon(pix)
 
+def generar_icono_cargando(angulo=0, color_hex="#6366F1"):
+    """Dibuja un spinner circular moderno y nítido para la pestaña en estado de carga."""
+    pix = QPixmap(24, 24)
+    pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+    # Anillo base translúcido
+    pen_bg = QPen(QColor(255, 255, 255, 45), 2.5)
+    pen_bg.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen_bg)
+    painter.drawArc(4, 4, 16, 16, 0, 360 * 16)
+
+    # Arco giratorio acentuado
+    pen_fg = QPen(QColor(color_hex), 2.5)
+    pen_fg.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(pen_fg)
+    painter.drawArc(4, 4, 16, 16, int(angulo * 16), 110 * 16)
+    painter.end()
+    return QIcon(pix)
+
 def obtener_o_generar_icono(url_str="", title="", data_dir=None, callback=None):
+
     cached = obtener_icono_cached(url_str, data_dir)
     if cached and not cached.isNull():
         return cached
@@ -198,7 +221,15 @@ class BrowserContainer(QWidget):
         self.is_pip_active = False
         self._placeholder_widget = None
 
+        # Estado de carga y animación de spinner independiente por pestaña
+        self.is_loading = False
+        self.loading_angle = 0
+        self.timer_loading = QTimer(self)
+        self.timer_loading.setInterval(40)
+        self.timer_loading.timeout.connect(self._on_loading_tick)
+
         # Historial de navegación propio e independiente de esta pestaña
+
         self.nav_history_stack = list(nav_history or [])
         if self.saved_url and (not self.nav_history_stack or self.saved_url not in self.nav_history_stack):
             self.nav_history_stack.append(self.saved_url)
@@ -380,17 +411,58 @@ class BrowserContainer(QWidget):
         if self.parent_browser and hasattr(self.parent_browser, "_actualizar_estado_pestana_despertada"):
             self.parent_browser._actualizar_estado_pestana_despertada(self)
 
+    def iniciar_animacion_carga(self):
+        """Inicia el spinner animado suave en la pestaña."""
+        self.is_loading = True
+        self.loading_angle = 0
+        if not self.timer_loading.isActive():
+            self.timer_loading.start()
+
+    def detener_animacion_carga(self):
+        """Detiene el spinner animado y restaura el favicon de la página."""
+        self.is_loading = False
+        if self.timer_loading.isActive():
+            self.timer_loading.stop()
+
+        # Restaurar icono real
+        if self.parent_browser and hasattr(self.parent_browser, "tabs"):
+            tabs = self.parent_browser.tabs
+            idx = tabs.indexOf(self)
+            if idx != -1:
+                target_ico = self.cached_icon
+                if not target_ico or target_ico.isNull():
+                    u_str = self.url().toString()
+                    target_ico = obtener_o_generar_icono(u_str, self.title(), self.parent_browser.data_dir, callback=self.actualizar_icono)
+                tabs.setTabIcon(idx, target_ico)
+
+    def _on_loading_tick(self):
+        """Frame de rotación del spinner de carga."""
+        if not self.is_loading:
+            self.timer_loading.stop()
+            return
+
+        self.loading_angle = (self.loading_angle + 28) % 360
+        acento = "#6366F1"
+        if self.parent_browser and hasattr(self.parent_browser, "colores"):
+            acento = self.parent_browser.colores.get("acento", "#6366F1")
+
+        spin_ico = generar_icono_cargando(self.loading_angle, acento)
+        if self.parent_browser and hasattr(self.parent_browser, "tabs"):
+            idx = self.parent_browser.tabs.indexOf(self)
+            if idx != -1:
+                self.parent_browser.tabs.setTabIcon(idx, spin_ico)
+
     def actualizar_icono(self, ico):
         """Actualiza el icono de esta pestaña si se cargó o descargó dinámicamente."""
         if not ico or ico.isNull():
             return
         self.cached_icon = ico
-        if self.parent_browser and hasattr(self.parent_browser, "tabs"):
+        if not self.is_loading and self.parent_browser and hasattr(self.parent_browser, "tabs"):
             tabs = self.parent_browser.tabs
-            for i in range(tabs.count()):
-                if tabs.widget(i) == self:
-                    tabs.setTabIcon(i, ico)
-                    break
+            idx = tabs.indexOf(self)
+            if idx != -1:
+                tabs.setTabIcon(idx, ico)
+
 
     def url(self):
         if self.is_sleeping or not self._web_view:

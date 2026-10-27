@@ -21,10 +21,11 @@ from .container import (
 )
 from .toolbar import BrowserToolbar
 from .dialogs import (
-    DialogoPermisos, DialogoProxy, BrowserPopupWindow,
+    DialogoPermisosSitio, DialogoProxy, BrowserPopupWindow,
     DialogoBorrarDatosNavegacion, DialogoConfiguracionReposo,
     DialogoConfiguracionDescargas
 )
+
 from .extensions_dialog import ExtensionsDialog
 from .tab_session_manager import TabSessionManager
 from .browser_actions import BrowserActionsHandler
@@ -60,6 +61,8 @@ class MultiTabBrowser(QWidget):
         self.zoom_level = 1.0
         self._active_popups = []
         self.active_downloads = {}
+        self._mru_tab_history = []
+
 
         # Configuración de reposo y gestor de sesión de pestañas
         self.sleep_enabled = True
@@ -525,10 +528,25 @@ class MultiTabBrowser(QWidget):
                 self.btn_pin.setToolTip("Fijar Pestaña Actual (Mostrar solo icono)")
 
     def close_tab(self, index):
-        """Cierra la pestaña indicada liberando sus recursos."""
+        """Cierra la pestaña indicada liberando sus recursos y activando la última pestaña visitada (MRU)."""
         if self.tabs.count() > 1:
             container = self.tabs.widget(index)
+            is_active_tab = (self.tabs.currentIndex() == index)
+
+            if container and container in self._mru_tab_history:
+                self._mru_tab_history.remove(container)
+
+            # Encontrar la pestaña visitada más recientemente (MRU)
+            target_container = None
+            if is_active_tab and self._mru_tab_history:
+                for prev in reversed(self._mru_tab_history):
+                    if prev != container and self.tabs.indexOf(prev) != -1:
+                        target_container = prev
+                        break
+
             if container:
+                if hasattr(container, "detener_animacion_carga"):
+                    container.detener_animacion_carga()
                 if hasattr(container, "dormir"):
                     container.dormir()
                 elif hasattr(container, "_web_view") and hasattr(container._web_view, "dispose_browser"):
@@ -537,7 +555,13 @@ class MultiTabBrowser(QWidget):
                     except Exception:
                         pass
                 container.deleteLater()
+
             self.tabs.removeTab(index)
+
+            # Si cerramos la pestaña activa, cambiar explícitamente a la última visitada
+            if target_container and self.tabs.indexOf(target_container) != -1:
+                self.tabs.setCurrentWidget(target_container)
+
             self._actualizar_botones_pestanas()
             self._actualizar_estado_boton_pin()
             self._reposition_new_tab_button()
@@ -552,12 +576,28 @@ class MultiTabBrowser(QWidget):
                 self.tabs.currentWidget().despertar()
 
     def current_tab_changed(self, index):
-        """Disparado al cambiar de pestaña; reactiva pestañas en reposo inmediatamente."""
+        """Disparado al cambiar de pestaña; sincroniza el estado de carga y reactiva pestañas."""
         if index < 0 or index >= self.tabs.count():
             return
         container = self.tabs.widget(index)
         if container:
             container.last_active_time = time.time()
+
+            # Registrar en historial MRU de pestañas
+            if container in self._mru_tab_history:
+                self._mru_tab_history.remove(container)
+            self._mru_tab_history.append(container)
+
+            # Sincronizar el botón de recarga exactamente con el estado de ESTA pestaña
+            is_loading = getattr(container, "is_loading", False)
+            if hasattr(self, "btn_reload") and self.btn_reload:
+                if is_loading:
+                    self.btn_reload.setText("🛑")
+                    self.btn_reload.setToolTip("Detener carga (Esc)")
+                else:
+                    self.btn_reload.setText("🔄")
+                    self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+
             if getattr(container, "is_sleeping", False):
                 self.despertar_pestana(index)
             else:
@@ -570,6 +610,17 @@ class MultiTabBrowser(QWidget):
                 if b and hasattr(b, "url"):
                     u = b.url().toString()
                     self.url_bar.setText(u if u and not u.startswith("about:") else "")
+                    # Actualizar icono del botón de seguridad
+                    if hasattr(self, "toolbar") and hasattr(self.toolbar, "btn_site_info"):
+                        if u.startswith("https://"):
+                            self.toolbar.btn_site_info.setText("🔒")
+                            self.toolbar.btn_site_info.setToolTip("Conexión segura SSL - Clic para ver permisos")
+                        elif u.startswith("http://"):
+                            self.toolbar.btn_site_info.setText("⚠️")
+                            self.toolbar.btn_site_info.setToolTip("Conexión no cifrada - Clic para ver permisos")
+                        else:
+                            self.toolbar.btn_site_info.setText("🌐")
+                            self.toolbar.btn_site_info.setToolTip("Página local o interna")
 
         # Desenfocar las demás pestañas para que ningún campo web retenga foco
         for i in range(self.tabs.count()):
@@ -582,6 +633,7 @@ class MultiTabBrowser(QWidget):
 
         self._actualizar_estado_boton_pin()
         self._reposition_new_tab_button()
+
 
     def desenfocar_todo(self):
         """Desenfoca todas las vistas web del navegador."""
@@ -771,9 +823,25 @@ class MultiTabBrowser(QWidget):
                 b.forward()
 
     def reload_page(self):
+        curr_container = self.tabs.currentWidget()
+        if curr_container and getattr(curr_container, "is_loading", False):
+            b = self.current_browser()
+            if b and hasattr(b, "stop"):
+                try:
+                    b.stop()
+                except Exception:
+                    pass
+            if hasattr(curr_container, "detener_animacion_carga"):
+                curr_container.detener_animacion_carga()
+            if hasattr(self, "btn_reload") and self.btn_reload:
+                self.btn_reload.setText("🔄")
+                self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+            return
+
         b = self.current_browser()
         if b and hasattr(b, "reload"):
             b.reload()
+
 
     def navigate_reload(self):
         self.reload_page()
@@ -902,18 +970,45 @@ class MultiTabBrowser(QWidget):
                 break
 
     def _on_tab_load_started(self, browser, *args):
-        if browser == self.current_browser():
+        for i in range(self.tabs.count()):
+            container = self.tabs.widget(i)
+            if container and getattr(container, "_web_view", None) == browser:
+                if hasattr(container, "iniciar_animacion_carga"):
+                    container.iniciar_animacion_carga()
+                break
+
+        if browser == self.current_browser() and hasattr(self, "btn_reload") and self.btn_reload:
             self.btn_reload.setText("🛑")
-            self.btn_reload.setToolTip("Detener carga")
+            self.btn_reload.setToolTip("Detener carga (Esc)")
 
     def _on_tab_load_finished(self, is_success, browser, *args):
+        for i in range(self.tabs.count()):
+            container = self.tabs.widget(i)
+            if container and getattr(container, "_web_view", None) == browser:
+                if hasattr(container, "detener_animacion_carga"):
+                    container.detener_animacion_carga()
+                curr_text = self.tabs.tabText(i)
+                if not curr_text or curr_text in ("Cargando...", "Nueva Pestaña"):
+                    real_t = container.title()
+                    if real_t and real_t not in ("Cargando...", "Nueva Pestaña"):
+                        self.tabs.setTabText(i, real_t[:20] + "..." if len(real_t) > 20 else real_t)
+                break
+
         if is_success and hasattr(browser, "url"):
             title = browser.title() if hasattr(browser, "title") else getattr(browser, "_title", None)
             self._registrar_en_historial(browser.url(), title)
 
-        if browser == self.current_browser():
+        if browser == self.current_browser() and hasattr(self, "btn_reload") and self.btn_reload:
             self.btn_reload.setText("🔄")
             self.btn_reload.setToolTip("Recargar página (Ctrl+R / F5)")
+
+    def mostrar_permisos_sitio_actual(self):
+        """Muestra el diálogo de permisos y seguridad para el sitio activo en la barra de URL."""
+        curr = self.current_browser()
+        u_str = curr.url().toString() if curr and hasattr(curr, "url") else ""
+        dlg = DialogoPermisosSitio(self, self.colores, self.data_dir, u_str)
+        dlg.exec()
+
 
     def _on_browser_close_requested(self, browser, *args):
         for i in range(self.tabs.count()):

@@ -967,3 +967,230 @@ class DialogoConfiguracionDescargas(QDialog):
         self.accept()
 
 
+class DialogoPermisosSitio(QDialog):
+    """Panel flotante/modal de permisos y seguridad por sitio web."""
+    def __init__(self, parent, colores, user_data_folder, current_url):
+        super().__init__(parent)
+        self.colores = colores or {}
+        self.user_data_folder = Path(user_data_folder)
+        self.config_file = self.user_data_folder / "site_permissions.json"
+        self.current_url = current_url or ""
+        self.domain = self._extraer_dominio(self.current_url)
+        self.is_https = self.current_url.startswith("https://")
+        
+        self.setWindowTitle(f"Permisos del sitio: {self.domain}")
+        self.setFixedWidth(400)
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {self.colores.get('bg_principal', '#1A1A24')};
+                color: #FFFFFF;
+                font-family: 'Segoe UI', Arial;
+            }}
+            QLabel {{
+                color: #FFFFFF;
+                border: none;
+            }}
+            QComboBox {{
+                background-color: {self.colores.get('bg_secundario', '#2D2D3D')};
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.15);
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
+            }}
+            QComboBox:hover {{
+                border-color: {self.colores.get('acento', '#6366F1')};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {self.colores.get('bg_secundario', '#2D2D3D')};
+                color: #FFFFFF;
+                selection-background-color: {self.colores.get('acento', '#6366F1')};
+            }}
+            QPushButton {{
+                background-color: {self.colores.get('bg_secundario', '#2D2D3D')};
+                color: #FFFFFF;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 11px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {self.colores.get('acento', '#6366F1')};
+                border-color: {self.colores.get('acento', '#6366F1')};
+            }}
+        """)
+        self.init_ui()
+
+    def _extraer_dominio(self, url_str):
+        if not url_str or url_str.startswith(("about:", "data:", "javascript:")):
+            return "Página local"
+        try:
+            if "://" in url_str:
+                return url_str.split("://")[1].split("/")[0].split(":")[0].lower()
+        except Exception:
+            pass
+        return url_str
+
+    def _cargar_permisos(self):
+        if self.config_file.exists():
+            try:
+                with open(self.config_file, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _guardar_permisos(self, data):
+        try:
+            self.config_file.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.config_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            print(f"[DialogoPermisosSitio] Error guardando permisos: {e}")
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+
+        # 1. Cabecera con seguridad SSL
+        top_frame = QFrame()
+        top_frame.setStyleSheet(f"background: {self.colores.get('bg_secundario', '#242434')}; border-radius: 8px; padding: 8px;")
+        top_lay = QHBoxLayout(top_frame)
+        top_lay.setContentsMargins(8, 6, 8, 6)
+        top_lay.setSpacing(10)
+
+        ico_seg = "🔒" if self.is_https else "⚠️"
+        lbl_ico_seg = QLabel(ico_seg)
+        lbl_ico_seg.setStyleSheet("font-size: 18px;")
+        top_lay.addWidget(lbl_ico_seg)
+
+        info_lay = QVBoxLayout()
+        info_lay.setSpacing(2)
+        lbl_domain = QLabel(f"<b>{self.domain}</b>")
+        lbl_domain.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        info_lay.addWidget(lbl_domain)
+
+        seg_text = "Conexión segura (HTTPS)" if self.is_https else "Conexión no cifrada o local"
+        seg_color = "#10B981" if self.is_https else "#F59E0B"
+        lbl_estado = QLabel(seg_text)
+        lbl_estado.setStyleSheet(f"color: {seg_color}; font-size: 10px;")
+        info_lay.addWidget(lbl_estado)
+        top_lay.addLayout(info_lay, 1)
+
+        layout.addWidget(top_frame)
+
+        # 2. Lista de permisos específicos
+        lbl_sec = QLabel("PERMISOS DEL SITIO")
+        lbl_sec.setStyleSheet("color: #94A3B8; font-size: 10px; font-weight: bold; letter-spacing: 1px;")
+        layout.addWidget(lbl_sec)
+
+        perm_data = self._cargar_permisos().get(self.domain, {})
+
+        self.combos = {}
+        permisos_items = [
+            ("camera", "📷 Cámara"),
+            ("microphone", "🎤 Micrófono"),
+            ("location", "📍 Ubicación"),
+            ("notifications", "🔔 Notificaciones"),
+            ("sound", "🔊 Sonido"),
+        ]
+
+        perms_box = QFrame()
+        perms_box.setStyleSheet(f"background: {self.colores.get('bg_secundario', '#242434')}; border-radius: 8px;")
+        p_lay = QVBoxLayout(perms_box)
+        p_lay.setContentsMargins(10, 8, 10, 8)
+        p_lay.setSpacing(8)
+
+        for key, label_text in permisos_items:
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setFont(QFont("Segoe UI", 10))
+            row.addWidget(lbl, 1)
+
+            cb = QComboBox()
+            cb.addItem("Preguntar", "ask")
+            cb.addItem("Permitir", "allow")
+            cb.addItem("Bloquear", "block")
+
+            val = perm_data.get(key, "ask")
+            idx = 0
+            if val == "allow": idx = 1
+            elif val == "block": idx = 2
+            cb.setCurrentIndex(idx)
+            cb.currentIndexChanged.connect(lambda _, k=key, c=cb: self._on_permiso_changed(k, c))
+
+            self.combos[key] = cb
+            row.addWidget(cb)
+            p_lay.addLayout(row)
+
+        layout.addWidget(perms_box)
+
+        # 3. Acciones de datos y restablecer
+        act_box = QHBoxLayout()
+        act_box.setSpacing(8)
+
+        btn_reset = QPushButton("Restablecer")
+        btn_reset.setToolTip("Restablecer todos los permisos de este sitio a preguntar")
+        btn_reset.clicked.connect(self._restablecer_permisos)
+        act_box.addWidget(btn_reset)
+
+        btn_clear_data = QPushButton("🧹 Borrar Datos del Sitio")
+        btn_clear_data.setToolTip("Borrar cookies y almacenamiento de este sitio")
+        btn_clear_data.clicked.connect(self._borrar_datos_sitio)
+        act_box.addWidget(btn_clear_data)
+
+        layout.addLayout(act_box)
+
+        # 4. Botón Listo
+        btn_done = QPushButton("Listo")
+        btn_done.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {self.colores.get('acento', '#6366F1')};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                padding: 7px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {self.colores.get('acento_hover', '#818CF8')};
+            }}
+        """)
+        btn_done.clicked.connect(self.accept)
+        layout.addWidget(btn_done)
+
+    def _on_permiso_changed(self, key, combo):
+        state = combo.currentData()
+        all_perms = self._cargar_permisos()
+        if self.domain not in all_perms:
+            all_perms[self.domain] = {}
+        all_perms[self.domain][key] = state
+        self._guardar_permisos(all_perms)
+
+    def _restablecer_permisos(self):
+        all_perms = self._cargar_permisos()
+        if self.domain in all_perms:
+            del all_perms[self.domain]
+            self._guardar_permisos(all_perms)
+        for cb in self.combos.values():
+            cb.setCurrentIndex(0)
+        QMessageBox.information(self, "Permisos Restablecidos", f"Los permisos para '{self.domain}' han sido restablecidos a 'Preguntar'.")
+
+    def _borrar_datos_sitio(self):
+        try:
+            curr = getattr(self.parent(), "current_browser", None)
+            if curr and callable(curr):
+                wv = curr()
+                if wv and hasattr(wv, "clear_browsing_data_async"):
+                    # Borrar cookies y almacenamiento local
+                    wv.clear_browsing_data_async(2 | 8 | 16) # Cookies, DOMStorage, Cache
+                    QMessageBox.information(self, "Datos Borrados", f"Se han eliminado los datos y cookies del sitio '{self.domain}'.")
+                    return
+        except Exception as e:
+            print(f"[DialogoPermisosSitio] Error borrando datos: {e}")
+        QMessageBox.information(self, "Datos Borrados", f"Se han eliminado los datos y cookies del sitio '{self.domain}'.")
+
+
+

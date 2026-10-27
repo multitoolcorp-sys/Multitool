@@ -250,6 +250,34 @@ class WebView2Widget(QWidget):
                 key = "portapapeles"
                 recurso_nombre = "📋 Acceso al Portapapeles"
 
+            # 1. Consultar site_permissions.json específico por sitio/dominio
+            site_perms_file = Path(self.user_data_folder).parent / "site_permissions.json"
+            if not site_perms_file.exists():
+                site_perms_file = Path.home() / ".multitool" / "browser_data" / "site_permissions.json"
+            
+            host = origin
+            try:
+                import urllib.parse
+                p = urllib.parse.urlparse(origin)
+                host = p.netloc or origin
+            except Exception:
+                pass
+
+            if site_perms_file.exists():
+                try:
+                    with open(site_perms_file, "r", encoding="utf-8") as spf:
+                        sdata = json.load(spf)
+                        site_cfg = sdata.get(host) or sdata.get(origin) or {}
+                        val = site_cfg.get(key)
+                        if val == "permitir":
+                            args.State = CoreWV2.CoreWebView2PermissionState.Allow
+                            return
+                        elif val == "bloquear":
+                            args.State = CoreWV2.CoreWebView2PermissionState.Deny
+                            return
+                except Exception:
+                    pass
+
             cfg = self._cargar_config_permisos()
             sitios = cfg.get("sitios", {})
             sitio_perms = sitios.get(origin, {})
@@ -279,6 +307,21 @@ class WebView2Widget(QWidget):
                     else:
                         args.State = CoreWV2.CoreWebView2PermissionState.Deny
                     self._guardar_permiso_sitio(origin, key, concedido)
+                    
+                    # También persistir en site_permissions.json para sincronía total con DialogoPermisosSitio
+                    try:
+                        all_sp = {}
+                        if site_perms_file.exists():
+                            with open(site_perms_file, "r", encoding="utf-8") as spf2:
+                                all_sp = json.load(spf2)
+                        if host not in all_sp:
+                            all_sp[host] = {}
+                        all_sp[host][key] = "permitir" if concedido else "bloquear"
+                        site_perms_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(site_perms_file, "w", encoding="utf-8") as spf2:
+                            json.dump(all_sp, spf2, indent=2)
+                    except Exception:
+                        pass
                 except Exception:
                     try: args.State = CoreWV2.CoreWebView2PermissionState.Deny
                     except: pass
@@ -462,7 +505,7 @@ class WebView2Widget(QWidget):
             uri = str(getattr(args.DownloadOperation, "Uri", "") or "").lower()
             result_path = str(getattr(args, "ResultFilePath", "") or "")
 
-            # Si es una extensión (.crx o de Web Store), interceptar la descarga hacia temporal,
+            # Si es una extensión (.crx o de Web Store), redirigir descarga hacia temporal,
             # desempaquetar su contenido e instalarla automáticamente en el perfil WebView2
             es_extension = (
                 mime == "application/x-chrome-extension" or
@@ -472,9 +515,29 @@ class WebView2Widget(QWidget):
                 "edge.microsoft.com/extensionwebstorebase" in uri
             )
             if es_extension:
-                args.Cancel = True
-                args.Handled = True
-                
+                ext_temp_dir = Path(self.user_data_folder) / "extensions" / "temp"
+                ext_temp_dir.mkdir(parents=True, exist_ok=True)
+                import uuid
+                ext_fname = Path(result_path).name if (result_path and result_path.lower().endswith(".crx")) else f"ext_{uuid.uuid4().hex[:8]}.crx"
+                target_crx = str(ext_temp_dir / ext_fname)
+                try:
+                    args.ResultFilePath = target_crx
+                    args.Handled = True
+                except Exception:
+                    pass
+
+                dl_op = getattr(args, "DownloadOperation", None)
+                if dl_op:
+                    try:
+                        op_key = id(dl_op)
+                        self._active_dl_operations[op_key] = dl_op
+                        self._active_dl_operations[target_crx] = dl_op
+                        dl_op.BytesReceivedChanged += self._on_download_bytes_received
+                        dl_op.StateChanged += self._on_download_state_changed
+                    except Exception as ex_hook:
+                        print(f"[WebView2Widget] Error conectando DownloadOperation de extensión: {ex_hook}")
+
+                # Ejecutar también worker en segundo plano para asegurar obtención si WebView2 no escribe
                 original_uri = getattr(args.DownloadOperation, "Uri", None) or uri
                 self._descargar_e_instalar_crx_en_segundo_plano(str(original_uri))
                 return
@@ -609,6 +672,11 @@ class WebView2Widget(QWidget):
             fpath = str(sender.ResultFilePath or "")
             uri = str(sender.Uri or "")
             if "Completed" in state_str:
+                if fpath.lower().endswith(".crx") or "extensions" in fpath.lower():
+                    try:
+                        self._instalar_extension_desde_crx_async(fpath)
+                    except Exception as ex_inst:
+                        print(f"[WebView2Widget] Error auto-instalando CRX descargado: {ex_inst}")
                 self.downloadCompleted.emit(fpath, uri)
                 # Limpiar referencias retenidas para esta descarga completada
                 self._limpiar_dl_operation(sender, fpath)
@@ -676,7 +744,7 @@ class WebView2Widget(QWidget):
                 ext_id = m.group(1) if m else ""
                 cands = [uri] if str(uri).startswith("http") else []
                 if ext_id:
-                    cands.append(f"https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0.6099.130&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc")
+                    cands.append(f"https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=unknown&prodversion=130.0.6723.117&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc")
                     cands.append(f"https://edge.microsoft.com/extensionwebstorebase/v1/crx?response=redirect&prod=chromiumcrx&prodchannel=&x=id%3D{ext_id}%26installsource%3Dondemand%26uc")
                 headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 data = None

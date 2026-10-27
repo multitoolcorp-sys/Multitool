@@ -209,7 +209,7 @@ class ExtensionsDialog(QDialog):
         if texto.startswith("http") and ".crx" in texto.lower():
             urls_a_intentar.append(texto)
         urls_a_intentar.append(
-            f"https://clients2.google.com/service/update2/crx?response=redirect&prodversion=120.0.6099.130&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc"
+            f"https://clients2.google.com/service/update2/crx?response=redirect&os=win&arch=x64&os_arch=x86_64&nacl_arch=x86-64&prod=chromecrx&prodchannel=unknown&prodversion=130.0.6723.117&acceptformat=crx2,crx3&x=id%3D{ext_id}%26uc"
         )
         urls_a_intentar.append(
             f"https://edge.microsoft.com/extensionwebstorebase/v1/crx?response=redirect&prod=chromiumcrx&prodchannel=&x=id%3D{ext_id}%26installsource%3Dondemand%26uc"
