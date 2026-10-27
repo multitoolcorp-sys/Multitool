@@ -1,22 +1,25 @@
 """
 downloads_flyout.py - Vista emergente flotante (Flyout/Popup) de descargas para MultiTabBrowser
 Ofrece la experiencia idéntica a Google Chrome / Microsoft Edge con panel flotante anclado a la barra de herramientas.
+Integrado armónicamente con la paleta de colores y tema de la aplicación.
 """
 import os
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QScrollArea, QFrame, QSizePolicy
+    QProgressBar, QScrollArea, QFrame, QSizePolicy, QStyle, QStyleOption
 )
 from PyQt6.QtCore import Qt, QPoint, QUrl
-from PyQt6.QtGui import QFont, QDesktopServices, QIcon
+from PyQt6.QtGui import QFont, QDesktopServices, QIcon, QPainter
 
 
 class DownloadItemWidget(QFrame):
     """Fila interactiva para una descarga (activa o completada) dentro del flyout emergente."""
     def __init__(self, data, is_active=False, colores=None, on_cancel=None, parent=None):
         super().__init__(parent)
+        self.setObjectName("DownloadItemWidget")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.colores = colores or {}
         self.data = data
         self.is_active = is_active
@@ -24,18 +27,21 @@ class DownloadItemWidget(QFrame):
         self.init_ui()
 
     def init_ui(self):
-        bg_card = self.colores.get('bg_secundario', '#1E1E2E')
+        bg_card = self.colores.get('bg_secundario', '#2D2D2D')
+        bg_hover = self.colores.get('bg_terciario', '#3D3D3D')
         acento = self.colores.get('acento', '#6366F1')
+        fg_p = self.colores.get('fg_principal', '#FFFFFF')
+        fg_sec = self.colores.get('fg_secundario', '#A0A0A0')
         
         self.setStyleSheet(f"""
-            QFrame {{
+            QFrame#DownloadItemWidget {{
                 background-color: {bg_card};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 8px;
             }}
-            QFrame:hover {{
-                border-color: rgba(99, 102, 241, 0.4);
-                background-color: rgba(255, 255, 255, 0.04);
+            QFrame#DownloadItemWidget:hover {{
+                background-color: {bg_hover};
+                border: 1px solid {acento};
             }}
         """)
 
@@ -72,7 +78,7 @@ class DownloadItemWidget(QFrame):
         display_name = nombre if len(nombre) <= 26 else (nombre[:23] + "...")
         self.lbl_name = QLabel(display_name)
         self.lbl_name.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self.lbl_name.setStyleSheet("color: #FFFFFF; border: none; background: transparent;")
+        self.lbl_name.setStyleSheet(f"color: {fg_p}; border: none; background: transparent;")
         self.lbl_name.setToolTip(nombre)
         top_row.addWidget(self.lbl_name, 1)
 
@@ -135,7 +141,7 @@ class DownloadItemWidget(QFrame):
                     border: none;
                 }
                 QPushButton:hover {
-                    background: rgba(255, 255, 255, 0.18);
+                    background: rgba(255, 255, 255, 0.2);
                 }
             """)
             btn_folder.clicked.connect(lambda: self._abrir_carpeta(fpath))
@@ -150,7 +156,7 @@ class DownloadItemWidget(QFrame):
             self.pbar.setTextVisible(False)
             self.pbar.setStyleSheet(f"""
                 QProgressBar {{
-                    background: rgba(255, 255, 255, 0.1);
+                    background: {self.colores.get('bg_principal', '#1E1E1E')};
                     border-radius: 3px;
                     border: none;
                 }}
@@ -163,7 +169,7 @@ class DownloadItemWidget(QFrame):
 
             # Subtítulo con progreso y velocidad
             self.lbl_status = QLabel("Descargando...")
-            self.lbl_status.setStyleSheet("color: #94A3B8; font-size: 10px; border: none; background: transparent;")
+            self.lbl_status.setStyleSheet(f"color: {fg_sec}; font-size: 10px; border: none; background: transparent;")
             layout.addWidget(self.lbl_status)
         else:
             # Estado de descarga completada
@@ -177,8 +183,14 @@ class DownloadItemWidget(QFrame):
                 info_str += f" • {short_fecha}"
 
             lbl_sub = QLabel(info_str)
-            lbl_sub.setStyleSheet("color: #64748B; font-size: 10px; border: none; background: transparent;")
+            lbl_sub.setStyleSheet(f"color: {fg_sec}; font-size: 10px; border: none; background: transparent;")
             layout.addWidget(lbl_sub)
+
+    def paintEvent(self, event):
+        opt = QStyleOption()
+        opt.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
 
     def actualizar_progreso(self, recv_bytes, total_bytes):
         if not self.is_active:
@@ -218,25 +230,30 @@ class DownloadsFlyoutWidget(QFrame):
         super().__init__(parent_browser, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.browser = parent_browser
         self.colores = colores or getattr(parent_browser, "colores", {})
+        self.setObjectName("DownloadsFlyoutWidget")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(380)
         self.active_items = {} # {path: DownloadItemWidget}
         self.init_ui()
 
     def init_ui(self):
-        bg_p = self.colores.get('bg_principal', '#121218')
+        bg_p = self.colores.get('bg_principal', '#1E1E1E')
+        bg_sec = self.colores.get('bg_secundario', '#2D2D2D')
         acento = self.colores.get('acento', '#6366F1')
+        fg_p = self.colores.get('fg_principal', '#FFFFFF')
+        fg_sec = self.colores.get('fg_secundario', '#A0A0A0')
 
         self.setStyleSheet(f"""
-            DownloadsFlyoutWidget {{
-                background-color: #161622;
-                border: 1px solid rgba(255, 255, 255, 0.12);
+            QFrame#DownloadsFlyoutWidget {{
+                background-color: {bg_p};
+                border: 1px solid rgba(255, 255, 255, 0.14);
                 border-radius: 12px;
             }}
         """)
 
         main_lay = QVBoxLayout(self)
-        main_lay.setContentsMargins(12, 12, 12, 12)
+        main_lay.setContentsMargins(14, 14, 14, 14)
         main_lay.setSpacing(10)
 
         # 1. Cabecera del Flyout
@@ -245,7 +262,7 @@ class DownloadsFlyoutWidget(QFrame):
 
         lbl_tit = QLabel("📥 Descargas")
         lbl_tit.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        lbl_tit.setStyleSheet("color: #FFFFFF; border: none; background: transparent;")
+        lbl_tit.setStyleSheet(f"color: {fg_p}; border: none; background: transparent;")
         header_lay.addWidget(lbl_tit)
 
         self.lbl_badge = QLabel("")
@@ -256,6 +273,7 @@ class DownloadsFlyoutWidget(QFrame):
             font-weight: bold;
             padding: 2px 7px;
             border-radius: 10px;
+            border: none;
         """)
         self.lbl_badge.setVisible(False)
         header_lay.addWidget(self.lbl_badge)
@@ -266,17 +284,17 @@ class DownloadsFlyoutWidget(QFrame):
         btn_folder.setFixedSize(26, 26)
         btn_folder.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_folder.setToolTip("Abrir carpeta de descargas de Windows")
-        btn_folder.setStyleSheet("""
-            QPushButton {
-                background: rgba(255, 255, 255, 0.08);
+        btn_folder.setStyleSheet(f"""
+            QPushButton {{
+                background: {bg_sec};
                 color: #FFFFFF;
                 border-radius: 6px;
-                border: none;
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 font-size: 12px;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.18);
-            }
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.2);
+            }}
         """)
         btn_folder.clicked.connect(self._abrir_carpeta_descargas)
         header_lay.addWidget(btn_folder)
@@ -284,19 +302,19 @@ class DownloadsFlyoutWidget(QFrame):
         btn_close = QPushButton("✕")
         btn_close.setFixedSize(26, 26)
         btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_close.setStyleSheet("""
-            QPushButton {
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
                 background: transparent;
-                color: #94A3B8;
+                color: {fg_sec};
                 border-radius: 6px;
                 border: none;
                 font-size: 11px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background: rgba(255, 255, 255, 0.1);
+            }}
+            QPushButton:hover {{
+                background: rgba(255, 255, 255, 0.12);
                 color: #FFFFFF;
-            }
+            }}
         """)
         btn_close.clicked.connect(self.hide)
         header_lay.addWidget(btn_close)
@@ -307,26 +325,29 @@ class DownloadsFlyoutWidget(QFrame):
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setStyleSheet("""
-            QScrollArea {
+            QScrollArea, QScrollArea > QWidget, QScrollArea > QWidget > QWidget {
                 border: none;
                 background: transparent;
-            }
+            }}
             QScrollBar:vertical {
                 background: transparent;
                 width: 5px;
                 margin: 0px;
-            }
+            }}
             QScrollBar::handle:vertical {
                 background: rgba(255, 255, 255, 0.2);
                 border-radius: 2px;
                 min-height: 20px;
-            }
+            }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
-            }
-        """)
+            }}
+        """.replace("}}", "}"))
+        self.scroll.viewport().setStyleSheet("background: transparent; border: none;")
+        self.scroll.viewport().setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
         self.list_container = QWidget()
+        self.list_container.setStyleSheet("background: transparent; border: none;")
         self.list_layout = QVBoxLayout(self.list_container)
         self.list_layout.setContentsMargins(0, 0, 0, 0)
         self.list_layout.setSpacing(6)
@@ -339,8 +360,8 @@ class DownloadsFlyoutWidget(QFrame):
         btn_ver_todas.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_ver_todas.setStyleSheet(f"""
             QPushButton {{
-                background-color: rgba(255, 255, 255, 0.06);
-                color: #E2E8F0;
+                background-color: {bg_sec};
+                color: {fg_p};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 6px;
                 padding: 7px;
@@ -357,6 +378,19 @@ class DownloadsFlyoutWidget(QFrame):
         main_lay.addWidget(btn_ver_todas)
 
         self.setFixedHeight(380)
+
+    def paintEvent(self, event):
+        opt = QStyleOption()
+        opt.initFrom(self)
+        painter = QPainter(self)
+        self.style().drawPrimitive(QStyle.PrimitiveElement.PE_Widget, opt, painter, self)
+
+    def actualizar_tema(self, colores):
+        """Actualiza los colores del Flyout cuando cambia el tema de la aplicación."""
+        if isinstance(colores, dict):
+            self.colores = colores
+            self.init_ui()
+            self.refrescar_contenido()
 
     def mostrar_bajo_boton(self, target_widget):
         """Calcula las coordenadas y muestra el flyout flotante justo debajo del botón de descargas."""
@@ -379,7 +413,6 @@ class DownloadsFlyoutWidget(QFrame):
 
     def refrescar_contenido(self):
         """Reconstruye dinámicamente las tarjetas de descargas activas y las últimas completadas."""
-        # Limpiar widgets actuales
         while self.list_layout.count():
             item = self.list_layout.takeAt(0)
             w = item.widget()
@@ -387,12 +420,14 @@ class DownloadsFlyoutWidget(QFrame):
                 w.deleteLater()
 
         self.active_items.clear()
+        acento = self.colores.get('acento', '#6366F1')
+        fg_sec = self.colores.get('fg_secundario', '#A0A0A0')
 
         # 1. Añadir descargas activas en curso
         active_dl = getattr(self.browser, "active_downloads", {})
         if active_dl:
             lbl_sec_act = QLabel("⏳ EN CURSO")
-            lbl_sec_act.setStyleSheet("color: #6366F1; font-size: 9px; font-weight: bold; letter-spacing: 1px;")
+            lbl_sec_act.setStyleSheet(f"color: {acento}; font-size: 9px; font-weight: bold; letter-spacing: 1px; border: none; background: transparent;")
             self.list_layout.addWidget(lbl_sec_act)
 
             for path, info in active_dl.items():
@@ -418,11 +453,10 @@ class DownloadsFlyoutWidget(QFrame):
         historial = self._obtener_historial_reciente()
         if historial:
             lbl_sec_hist = QLabel("📁 RECIENTES")
-            lbl_sec_hist.setStyleSheet("color: #94A3B8; font-size: 9px; font-weight: bold; letter-spacing: 1px; margin-top: 6px;")
+            lbl_sec_hist.setStyleSheet(f"color: {fg_sec}; font-size: 9px; font-weight: bold; letter-spacing: 1px; margin-top: 6px; border: none; background: transparent;")
             self.list_layout.addWidget(lbl_sec_hist)
 
             for item_data in historial[:6]:
-                # Omitir si actualmente está en activas
                 if item_data.get("path") in active_dl:
                     continue
                 item_widget = DownloadItemWidget(
@@ -435,7 +469,7 @@ class DownloadsFlyoutWidget(QFrame):
         if not active_dl and not historial:
             lbl_empty = QLabel("No hay descargas recientes\nLos archivos que descargues aparecerán aquí.")
             lbl_empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lbl_empty.setStyleSheet("color: #64748B; font-size: 11px; padding: 50px 10px;")
+            lbl_empty.setStyleSheet(f"color: {fg_sec}; font-size: 11px; padding: 50px 10px; border: none; background: transparent;")
             self.list_layout.addWidget(lbl_empty)
 
         self.list_layout.addStretch()
@@ -487,7 +521,6 @@ class DownloadsFlyoutWidget(QFrame):
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(dl_dir)))
 
     def _cancelar_descarga_activa(self, path):
-        # Cancelar en WebView2 si es posible
         if hasattr(self.browser, "cancelar_descarga"):
             self.browser.cancelar_descarga(path)
         if path in getattr(self.browser, "active_downloads", {}):

@@ -1030,3 +1030,14 @@ class MultiTabBrowser(QWidget):
             return self.session_manager.restaurar_estado_pestanas()
         self.add_new_tab(QUrl("https://www.google.com"), "Google")
         self.pestanas_restauradas = True
+
+    def actualizar_tema(self, colores):
+        """Actualiza la paleta de colores del navegador y componentes emergentes."""
+        if isinstance(colores, dict):
+            self.colores = colores
+            if hasattr(self, "downloads_flyout") and self.downloads_flyout:
+                try:
+                    self.downloads_flyout.actualizar_tema(colores)
+                except Exception:
+                    pass
+

@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.2.1",
+  "version": "21.2.2",
   "fecha": "2026-10-27",
-  "descripcion": "1. 📥 Vista emergente flotante de descargas (Flyout tipo Chrome/Edge) anclada a la barra de navegación con progreso en vivo, apertura y cancelación rápida.\n2. ⚡ Corrección de descargas de archivos grandes: retención COM activa para evitar que se queden en 'descargando'.\n3. 🔄 Sincronización de descargas fuera del predeterminado: escaneo de carpeta Downloads del sistema y rutas personalizadas.\n4. 🎨 Rediseño responsivo del gestor de descargas: tarjetas adaptativas, botones fijos visibles (Abrir, Carpeta, Quitar) y monitoreo en vivo de descargas activas.",
+  "descripcion": "🎨 Corrección de colores y temas en el panel flotante de descargas (Flyout):\n+ Fondo integrado con el tema de la aplicación (evita el fondo blanco nativo de Qt en popups).\n+ Corrección de efecto hover: iluminación sutil con el color terciario y borde de acento en lugar de volverse blanco.\n+ Transparencia completa en el viewport del scroll area y sincronización dinámica con el tema del usuario.",
   "ultima_actualizacion": "2026-10-27",
   "historial": [
+    {
+      "version": "21.2.2",
+      "fecha": "2026-10-27 00:34:14",
+      "descripcion": "🎨 Corrección de colores y temas en el panel flotante de descargas (Flyout):\n+ Fondo integrado con el tema de la aplicación (evita el fondo blanco nativo de Qt en popups).\n+ Corrección de efecto hover: iluminación sutil con el color terciario y borde de acento en lugar de volverse blanco.\n+ Transparencia completa en el viewport del scroll area y sincronización dinámica con el tema del usuario."
+    },
     {
       "version": "21.2.1",
       "fecha": "2026-10-27 00:30:00",
