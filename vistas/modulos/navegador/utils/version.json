@@ -1,10 +1,20 @@
 {
   "modulo": "navegador",
-  "version": "21.3.0",
+  "version": "21.3.2",
   "fecha": "2026-10-27",
-  "descripcion": "+ Correccion de bugs menores\n+ implementaciones visuales de carga y configuraciones extras",
-  "ultima_actualizacion": "2026-10-27",
+  "descripcion": "Actualización del módulo Navegador v21.3.2",
+  "ultima_actualizacion": "2026-10-28",
   "historial": [
+    {
+      "version": "21.3.2",
+      "fecha": "2026-10-28 09:49:24",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.3.1",
+      "fecha": "2026-10-27 23:40:00",
+      "descripcion": "🛡️ Corrección integral de descargas falsas al 100% y bloqueos por antivirus:\n+ Detección proactiva de interrupciones por Windows Defender y antivirus (FileMalicious, FileBlockedByPolicy, etc.).\n+ Watchdog inteligente para descargas en 100% cuyos archivos temporales son eliminados por seguridad.\n+ Búsqueda y eliminación de descargas activas insensible a mayúsculas/minúsculas y barras en Windows.\n+ Estado visual dinámico 'Finalizando y verificando...' y tarjetas de aviso con motivo detallado en el Flyout y Gestor."
+    },
     {
       "version": "21.3.0",
       "fecha": "2026-10-27 15:59:50",

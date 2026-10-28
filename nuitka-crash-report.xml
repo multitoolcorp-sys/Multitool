@@ -1,0 +1,78 @@
+<?xml version='1.0' encoding='utf8'?>
+<nuitka-compilation-report nuitka_version="4.1.3" nuitka_commercial_version="not installed" mode="module" completion="exception">
+  <exception exception_type="OSError" exception_value="[Errno 22] Invalid argument">
+Traceback (most recent call last):
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\MainControl.py", line 1385, in main
+    _main()
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\MainControl.py", line 1203, in _main
+    main_module = _createMainModule()
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\MainControl.py", line 347, in _createMainModule
+    optimizeModules(main_module.getOutputFilename())
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\optimizations\Optimization.py", line 410, in optimizeModules
+    _optimizeModules(output_filename)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\optimizations\Optimization.py", line 374, in _optimizeModules
+    unfinished_modules = _makeOptimizationPass()
+                         ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\optimizations\Optimization.py", line 292, in _makeOptimizationPass
+    _restartProgress()
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\optimizations\Optimization.py", line 216, in _restartProgress
+    optimization_logger.info_if_file(
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 574, in info_if_file
+    other_logger.info(message, style=style)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 493, in info
+    self._printFormatted(
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 412, in _printFormatted
+    self.my_print(formatted_message, style=style, file=file_handle)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 363, in my_print
+    my_print(message, **kwargs)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 343, in my_print
+    _my_print(is_atty, args, kwargs)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 277, in _my_print
+    _my_print2(is_atty, args, kwargs)
+  File "C:\Users\Yuiga_Nariyuki\AppData\Local\Programs\Python\Python312\Lib\site-packages\nuitka\Tracing.py", line 312, in _my_print2
+    print(*args, end=end, **kwargs)
+OSError: [Errno 22] Invalid argument
+</exception>
+  <performance>
+    <memory_usage name="after_launch" value="37339136" />
+  </performance>
+  <data_composer blob_size="None" />
+  <performance-totals>
+    <optimization-time pass="all" time="0.0000" module_count="0" />
+    <code-generation-time time="0.0000" module_count="0" />
+  </performance-totals>
+  <python_binary filename="${cwd}\updates_temp\navegador.cp312-win_amd64.pyd" />
+  <command_line>
+    <option value="--assume-yes-for-downloads" />
+    <option value="--module" />
+    <option value="--show-progress" />
+    <option value="--output-dir=C:\Users\Yuiga_Nariyuki\Desktop\multitool\multitool1\updates_temp" />
+    <option value="--jobs=8" />
+    <option value="--lto=no" />
+    <option value="C:\Users\Yuiga_Nariyuki\Desktop\multitool\multitool1\vistas\modulos\navegador\navegador.py" />
+  </command_line>
+  <plugins>
+    <plugin name="anti-bloat" user_enabled="no" />
+    <plugin name="gi" user_enabled="no" />
+    <plugin name="implicit-imports" user_enabled="no" />
+    <plugin name="options-nanny" user_enabled="no" />
+    <plugin name="pkg-resources" user_enabled="no" />
+    <plugin name="transformers" user_enabled="no" />
+  </plugins>
+  <distributions />
+  <python python_exe="${sys.prefix}\python.exe" python_flavor="CPython Official" python_version="3.12.0" os_name="Windows" os_release="10" arch_name="x86_64" filesystem_encoding="utf-8">
+    <search_path>
+      <path value="${cwd}" />
+      <path value="${cwd}\vistas\modulos\navegador" />
+      <path value="${sys.prefix}\DLLs" />
+      <path value="${sys.prefix}\Lib" />
+      <path value="${sys.prefix}" />
+      <path value="${sys.prefix}\Lib\site-packages" />
+      <path value="${sys.prefix}\Lib\site-packages\win32" />
+      <path value="${sys.prefix}\Lib\site-packages\win32\lib" />
+      <path value="${sys.prefix}\Lib\site-packages\pythonwin" />
+    </search_path>
+  </python>
+  <output run_filename="${cwd}\updates_temp\navegador.cp312-win_amd64.pyd" />
+</nuitka-compilation-report>

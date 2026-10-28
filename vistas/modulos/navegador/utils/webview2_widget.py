@@ -32,6 +32,31 @@ WEBVIEW2_AVAILABLE, System, WinForms, WV2, CoreWV2 = cargar_ensamblados_webview2
 
 
 
+def traducir_motivo_descarga(reason_code):
+    """Traduce los códigos de interrupción de Chromium/WebView2 a explicaciones claras en español."""
+    s = str(reason_code or "").strip()
+    sl = s.lower()
+    if "malicious" in sl or "filemalicious" in sl:
+        return "Bloqueado por el antivirus (amenaza o virus detectado)"
+    if "security" in sl or "filesecuritycheckfailed" in sl:
+        return "Bloqueado por análisis de seguridad de Windows o antivirus"
+    if "blockedbypolicy" in sl:
+        return "Descarga bloqueada por directivas de seguridad"
+    if "access" in sl or "fileaccessdenied" in sl:
+        return "Acceso denegado (el antivirus bloqueó el archivo o permisos insuficientes)"
+    if "usercanceled" in sl or "cancel" in sl:
+        return "Cancelado por el usuario"
+    if "nospace" in sl or "filenospace" in sl:
+        return "Espacio insuficiente en disco"
+    if "network" in sl or "disconnect" in sl:
+        return "Error de red o conexión perdida"
+    if "timeout" in sl:
+        return "Tiempo de espera de red agotado"
+    if "crashed" in sl:
+        return "El proceso de descarga falló inesperadamente"
+    return f"Descarga interrumpida ({s})" if s else "Descarga interrumpida"
+
+
 class WebView2Widget(QWidget):
     """Widget de PyQt6 que contiene un control WebView2 nativo de Microsoft Edge."""
 
@@ -64,8 +89,9 @@ class WebView2Widget(QWidget):
         self._zoom_factor = float(initial_zoom) if initial_zoom else 1.0
         self.is_fullscreen = False
         self.new_window_handler = None
-        self._context_menu_opened_time = 0
         self._active_dl_operations = {}  # Retiene referencias COM/.NET a DownloadOperation para evitar recolección de basura prematura
+        self._op_to_path = {}             # Mapea id(DownloadOperation) a la ruta final esperada
+        self._op_100pct_time = {}         # Registra el timestamp en que cada descarga alcanzó el 100% de bytes
         
         # Ruta de datos persistentes para sesión de Google / YouTube / Cookies
         if user_data_folder is None:
@@ -589,6 +615,7 @@ class WebView2Widget(QWidget):
                 args.Handled = True
                 if dl_op and result_path:
                     self._active_dl_operations[result_path] = dl_op
+                    self._op_to_path[id(dl_op)] = result_path
                 if remember_last_dir and result_path:
                     try:
                         self._guardar_ultima_carpeta_descarga(config_file, str(Path(result_path).parent))
@@ -607,6 +634,7 @@ class WebView2Widget(QWidget):
                 args.Handled = True
                 if dl_op and result_path:
                     self._active_dl_operations[result_path] = dl_op
+                    self._op_to_path[id(dl_op)] = result_path
                 self.downloadStarting.emit(uri, result_path)
             else:
                 deferral = args.GetDeferral()
@@ -634,6 +662,7 @@ class WebView2Widget(QWidget):
                         args.Handled = True
                         if dl_op and result_path:
                             self._active_dl_operations[result_path] = dl_op
+                            self._op_to_path[id(dl_op)] = result_path
                         if remember_last_dir:
                             self._guardar_ultima_carpeta_descarga(config_file, str(Path(target_file).parent))
                         self.downloadStarting.emit(uri, result_path)
@@ -657,12 +686,35 @@ class WebView2Widget(QWidget):
         except Exception as e:
             print(f"[WebView2Widget] Error en _on_download_starting: {e}")
 
+
+
+
+
+
     def _on_download_bytes_received(self, sender, args):
         """Notifica el progreso de bytes descargados en tiempo real."""
         try:
+            state_str = str(getattr(sender, "State", ""))
+            if "Interrupted" in state_str:
+                self._on_download_state_changed(sender, None)
+                return
+
             recv = int(sender.BytesReceived)
             total = int(getattr(sender, "TotalBytesToReceive", 0) or 0)
             fpath = str(sender.ResultFilePath or "")
+            op_id = id(sender)
+            if not fpath:
+                fpath = self._op_to_path.get(op_id, "")
+
+            # Si alcanzó el 100%, registrar timestamp para el watchdog y verificar interrupción
+            if total > 0 and recv >= total:
+                if op_id not in self._op_100pct_time:
+                    self._op_100pct_time[op_id] = time.time()
+                intr = getattr(sender, "InterruptReason", None)
+                if intr is not None and str(intr) not in ("None", "0"):
+                    self._on_download_state_changed(sender, None)
+                    return
+
             self.downloadProgress.emit(fpath, recv, total)
         except Exception:
             pass
@@ -670,9 +722,13 @@ class WebView2Widget(QWidget):
     def _on_download_state_changed(self, sender, args):
         """Notifica cuando la descarga se completa exitosamente o es interrumpida."""
         try:
-            state_str = str(sender.State)
-            fpath = str(sender.ResultFilePath or "")
-            uri = str(sender.Uri or "")
+            state_str = str(getattr(sender, "State", ""))
+            fpath = str(getattr(sender, "ResultFilePath", "") or "")
+            op_id = id(sender)
+            if not fpath:
+                fpath = self._op_to_path.get(op_id, "")
+            uri = str(getattr(sender, "Uri", "") or "")
+
             if "Completed" in state_str:
                 if fpath.lower().endswith(".crx") or "extensions" in fpath.lower():
                     try:
@@ -680,29 +736,84 @@ class WebView2Widget(QWidget):
                     except Exception as ex_inst:
                         print(f"[WebView2Widget] Error auto-instalando CRX descargado: {ex_inst}")
                 self.downloadCompleted.emit(fpath, uri)
-                # Limpiar referencias retenidas para esta descarga completada
                 self._limpiar_dl_operation(sender, fpath)
             elif "Interrupted" in state_str:
-                reason = str(getattr(sender, "InterruptReason", "Cancelado o Error"))
-                self.downloadFailed.emit(fpath, reason)
+                raw_reason = getattr(sender, "InterruptReason", "Error")
+                reason_traducido = traducir_motivo_descarga(raw_reason)
+                self.downloadFailed.emit(fpath, reason_traducido)
                 self._limpiar_dl_operation(sender, fpath)
         except Exception:
             pass
 
     def _limpiar_dl_operation(self, sender, fpath):
         try:
-            op_id = id(sender)
+            op_id = id(sender) if sender is not None else None
             if op_id in self._active_dl_operations:
                 del self._active_dl_operations[op_id]
-            if fpath in self._active_dl_operations:
+            if op_id in self._op_to_path:
+                del self._op_to_path[op_id]
+            if op_id in self._op_100pct_time:
+                del self._op_100pct_time[op_id]
+            if fpath and fpath in self._active_dl_operations:
                 del self._active_dl_operations[fpath]
         except Exception:
             pass
+
+    def verificar_descargas_activas(self):
+        """Watchdog que detecta y resuelve descargas bloqueadas por el antivirus o colgadas al 100%."""
+        now = time.time()
+        to_clean = []
+        for op_id, dl_op in list(self._active_dl_operations.items()):
+            if not isinstance(op_id, int):
+                continue
+            try:
+                state_str = str(getattr(dl_op, "State", ""))
+                fpath = str(getattr(dl_op, "ResultFilePath", "") or "")
+                if not fpath:
+                    fpath = self._op_to_path.get(op_id, "")
+                uri = str(getattr(dl_op, "Uri", "") or "")
+
+                if "Interrupted" in state_str:
+                    raw_reason = getattr(dl_op, "InterruptReason", "Error")
+                    self.downloadFailed.emit(fpath, traducir_motivo_descarga(raw_reason))
+                    to_clean.append((dl_op, fpath))
+                elif "Completed" in state_str:
+                    self.downloadCompleted.emit(fpath, uri)
+                    to_clean.append((dl_op, fpath))
+                else:
+                    intr = getattr(dl_op, "InterruptReason", None)
+                    if intr is not None and str(intr) not in ("None", "0"):
+                        self.downloadFailed.emit(fpath, traducir_motivo_descarga(intr))
+                        to_clean.append((dl_op, fpath))
+                        continue
+
+                    # Comprobar si lleva más de 4 segundos al 100% sin evento final
+                    t100 = self._op_100pct_time.get(op_id, 0)
+                    if t100 > 0 and (now - t100) > 4:
+                        p_final = Path(fpath) if fpath else None
+                        p_cr = Path(str(fpath) + ".crdownload") if fpath else None
+                        if p_final and p_final.exists() and p_final.stat().st_size > 0:
+                            self.downloadCompleted.emit(fpath, uri)
+                            to_clean.append((dl_op, fpath))
+                        elif p_final and not p_final.exists() and (not p_cr or not p_cr.exists()):
+                            self.downloadFailed.emit(fpath, "Bloqueado o eliminado por el antivirus")
+                            to_clean.append((dl_op, fpath))
+            except Exception:
+                pass
+
+        for op, fp in to_clean:
+            self._limpiar_dl_operation(op, fp)
 
     def cancel_download(self, fpath):
         """Cancela una operación de descarga activa si existe."""
         try:
             dl_op = self._active_dl_operations.get(fpath)
+            if not dl_op:
+                norm_target = os.path.normcase(os.path.normpath(str(fpath)))
+                for k, op in list(self._active_dl_operations.items()):
+                    if isinstance(k, str) and os.path.normcase(os.path.normpath(k)) == norm_target:
+                        dl_op = op
+                        break
             if dl_op and hasattr(dl_op, "Cancel"):
                 dl_op.Cancel()
                 return True

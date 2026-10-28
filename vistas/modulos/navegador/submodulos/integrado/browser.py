@@ -95,9 +95,48 @@ class MultiTabBrowser(QWidget):
         """Cancela la descarga activa en los webviews."""
         for i in range(self.tabs.count()):
             container = self.tabs.widget(i)
-            if container and hasattr(container, "browser") and hasattr(container.browser, "cancel_download"):
-                if container.browser.cancel_download(path):
-                    break
+            wv = getattr(container, "_web_view", None) or getattr(container, "browser", None)
+            if wv and hasattr(wv, "cancel_download"):
+                try:
+                    if wv.cancel_download(path):
+                        break
+                except Exception:
+                    pass
+        if hasattr(self, "actions_handler"):
+            self.actions_handler._remover_descarga_activa(path)
+
+    def verificar_descargas_activas(self):
+        """Verifica el estado de las descargas en los WebView2 para detectar interrupciones de antivirus o bloqueos al 100%."""
+        for i in range(self.tabs.count()):
+            container = self.tabs.widget(i)
+            wv = getattr(container, "_web_view", None) or getattr(container, "browser", None)
+            if wv and hasattr(wv, "verificar_descargas_activas"):
+                try:
+                    wv.verificar_descargas_activas()
+                except Exception:
+                    pass
+
+        now = time.time()
+        a_limpiar = []
+        for path, info in list(self.active_downloads.items()):
+            recv = info.get("recv", 0)
+            tot = info.get("total", 0)
+            if tot > 0 and recv >= tot:
+                t100 = info.get("t100", 0)
+                if not t100:
+                    info["t100"] = now
+                elif (now - t100) > 4:
+                    p = Path(path) if path else None
+                    p_cr = Path(str(path) + ".crdownload") if path else None
+                    if p and p.exists() and p.stat().st_size > 0:
+                        a_limpiar.append((path, "completed"))
+                    elif p and not p.exists() and (not p_cr or not p_cr.exists()):
+                        a_limpiar.append((path, "antivirus"))
+        for p, modo in a_limpiar:
+            if modo == "completed":
+                self.actions_handler.on_download_completed(p, self.active_downloads.get(p, {}).get("url", ""), None)
+            else:
+                self.actions_handler.on_download_failed(p, "Bloqueado o eliminado por el antivirus", None)
 
 
     def inicializar_ui(self):

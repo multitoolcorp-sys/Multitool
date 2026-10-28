@@ -281,19 +281,25 @@ class TabNavegadorDescargas(QWidget):
             card_info = self.active_cards[dl_id]
             if total > 0:
                 pct = int((recv / total) * 100)
-                card_info["pbar"].setValue(pct)
+                card_info["pbar"].setValue(min(100, pct))
                 recv_mb = recv / (1024 * 1024)
                 tot_mb = total / (1024 * 1024)
-                card_info["lbl"].setText(f"{recv_mb:.1f} MB de {tot_mb:.1f} MB ({pct}%)")
+                if pct >= 100:
+                    card_info["lbl"].setText(f"{recv_mb:.1f} MB • Finalizando y verificando...")
+                else:
+                    card_info["lbl"].setText(f"{recv_mb:.1f} MB de {tot_mb:.1f} MB ({pct}%)")
             else:
                 recv_mb = recv / (1024 * 1024)
                 card_info["lbl"].setText(f"{recv_mb:.1f} MB transferidos")
 
-        # 2. Remover tarjetas de WebView2 que ya terminaron
-        wv2_keys_in_cards = [k for k in self.active_cards if k.startswith("wv2_")]
+        # 2. Remover tarjetas de WebView2 que ya terminaron o fueron interrumpidas
+        import os
+        norm_active = {os.path.normcase(os.path.normpath(str(p))) for p in browser_active.keys()}
+        wv2_keys_in_cards = [k for k in list(self.active_cards.keys()) if k.startswith("wv2_")]
         for k in wv2_keys_in_cards:
             orig_path = k.replace("wv2_", "", 1)
-            if orig_path not in browser_active:
+            norm_orig = os.path.normcase(os.path.normpath(str(orig_path)))
+            if orig_path not in browser_active and norm_orig not in norm_active:
                 self.active_cards[k]["frame"].deleteLater()
                 del self.active_cards[k]
 

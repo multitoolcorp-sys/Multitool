@@ -17,13 +17,14 @@ from PyQt6.QtGui import QFont, QDesktopServices, QIcon, QPainter
 
 class DownloadItemWidget(QFrame):
     """Fila interactiva para una descarga (activa o completada) dentro del flyout emergente."""
-    def __init__(self, data, is_active=False, colores=None, on_cancel=None, parent=None):
+    def __init__(self, data, is_active=False, is_failed=False, colores=None, on_cancel=None, parent=None):
         super().__init__(parent)
         self.setObjectName("DownloadItemWidget")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.colores = colores or {}
         self.data = data
         self.is_active = is_active
+        self.is_failed = is_failed
         self.on_cancel = on_cancel
         self.init_ui()
 
@@ -34,15 +35,18 @@ class DownloadItemWidget(QFrame):
         fg_p = self.colores.get('fg_principal', '#FFFFFF')
         fg_sec = self.colores.get('fg_secundario', '#A0A0A0')
         
+        border_style = "1px solid rgba(239, 68, 68, 0.4)" if self.is_failed else "1px solid rgba(255, 255, 255, 0.08)"
+        hover_border = "#EF4444" if self.is_failed else acento
+
         self.setStyleSheet(f"""
             QFrame#DownloadItemWidget {{
                 background-color: {bg_card};
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                border: {border_style};
                 border-radius: 8px;
             }}
             QFrame#DownloadItemWidget:hover {{
                 background-color: {bg_hover};
-                border: 1px solid {acento};
+                border: 1px solid {hover_border};
             }}
         """)
 
@@ -58,7 +62,9 @@ class DownloadItemWidget(QFrame):
         nombre = self.data.get("name") or self.data.get("nombre") or "archivo"
         ext = Path(nombre).suffix.lower()
         ico = "📄"
-        if ext in (".exe", ".msi", ".bat", ".cmd"):
+        if self.is_failed:
+            ico = "⚠️"
+        elif ext in (".exe", ".msi", ".bat", ".cmd"):
             ico = "⚙️"
         elif ext in (".zip", ".rar", ".7z", ".tar", ".gz"):
             ico = "📦"
@@ -83,7 +89,29 @@ class DownloadItemWidget(QFrame):
         self.lbl_name.setToolTip(nombre)
         top_row.addWidget(self.lbl_name, 1)
 
-        if self.is_active:
+        if self.is_failed:
+            # Botón para descartar tarjeta de descarga interrumpida
+            btn_dismiss = QPushButton("✕")
+            btn_dismiss.setFixedSize(22, 22)
+            btn_dismiss.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_dismiss.setToolTip("Descartar")
+            btn_dismiss.setStyleSheet("""
+                QPushButton {
+                    background: rgba(255, 255, 255, 0.08);
+                    color: #A0A0A0;
+                    border: none;
+                    border-radius: 11px;
+                    font-size: 10px;
+                }
+                QPushButton:hover {
+                    background: rgba(239, 68, 68, 0.3);
+                    color: #FFFFFF;
+                }
+            """)
+            if self.on_cancel:
+                btn_dismiss.clicked.connect(self.on_cancel)
+            top_row.addWidget(btn_dismiss)
+        elif self.is_active:
             # Botón cancelar para descargas activas
             btn_cancel = QPushButton("✕")
             btn_cancel.setFixedSize(22, 22)
@@ -150,7 +178,13 @@ class DownloadItemWidget(QFrame):
 
         layout.addLayout(top_row)
 
-        if self.is_active:
+        if self.is_failed:
+            reason = self.data.get("reason", "Descarga interrumpida")
+            lbl_fail = QLabel(f"⚠️ {reason}")
+            lbl_fail.setStyleSheet("color: #F87171; font-size: 10px; border: none; background: transparent;")
+            lbl_fail.setWordWrap(True)
+            layout.addWidget(lbl_fail)
+        elif self.is_active:
             # Barra de progreso
             self.pbar = QProgressBar()
             self.pbar.setFixedHeight(6)
@@ -198,10 +232,13 @@ class DownloadItemWidget(QFrame):
             return
         if total_bytes > 0:
             pct = int((recv_bytes / total_bytes) * 100)
-            self.pbar.setValue(pct)
+            self.pbar.setValue(min(100, pct))
             recv_mb = recv_bytes / (1024 * 1024)
             tot_mb = total_bytes / (1024 * 1024)
-            self.lbl_status.setText(f"{recv_mb:.1f} MB de {tot_mb:.1f} MB ({pct}%)")
+            if pct >= 100:
+                self.lbl_status.setText(f"{recv_mb:.1f} MB • Finalizando y verificando...")
+            else:
+                self.lbl_status.setText(f"{recv_mb:.1f} MB de {tot_mb:.1f} MB ({pct}%)")
         else:
             recv_mb = recv_bytes / (1024 * 1024)
             self.lbl_status.setText(f"{recv_mb:.1f} MB transferidos")
@@ -236,6 +273,7 @@ class DownloadsFlyoutWidget(QFrame):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setFixedWidth(380)
         self.active_items = {} # {path: DownloadItemWidget}
+        self.failed_items = {} # {path: dict con info de error}
 
         # Temporizador para monitoreo en tiempo real mientras el panel esté visible
         self.timer_live = QTimer(self)
@@ -429,16 +467,38 @@ class DownloadsFlyoutWidget(QFrame):
 
     def _actualizar_en_vivo(self):
         """Monitorea el progreso de descargas en vivo mientras el flyout está desplegado."""
+        if hasattr(self.browser, "verificar_descargas_activas"):
+            try:
+                self.browser.verificar_descargas_activas()
+            except Exception:
+                pass
+
         active_dl = getattr(self.browser, "active_downloads", {})
         if len(active_dl) != len(self.active_items):
             self.refrescar_contenido()
             return
-        for path, info in active_dl.items():
+        for path, info in list(active_dl.items()):
             if path in self.active_items:
                 self.active_items[path].actualizar_progreso(info.get("recv", 0), info.get("total", 0))
             else:
                 self.refrescar_contenido()
                 return
+
+    def notificar_fallida(self, path, reason):
+        """Registra una descarga interrumpida (ej. antivirus) para mostrar advertencia clara."""
+        fname = Path(path).name if path else "Descarga"
+        self.failed_items[path] = {
+            "name": fname,
+            "path": path,
+            "reason": reason,
+            "time": time.time()
+        }
+        self.refrescar_contenido()
+
+    def _descartar_fallida(self, path):
+        if path in self.failed_items:
+            del self.failed_items[path]
+        self.refrescar_contenido()
 
     def refrescar_contenido(self):
         """Reconstruye dinámicamente las tarjetas de descargas activas y las últimas completadas."""
@@ -452,7 +512,23 @@ class DownloadsFlyoutWidget(QFrame):
         acento = self.colores.get('acento', '#6366F1')
         fg_sec = self.colores.get('fg_secundario', '#A0A0A0')
 
-        # 1. Añadir descargas activas en curso
+        # 1. Añadir descargas interrumpidas o bloqueadas por antivirus
+        if self.failed_items:
+            lbl_sec_fail = QLabel("⚠️ INTERRUMPIDAS / BLOQUEADAS")
+            lbl_sec_fail.setStyleSheet("color: #EF4444; font-size: 9px; font-weight: bold; letter-spacing: 1px; border: none; background: transparent;")
+            self.list_layout.addWidget(lbl_sec_fail)
+
+            for fpath, finfo in list(self.failed_items.items()):
+                item_widget = DownloadItemWidget(
+                    data=finfo,
+                    is_active=False,
+                    is_failed=True,
+                    colores=self.colores,
+                    on_cancel=lambda p=fpath: self._descartar_fallida(p)
+                )
+                self.list_layout.addWidget(item_widget)
+
+        # 2. Añadir descargas activas en curso
         active_dl = getattr(self.browser, "active_downloads", {})
         if active_dl:
             lbl_sec_act = QLabel("⏳ EN CURSO")
@@ -565,7 +641,9 @@ class DownloadsFlyoutWidget(QFrame):
     def _cancelar_descarga_activa(self, path):
         if hasattr(self.browser, "cancelar_descarga"):
             self.browser.cancelar_descarga(path)
-        if path in getattr(self.browser, "active_downloads", {}):
+        if hasattr(self.browser, "actions_handler") and hasattr(self.browser.actions_handler, "_remover_descarga_activa"):
+            self.browser.actions_handler._remover_descarga_activa(path)
+        elif path in getattr(self.browser, "active_downloads", {}):
             del self.browser.active_downloads[path]
         self.refrescar_contenido()
 

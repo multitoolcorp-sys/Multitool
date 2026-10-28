@@ -210,26 +210,49 @@ class BrowserActionsHandler:
         dl_dir = Path.home() / "Downloads"
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(dl_dir)))
 
+    def _remover_descarga_activa(self, path):
+        """Remueve la descarga de active_downloads con coincidencia flexible de ruta y mayúsculas."""
+        if not path:
+            return None
+        norm_target = os.path.normcase(os.path.normpath(str(path)))
+        keys_to_del = []
+        info_encontrada = None
+        for k, v in list(self.b.active_downloads.items()):
+            norm_k = os.path.normcase(os.path.normpath(str(k)))
+            if norm_k == norm_target or str(k) == str(path) or (Path(k).name.lower() == Path(path).name.lower() and Path(path).name):
+                keys_to_del.append(k)
+                info_encontrada = v
+        for k in keys_to_del:
+            if k in self.b.active_downloads:
+                del self.b.active_downloads[k]
+        return info_encontrada
+
     def on_download_starting(self, uri, path, browser):
         fname = Path(path).name if path else "descarga"
-        self.b.active_downloads[path] = {"url": uri, "recv": 0, "total": 0, "name": fname}
+        self.b.active_downloads[path] = {"url": uri, "recv": 0, "total": 0, "name": fname, "time": time.time()}
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
         if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
             self.b.downloads_flyout.notificar_descarga_iniciada(path, uri)
 
     def on_download_progress(self, path, recv, total, browser):
-        if path in self.b.active_downloads:
-            self.b.active_downloads[path]["recv"] = recv
-            self.b.active_downloads[path]["total"] = total
+        target_key = path
+        if path not in self.b.active_downloads:
+            norm_target = os.path.normcase(os.path.normpath(str(path)))
+            for k in list(self.b.active_downloads.keys()):
+                if os.path.normcase(os.path.normpath(str(k))) == norm_target:
+                    target_key = k
+                    break
+        if target_key in self.b.active_downloads:
+            self.b.active_downloads[target_key]["recv"] = recv
+            self.b.active_downloads[target_key]["total"] = total
             if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
                 self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
             if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
-                self.b.downloads_flyout.notificar_progreso(path, recv, total)
+                self.b.downloads_flyout.notificar_progreso(target_key, recv, total)
 
     def on_download_completed(self, path, uri, browser):
-        if path in self.b.active_downloads:
-            del self.b.active_downloads[path]
+        self._remover_descarga_activa(path)
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
         fname = Path(path).name if path else "archivo"
@@ -252,10 +275,9 @@ class BrowserActionsHandler:
         except Exception as e:
             print(f"[Navegador] Error registrando descarga en gestor: {e}")
 
-        # Ahora notificar al flyout en tiempo real cuando ya está en el historial
+        # Notificar al flyout en tiempo real cuando ya está en el historial
         if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
             self.b.downloads_flyout.notificar_completada(path, uri)
-
 
         try:
             from vistas.utils.notification import show_notification
@@ -275,14 +297,16 @@ class BrowserActionsHandler:
         )
 
     def on_download_failed(self, path, reason, browser):
-        if path in self.b.active_downloads:
-            del self.b.active_downloads[path]
+        self._remover_descarga_activa(path)
         if hasattr(self.b, "toolbar") and hasattr(self.b.toolbar, "actualizar_descargas"):
             self.b.toolbar.actualizar_descargas(len(self.b.active_downloads))
         if hasattr(self.b, "downloads_flyout") and self.b.downloads_flyout:
-            self.b.downloads_flyout.refrescar_contenido()
+            if hasattr(self.b.downloads_flyout, "notificar_fallida"):
+                self.b.downloads_flyout.notificar_fallida(path, reason)
+            else:
+                self.b.downloads_flyout.refrescar_contenido()
 
-        if "usercanceled" in str(reason).lower() or "cancel" in str(reason).lower():
+        if "usercanceled" in str(reason).lower() or "cancelado por el usuario" in str(reason).lower():
             return
         fname = Path(path).name if path else "archivo"
         try:
@@ -290,9 +314,9 @@ class BrowserActionsHandler:
         except ImportError:
             from .....utils.notification import show_notification
         show_notification(
-            title=f"Descarga Interrumpida: {fname}",
-            message=f"Motivo: {reason}",
-            duration=5000
+            title=f"⚠️ Descarga Interrumpida: {fname}",
+            message=f"{reason}",
+            duration=7000
         )
 
     def handle_new_window_requested(self, sender, args, browser):
