@@ -1,10 +1,20 @@
 {
   "modulo": "navegador",
-  "version": "21.3.2",
+  "version": "21.3.4",
   "fecha": "2026-10-27",
-  "descripcion": "Actualización del módulo Navegador v21.3.2",
+  "descripcion": "BUG FIXS",
   "ultima_actualizacion": "2026-10-28",
   "historial": [
+    {
+      "version": "21.3.4",
+      "fecha": "2026-10-28 15:45:15",
+      "descripcion": "BUG FIXS"
+    },
+    {
+      "version": "21.3.3",
+      "fecha": "2026-10-28 15:38:50",
+      "descripcion": "Actualización de módulo."
+    },
     {
       "version": "21.3.2",
       "fecha": "2026-10-28 09:49:24",

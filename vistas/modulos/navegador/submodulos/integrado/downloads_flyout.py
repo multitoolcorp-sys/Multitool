@@ -4,6 +4,7 @@ Ofrece la experiencia idéntica a Google Chrome / Microsoft Edge con panel flota
 Integrado armónicamente con la paleta de colores y tema de la aplicación.
 """
 import os
+import time
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import (

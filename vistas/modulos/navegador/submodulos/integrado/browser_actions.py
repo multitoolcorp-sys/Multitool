@@ -2,6 +2,8 @@
 browser_actions.py - Manejadores de acciones, menús contextuales, descargas y atajos para MultiTabBrowser
 """
 
+import os
+import time
 from pathlib import Path
 from PyQt6.QtWidgets import QMenu
 from PyQt6.QtCore import QUrl, Qt, QTimer
