@@ -1,10 +1,15 @@
 {
   "modulo": "navegador",
-  "version": "21.3.4",
+  "version": "21.3.5",
   "fecha": "2026-10-27",
-  "descripcion": "BUG FIXS",
+  "descripcion": "BUG FIXS\n- Error downlaods/error al descargar archivos o documentos",
   "ultima_actualizacion": "2026-10-28",
   "historial": [
+    {
+      "version": "21.3.5",
+      "fecha": "2026-10-28 16:06:57",
+      "descripcion": "BUG FIXS\n- Error downlaods/error al descargar archivos o documentos"
+    },
     {
       "version": "21.3.4",
       "fecha": "2026-10-28 15:45:15",
