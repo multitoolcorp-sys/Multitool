@@ -15,7 +15,7 @@ from PyQt6.QtGui import QIcon, QAction, QFont, QKeySequence, QShortcut
 from vistas.utils.titlebar_app import CustomTitleBarApp
 from vistas.utils.notification import show_notification
 from vistas.scrollable import ScrollableNavBar
-from vistas.dashboard_layout import DashboardSidebar, DashboardTabBar, DashboardEmptyView
+from vistas.dashboard_layout import DashboardSidebar, DashboardTabBar, DashboardEmptyView, CommandPaletteDialog
 from vistas.utils.updates_log_dialog import UpdatesLogDialog
 
 class BaseAppGUI(QMainWindow):
@@ -106,6 +106,15 @@ class BaseAppGUI(QMainWindow):
         self.sidebar.submoduleSelected.connect(self._on_dashboard_submodule_selected)
         self.editor_tab_bar.tabSelected.connect(self._on_dashboard_editor_tab_selected)
         self.editor_tab_bar.tabClosed.connect(self._on_dashboard_editor_tab_closed)
+
+        # 5. Habilitar Drag & Drop Inteligente desde el Explorador de Windows
+        self.setAcceptDrops(True)
+
+        # 6. Paleta de Comandos Flotante (Ctrl+P / Ctrl+Shift+P)
+        self.command_palette = None
+
+        # 7. Monitor de Memoria RAM en Tiempo Real
+        self._setup_ram_monitor()
 
         # 4. Barra de Estado Inferior con Botón Conmutador de Vista
         self.barra_estado_frame = QFrame()
@@ -1298,6 +1307,18 @@ class BaseAppGUI(QMainWindow):
         """Gestiona combinaciones de teclas globales como Ctrl + Números (1 a 99) con Enter."""
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             k = event.key()
+            # Ctrl+P o Ctrl+Shift+P: Paleta de Comandos
+            if k == Qt.Key.Key_P:
+                self.abrir_paleta_comandos()
+                event.accept()
+                return
+
+            # Ctrl+~ o Ctrl+` (AsciiTilde o QuoteLeft): Alternar Consola
+            if k in (Qt.Key.Key_AsciiTilde, Qt.Key.Key_QuoteLeft, Qt.Key.Key_Dead_Tilde):
+                self._toggle_console()
+                event.accept()
+                return
+            k = event.key()
             if Qt.Key.Key_0 <= k <= Qt.Key.Key_9:
                 digit = str(k - Qt.Key.Key_0)
                 self._ctrl_digit_buffer += digit
@@ -1339,3 +1360,197 @@ class BaseAppGUI(QMainWindow):
                 self.set_status(f"Número de módulo inválido: #{val} (Rango: 1-{len(visibles)})")
         except Exception as e:
             print(f"[BaseAppGUI] Error activando módulo por número: {e}")
+
+    # ── Monitor de Memoria RAM & Optimización en Vivo ────────────────────────
+
+    def _setup_ram_monitor(self):
+        """Inicializa el widget y timer para monitorear el consumo de RAM en tiempo real."""
+        self.btn_ram_monitor = QPushButton("⚡ RAM: -- MB")
+        self.btn_ram_monitor.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_ram_monitor.setToolTip("Consumo de RAM en tiempo real. Haz clic para optimizar y liberar memoria (Garbage Collector).")
+        self.btn_ram_monitor.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(99, 102, 241, 0.12);
+                color: {self.COLORES.get('acento', '#6366F1')};
+                border: 1px solid rgba(99, 102, 241, 0.3);
+                border-radius: 4px;
+                padding: 2px 8px;
+                font-family: Consolas, monospace;
+                font-size: 10px;
+                font-weight: bold;
+                margin-left: 6px;
+            }}
+            QPushButton:hover {{
+                background-color: {self.COLORES.get('acento', '#6366F1')};
+                color: #FFFFFF;
+            }}
+        """)
+        self.btn_ram_monitor.clicked.connect(self._liberar_memoria_manual)
+
+        # Insertar en la barra de estado inferior
+        if hasattr(self, "barra_layout") and self.barra_layout:
+            self.barra_layout.addWidget(self.btn_ram_monitor)
+        elif hasattr(self, "barra_estado"):
+            pass
+
+        self._ram_timer = QTimer(self)
+        self._ram_timer.timeout.connect(self._actualizar_ram_display)
+        self._ram_timer.start(3500)
+        self._actualizar_ram_display()
+
+    def _get_ram_usage_mb(self):
+        """Calcula el uso de RAM actual del proceso en MB usando psutil o WinAPI nativo."""
+        try:
+            import psutil
+            return round(psutil.Process().memory_info().rss / 1048576, 1)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            from ctypes import wintypes
+            class PMC(ctypes.Structure):
+                _fields_ = [
+                    ('cb', wintypes.DWORD),
+                    ('PageFaultCount', wintypes.DWORD),
+                    ('PeakWorkingSetSize', ctypes.c_size_t),
+                    ('WorkingSetSize', ctypes.c_size_t),
+                    ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
+                    ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
+                    ('PagefileUsage', ctypes.c_size_t),
+                    ('PeakPagefileUsage', ctypes.c_size_t)
+                ]
+            c = PMC()
+            c.cb = ctypes.sizeof(PMC)
+            if ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb):
+                return round(c.WorkingSetSize / 1048576, 1)
+        except Exception:
+            pass
+        return 0.0
+
+    def _actualizar_ram_display(self):
+        ram_mb = self._get_ram_usage_mb()
+        if hasattr(self, "btn_ram_monitor") and self.btn_ram_monitor:
+            if ram_mb > 0:
+                self.btn_ram_monitor.setText(f"⚡ RAM: {ram_mb} MB")
+            else:
+                self.btn_ram_monitor.setText("⚡ RAM: OK")
+
+    def _liberar_memoria_manual(self):
+        """Ejecuta una recolección forzada de basura para liberar RAM de módulos en reposo."""
+        import gc
+        antes = self._get_ram_usage_mb()
+        gc.collect()
+        self._actualizar_ram_display()
+        despues = self._get_ram_usage_mb()
+        ahorro = max(0, round(antes - despues, 1))
+        msg = f"🧹 Memoria optimizada con éxito. RAM actual: {despues} MB ({ahorro} MB liberados)" if ahorro > 0 else f"🧹 Memoria optimizada. RAM actual: {despues} MB"
+        self.set_status(msg)
+
+    # ── Paleta de Comandos (Ctrl+P / Ctrl+Shift+P) ──────────────────────────
+
+    def abrir_paleta_comandos(self):
+        """Abre la Paleta de Comandos flotante para acceso ultrarrápido con teclado."""
+        if not hasattr(self, "command_palette") or not self.command_palette:
+            self.command_palette = CommandPaletteDialog(
+                self, self.COLORES, getattr(self, "modulos_cargados", [])
+            )
+            self.command_palette.submoduleRequested.connect(self._on_palette_submodule_requested)
+
+        self.command_palette.modulos = getattr(self, "modulos_cargados", [])
+        self.command_palette.show_centered()
+
+    def _on_palette_submodule_requested(self, mod_name, sub_name):
+        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+        mod_idx = 0
+        for i, m in enumerate(visibles):
+            if m.get("name", "").lower() == mod_name.lower():
+                mod_idx = i
+                break
+
+        if self.modo_vista == "dashboard":
+            self._on_dashboard_submodule_selected(mod_name, sub_name, mod_idx, 0)
+        else:
+            self.notebook.setCurrentIndex(mod_idx)
+            w = self.notebook.widget(mod_idx)
+            if w:
+                for tw in w.findChildren(QTabWidget):
+                    for s_i in range(tw.count()):
+                        if sub_name.lower() in tw.tabText(s_i).lower():
+                            tw.setCurrentIndex(s_i)
+                            break
+
+    # ── Drag & Drop Inteligente desde el Sistema Operativo ──────────────────
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        if not urls:
+            return
+
+        file_path = urls[0].toLocalFile()
+        if not file_path:
+            return
+
+        path_obj = Path(file_path)
+        ext = path_obj.suffix.lower()
+        fname = path_obj.name
+
+        self.set_status(f"📂 Archivo recibido: {fname}")
+
+        if ext in (".mp3", ".wav", ".ogg", ".flac", ".mp4", ".mkv", ".avi", ".mov"):
+            self._abrir_en_reproductor(file_path)
+        elif ext in (".txt", ".md", ".json", ".csv", ".py", ".log"):
+            self._abrir_en_notas(file_path)
+        elif ext in (".zip", ".rar", ".7z", ".tar", ".gz"):
+            self._abrir_en_archivos(file_path)
+        elif ext in (".html", ".htm", ".url"):
+            self._abrir_en_navegador(file_path)
+        else:
+            self._abrir_en_archivos(file_path)
+
+        event.acceptProposedAction()
+
+    def _abrir_en_reproductor(self, path_str):
+        if self.modo_vista == "dashboard":
+            self._on_palette_submodule_requested("reproductor", "Reproductor ARK")
+        else:
+            self._navegar_a_modulo_nombre("reproductor")
+        rep = getattr(self, "tab_reproductor", None)
+        if rep and hasattr(rep, "cargar_archivo"):
+            try:
+                rep.cargar_archivo(path_str)
+            except Exception:
+                pass
+
+    def _abrir_en_notas(self, path_str):
+        if self.modo_vista == "dashboard":
+            self._on_palette_submodule_requested("notas", "Mis Notas & Editor")
+        else:
+            self._navegar_a_modulo_nombre("notas")
+
+    def _abrir_en_archivos(self, path_str):
+        if self.modo_vista == "dashboard":
+            self._on_palette_submodule_requested("archivos", "EXPLORADOR")
+        else:
+            self._navegar_a_modulo_nombre("archivos")
+
+    def _abrir_en_navegador(self, path_str):
+        if self.modo_vista == "dashboard":
+            self._on_palette_submodule_requested("navegador", "INTEGRADO")
+        else:
+            self._navegar_a_modulo_nombre("navegador")
+
+    def _navegar_a_modulo_nombre(self, mod_name):
+        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+        for i, m in enumerate(visibles):
+            if m.get("name", "").lower() == mod_name.lower():
+                self.notebook.setCurrentIndex(i)
+                break
+

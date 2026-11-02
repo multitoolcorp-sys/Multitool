@@ -934,6 +934,41 @@ class DashboardSidebar(QFrame):
 
         self.main_layout.addWidget(self.header_frame)
 
+        # Barra de Búsqueda / Filtro en Vivo del Explorador
+        self.filter_container = QFrame()
+        self.filter_container.setFixedHeight(32)
+        self.filter_container.setStyleSheet("background: transparent; border: none; padding: 2px 4px;")
+        f_lay = QHBoxLayout(self.filter_container)
+        f_lay.setContentsMargins(4, 2, 4, 2)
+        f_lay.setSpacing(4)
+
+        self.txt_filter = QLineEdit()
+        self.txt_filter.setPlaceholderText("🔍 Filtrar módulos...")
+        self.txt_filter.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {self.colores.get('bg_principal', '#121218')};
+                color: {self.colores.get('fg_principal', '#FFFFFF')};
+                border: 1px solid {self.colores.get('bg_terciario', '#2D2D3D')};
+                border-radius: 4px;
+                padding: 3px 6px;
+                font-size: 10px;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {self.colores.get('acento', '#6366F1')};
+            }}
+        """)
+        self.txt_filter.textChanged.connect(lambda _: self.renderizar_arbol())
+        f_lay.addWidget(self.txt_filter, 1)
+
+        self.btn_clear_filter = QPushButton("✕")
+        self.btn_clear_filter.setFixedSize(16, 16)
+        self.btn_clear_filter.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_clear_filter.setStyleSheet("border: none; background: transparent; color: #AAB0B8; font-size: 9px;")
+        self.btn_clear_filter.clicked.connect(lambda: self.txt_filter.clear())
+        f_lay.addWidget(self.btn_clear_filter)
+
+        self.main_layout.addWidget(self.filter_container)
+
         # Scroll Area con la lista de módulos y submódulos
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -1039,12 +1074,14 @@ class DashboardSidebar(QFrame):
         if self.is_collapsed:
             self.setFixedWidth(30) # Compacto
             self.lbl_title.hide()
+            if hasattr(self, "filter_container"): self.filter_container.hide()
             self.h_layout.setContentsMargins(4, 0, 4, 0)
             self.btn_collapse.setText("▶")
             self.scroll_area.hide()
         else:
             self.setFixedWidth(self.current_width)
             self.lbl_title.show()
+            if hasattr(self, "filter_container"): self.filter_container.show()
             self.h_layout.setContentsMargins(10, 0, 4, 0)
             self.btn_collapse.setText("◀")
             self.scroll_area.show()
@@ -1072,6 +1109,7 @@ class DashboardSidebar(QFrame):
         fg_sec = self.colores.get('fg_secundario', '#AAB0B8')
 
         ruta_u = self._get_ruta_usuario()
+        filtro_texto = self.txt_filter.text().strip().lower() if hasattr(self, "txt_filter") else ""
 
         # =====================================================================
         # SECCIÓN 1: 📦 MODULES (Plegable con un clic)
@@ -1114,6 +1152,16 @@ class DashboardSidebar(QFrame):
             folder_name = mod.get("folder", mod_name.lower())
             icon_str = obtener_icono_modulo(mod, self.modulos_dir, ruta_u)
             sub_items = obtener_metadatos_submodulos(mod_name, folder_name, self.modulos_dir, ruta_u)
+
+            # Filtrar si hay búsqueda activa
+            if filtro_texto:
+                mod_coincide = filtro_texto in mod_name.lower() or filtro_texto in mod.get("alias", "").lower()
+                subs_filtrados = [s for s in sub_items if filtro_texto in s["name"].lower() or filtro_texto in s.get("alias", "").lower()]
+                if not mod_coincide and not subs_filtrados:
+                    continue
+                if subs_filtrados:
+                    sub_items = subs_filtrados
+                    self._secciones_expandidas.add(mod_name.lower())
 
             is_active_mod = (mod_name.lower() == self._active_mod_name.lower())
             if is_active_mod:
@@ -1527,6 +1575,235 @@ class DashboardSidebar(QFrame):
                     pass
 
 
+class CommandPaletteDialog(QDialog):
+    """
+    Paleta de Comandos flotante estilo VS Code / Antigravity IDE (Ctrl+P / Ctrl+Shift+P).
+    Permite buscar y abrir submódulos o ejecutar acciones del sistema rápidamente con el teclado.
+    """
+    submoduleRequested = pyqtSignal(str, str) # (mod_name, sub_name)
+    actionRequested = pyqtSignal(str) # (action_name)
+
+    def __init__(self, parent=None, colores=None, modulos_cargados=None):
+        super().__init__(parent)
+        self.main_win = parent
+        self.colores = colores or {}
+        self.modulos = modulos_cargados or []
+        
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Popup)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setFixedWidth(560)
+        self.init_ui()
+
+    def init_ui(self):
+        bg_p = self.colores.get("bg_principal", "#121218")
+        bg_s = self.colores.get("bg_secundario", "#1E1E2E")
+        bg_t = self.colores.get("bg_terciario", "#2D2D3D")
+        acento = self.colores.get("acento", "#6366F1")
+        fg_p = self.colores.get("fg_principal", "#FFFFFF")
+        fg_s = self.colores.get("fg_secundario", "#AAB0B8")
+
+        main_box = QVBoxLayout(self)
+        main_box.setContentsMargins(8, 8, 8, 8)
+
+        self.container_frame = QFrame(self)
+        self.container_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {bg_s};
+                border: 1px solid {acento};
+                border-radius: 8px;
+            }}
+        """)
+        c_layout = QVBoxLayout(self.container_frame)
+        c_layout.setContentsMargins(10, 10, 10, 10)
+        c_layout.setSpacing(8)
+
+        # Campo de entrada con icono de búsqueda
+        search_box = QHBoxLayout()
+        search_box.setSpacing(6)
+        
+        lbl_icon = QLabel("🔍")
+        lbl_icon.setStyleSheet("font-size: 14px; background: transparent; border: none;")
+        search_box.addWidget(lbl_icon)
+
+        self.txt_search = QLineEdit()
+        self.txt_search.setPlaceholderText("Escribe para buscar submódulos o comandos... (Ctrl+P / Esc para cerrar)")
+        self.txt_search.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {bg_p};
+                color: {fg_p};
+                border: 1px solid {bg_t};
+                border-radius: 6px;
+                padding: 7px 10px;
+                font-size: 12px;
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }}
+            QLineEdit:focus {{
+                border: 1px solid {acento};
+            }}
+        """)
+        self.txt_search.textChanged.connect(self._filtrar_opciones)
+        search_box.addWidget(self.txt_search, 1)
+        c_layout.addLayout(search_box)
+
+        # Lista de resultados
+        from PyQt6.QtWidgets import QListWidget, QListWidgetItem
+        self.list_results = QListWidget()
+        self.list_results.setMaximumHeight(280)
+        self.list_results.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {bg_p};
+                border: 1px solid {bg_t};
+                border-radius: 6px;
+                color: {fg_p};
+                font-size: 11px;
+                padding: 4px;
+            }}
+            QListWidget::item {{
+                padding: 8px 10px;
+                border-radius: 4px;
+                margin: 1px 0px;
+            }}
+            QListWidget::item:hover {{
+                background-color: {bg_t};
+                color: white;
+            }}
+            QListWidget::item:selected {{
+                background-color: {acento};
+                color: white;
+                font-weight: bold;
+            }}
+        """)
+        self.list_results.itemActivated.connect(self._ejecutar_seleccionado)
+        c_layout.addWidget(self.list_results)
+
+        # Footer con atajos de ayuda
+        lbl_help = QLabel("↑/↓: Navegar  |  Enter: Seleccionar  |  Esc: Cerrar")
+        lbl_help.setStyleSheet(f"color: {fg_s}; font-size: 9px; background: transparent; border: none; padding-left: 2px;")
+        c_layout.addWidget(lbl_help)
+
+        main_box.addWidget(self.container_frame)
+
+    def show_centered(self):
+        """Muestra la paleta centrada en la parte superior de la ventana principal."""
+        if self.main_win:
+            geo = self.main_win.geometry()
+            x = geo.x() + (geo.width() - self.width()) // 2
+            y = geo.y() + 70 # 70px desde la parte superior
+            self.move(x, y)
+        self._cargar_catalogo()
+        self._filtrar_opciones("")
+        self.show()
+        self.txt_search.setFocus()
+        self.txt_search.selectAll()
+
+    def _cargar_catalogo(self):
+        self.catalogo = []
+        # 1. Comandos globales
+        self.catalogo.append({"tipo": "cmd", "id": "toggle_view", "title": "🖥️ Cambiar Vista: MMS (Clásico) ⟷ IDE (Dashboard)", "desc": "Alterna la interfaz"})
+        self.catalogo.append({"tipo": "cmd", "id": "fullscreen", "title": "⛶ Alternar Pantalla Completa (F11)", "desc": "Maximiza el área de trabajo"})
+        self.catalogo.append({"tipo": "cmd", "id": "console", "title": "⚡ Abrir / Alternar Consola Dev (F12)", "desc": "Terminal de comandos"})
+        self.catalogo.append({"tipo": "cmd", "id": "ram_clean", "title": "🧹 Liberar Memoria RAM (Garbage Collector)", "desc": "Optimiza el consumo"})
+        self.catalogo.append({"tipo": "cmd", "id": "updates", "title": "📋 Ver Registro de Actualizaciones", "desc": "Historial de versiones"})
+        self.catalogo.append({"tipo": "cmd", "id": "modules_mgr", "title": "⚙️ Gestionar Módulos...", "desc": "Organizar visibilidad y orden"})
+        self.catalogo.append({"tipo": "cmd", "id": "close_tab", "title": "✕ Cerrar Pestaña Actual", "desc": "Cierra la pestaña en foco"})
+
+        # 2. Submódulos de cada módulo
+        from controlador.utils.paths import get_resource_path
+        mod_dir = get_resource_path() / "vistas" / "modulos"
+        ruta_u = getattr(self.main_win, "ruta_usuario", None)
+
+        for mod in self.modulos:
+            if not mod.get("visible", True):
+                continue
+            m_name = mod.get("name", "")
+            f_name = mod.get("folder", m_name.lower())
+            subs = obtener_metadatos_submodulos(m_name, f_name, mod_dir, ruta_u)
+            m_icon = obtener_icono_modulo(mod, mod_dir, ruta_u)
+            for s in subs:
+                s_name = s.get("name", "")
+                s_icon = s.get("icon") or m_icon or "🧩"
+                self.catalogo.append({
+                    "tipo": "sub",
+                    "mod_name": m_name,
+                    "sub_name": s_name,
+                    "icon": s_icon,
+                    "title": f"{s_icon}  {m_name.capitalize()} › {s_name}",
+                    "desc": f"Abrir submódulo de {m_name.capitalize()}"
+                })
+
+    def _filtrar_opciones(self, texto):
+        from PyQt6.QtWidgets import QListWidgetItem
+        self.list_results.clear()
+        q = texto.strip().lower()
+
+        for item in getattr(self, "catalogo", []):
+            title = item.get("title", "")
+            desc = item.get("desc", "")
+            if not q or q in title.lower() or q in desc.lower():
+                list_item = QListWidgetItem(title)
+                list_item.setData(Qt.ItemDataRole.UserRole, item)
+                self.list_results.addItem(list_item)
+
+        if self.list_results.count() > 0:
+            self.list_results.setCurrentRow(0)
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key == Qt.Key.Key_Escape:
+            self.close()
+            event.accept()
+        elif key in (Qt.Key.Key_Down, Qt.Key.Key_Up):
+            curr = self.list_results.currentRow()
+            count = self.list_results.count()
+            if count > 0:
+                if key == Qt.Key.Key_Down:
+                    self.list_results.setCurrentRow((curr + 1) % count)
+                else:
+                    self.list_results.setCurrentRow((curr - 1 + count) % count)
+            event.accept()
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._ejecutar_seleccionado(self.list_results.currentItem())
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def _ejecutar_seleccionado(self, item):
+        if not item:
+            return
+        data = item.data(Qt.ItemDataRole.UserRole)
+        self.close()
+        if not data:
+            return
+
+        if data.get("tipo") == "sub":
+            self.submoduleRequested.emit(data["mod_name"], data["sub_name"])
+        elif data.get("tipo") == "cmd":
+            cmd_id = data.get("id")
+            mw = self.main_win
+            if not mw:
+                return
+            if cmd_id == "toggle_view" and hasattr(mw, "toggle_modo_vista"):
+                mw.toggle_modo_vista()
+            elif cmd_id == "fullscreen" and hasattr(mw, "toggle_pantalla_completa"):
+                mw.toggle_pantalla_completa()
+            elif cmd_id == "console" and hasattr(mw, "_toggle_console"):
+                mw._toggle_console()
+            elif cmd_id == "ram_clean":
+                import gc
+                gc.collect()
+                if hasattr(mw, "set_status"):
+                    mw.set_status("✅ Memoria RAM liberada y optimizada.")
+            elif cmd_id == "updates" and hasattr(mw, "mostrar_log_actualizaciones"):
+                mw.mostrar_log_actualizaciones()
+            elif cmd_id == "modules_mgr" and hasattr(mw, "abrir_gestor_modulos"):
+                mw.abrir_gestor_modulos()
+            elif cmd_id == "close_tab" and hasattr(mw, "editor_tab_bar"):
+                if mw.editor_tab_bar.current_index >= 0:
+                    mw.editor_tab_bar.close_tab(mw.editor_tab_bar.current_index)
+
+
+
+
 class DashboardEmptyView(QWidget):
     """
     Vista de bienvenida cuando se cierran todas las pestañas en Modo Dashboard (estilo VS Code / Antigravity).
@@ -1605,9 +1882,11 @@ class DashboardEmptyView(QWidget):
 class DashboardTabBar(QFrame):
     """
     Barra superior de pestañas activas estilo VS Code / Antigravity IDE.
-    Muestra los submódulos abiertos como pestañas compactas al 50% de tamaño,
-    con scrollbar horizontal delgado, botón '✕' para cerrar, y capacidad
-    de arrastrar/mover pestañas para reordenarlas a gusto.
+    - Soporte completo para Fijar Pestañas (Pin Tabs).
+    - Menú contextual: Fijar/Desfijar, Cerrar, Cerrar demás, Cerrar a la derecha.
+    - Arrastre interactivo horizontal para reordenar.
+    - Scrollbar horizontal delgado y scroll con rueda del ratón.
+    - Tamaño ultra compacto para maximizar el área de trabajo.
     """
     tabSelected = pyqtSignal(int)
     tabClosed = pyqtSignal(int)
@@ -1616,9 +1895,9 @@ class DashboardTabBar(QFrame):
     def __init__(self, parent=None, colores=None):
         super().__init__(parent)
         self.colores = colores or {}
-        self.tabs = [] # Lista de dicts: {"key": (mod_name, sub_name), "title": str, ...}
+        self.tabs = [] # Lista de dicts con metadata de pestañas
         self.current_index = -1
-        self.setFixedHeight(24) # Tamaño reducido al 50%
+        self.setFixedHeight(24) # Tamaño compacto al 50%
         
         self.init_ui()
 
@@ -1637,7 +1916,6 @@ class DashboardTabBar(QFrame):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # Scroll Area horizontal de pestañas estilo editor con scrollbar horizontal visible cuando se necesita
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QFrame.Shape.NoFrame)
@@ -1677,7 +1955,6 @@ class DashboardTabBar(QFrame):
         self.main_layout.addWidget(self.scroll_area)
 
     def wheelEvent(self, event):
-        """Permite desplazar las pestañas horizontalmente usando la rueda del mouse."""
         delta = event.angleDelta().y()
         if delta != 0:
             hbar = self.scroll_area.horizontalScrollBar()
@@ -1688,7 +1965,6 @@ class DashboardTabBar(QFrame):
 
     def add_tab(self, mod_name, sub_name, display_title, make_active=True):
         key = (mod_name.lower(), sub_name.lower() if sub_name else "")
-        # Si ya existe, simplemente activarla
         for idx, t in enumerate(self.tabs):
             if t["key"] == key:
                 if make_active:
@@ -1697,7 +1973,7 @@ class DashboardTabBar(QFrame):
 
         tab_idx = len(self.tabs)
         tab_widget = QFrame()
-        tab_widget.setFixedHeight(20) # Altura reducida al 50%
+        tab_widget.setFixedHeight(20)
         tab_widget.setCursor(Qt.CursorShape.PointingHandCursor)
 
         t_layout = QHBoxLayout(tab_widget)
@@ -1736,7 +2012,8 @@ class DashboardTabBar(QFrame):
             "lbl": lbl,
             "btn_close": btn_close,
             "mod_name": mod_name,
-            "sub_name": sub_name
+            "sub_name": sub_name,
+            "pinned": False
         }
         self.tabs.append(tab_info)
         self.tab_layout.addWidget(tab_widget)
@@ -1754,7 +2031,6 @@ class DashboardTabBar(QFrame):
         widget = tab_info["widget"]
         btn_close = tab_info["btn_close"]
 
-        # Soporte para clic y arrastre (mover pestaña para reordenar)
         def _on_press(event):
             if event.button() == Qt.MouseButton.LeftButton:
                 widget._drag_start_x = event.globalPosition().x()
@@ -1763,19 +2039,23 @@ class DashboardTabBar(QFrame):
                     self.set_current_index(current_i)
 
         def _on_move(event):
-            if event.buttons() & Qt.MouseButton.LeftButton:
+            if event.buttons() & Qt.MouseButton.LeftButton and not tab_info.get("pinned", False):
                 start_x = getattr(widget, "_drag_start_x", None)
                 if start_x is not None:
                     curr_x = event.globalPosition().x()
                     delta_x = curr_x - start_x
                     curr_i = self._get_tab_index(tab_info)
                     if curr_i >= 0:
+                        # Si es arrastrada sobre otra no-fijada
                         if delta_x > 25 and curr_i < len(self.tabs) - 1:
                             widget._drag_start_x = curr_x
                             self.mover_tab(curr_i, curr_i + 1)
                         elif delta_x < -25 and curr_i > 0:
-                            widget._drag_start_x = curr_x
-                            self.mover_tab(curr_i, curr_i - 1)
+                            # Prevenir mover antes de pestañas fijadas si esta no lo está
+                            prev_is_pinned = self.tabs[curr_i - 1].get("pinned", False)
+                            if not prev_is_pinned:
+                                widget._drag_start_x = curr_x
+                                self.mover_tab(curr_i, curr_i - 1)
 
         def _on_release(event):
             widget._drag_start_x = None
@@ -1784,11 +2064,88 @@ class DashboardTabBar(QFrame):
         widget.mouseMoveEvent = _on_move
         widget.mouseReleaseEvent = _on_release
 
+        # Menú contextual de clic derecho (Fijar / Cerrar / Cerrar demás)
+        widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        widget.customContextMenuRequested.connect(lambda pos, t=tab_info: self._mostrar_context_menu_tab(t, pos))
+
         try:
             btn_close.clicked.disconnect()
         except Exception:
             pass
         btn_close.clicked.connect(lambda: self.close_tab(self._get_tab_index(tab_info)))
+
+    def _mostrar_context_menu_tab(self, tab_info, pos):
+        curr_i = self._get_tab_index(tab_info)
+        if curr_i < 0:
+            return
+
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {self.colores.get('bg_secundario', '#1E1E2E')};
+                color: white;
+                border: 1px solid {self.colores.get('bg_terciario', '#2D2D3D')};
+                border-radius: 6px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 5px 14px;
+                border-radius: 4px;
+            }}
+            QMenu::item:selected {{
+                background-color: {self.colores.get('acento', '#6366F1')};
+                color: white;
+                font-weight: bold;
+            }}
+            QMenu::item:disabled {{
+                color: #555566;
+            }}
+        """)
+
+        is_pinned = tab_info.get("pinned", False)
+        act_pin = menu.addAction("📌 Desfijar Pestaña" if is_pinned else "📌 Fijar Pestaña")
+        menu.addSeparator()
+        act_close = menu.addAction("✕ Cerrar Pestaña")
+        act_close.setEnabled(not is_pinned)
+        act_close_others = menu.addAction("✕ Cerrar las demás pestañas")
+        act_close_right = menu.addAction("✕ Cerrar pestañas a la derecha")
+
+        chosen = menu.exec(QCursor.pos())
+        if chosen == act_pin:
+            self.toggle_pin_tab(curr_i)
+        elif chosen == act_close:
+            self.close_tab(curr_i)
+        elif chosen == act_close_others:
+            self.close_other_tabs(curr_i)
+        elif chosen == act_close_right:
+            self.close_tabs_to_right(curr_i)
+
+    def toggle_pin_tab(self, idx):
+        if 0 <= idx < len(self.tabs):
+            tab = self.tabs[idx]
+            new_state = not tab.get("pinned", False)
+            tab["pinned"] = new_state
+
+            # Si se fija, mover al inicio de las fijadas
+            if new_state:
+                # Contar fijadas existentes
+                pinned_count = sum(1 for t in self.tabs if t.get("pinned", False)) - 1
+                if idx != pinned_count:
+                    self.mover_tab(idx, pinned_count)
+            self._update_styles()
+
+    def close_other_tabs(self, keep_idx):
+        if 0 <= keep_idx < len(self.tabs):
+            keep_tab = self.tabs[keep_idx]
+            to_remove = [i for i, t in enumerate(self.tabs) if i != keep_idx and not t.get("pinned", False)]
+            for i in reversed(to_remove):
+                self.close_tab(i)
+
+    def close_tabs_to_right(self, from_idx):
+        if 0 <= from_idx < len(self.tabs):
+            to_remove = [i for i in range(from_idx + 1, len(self.tabs)) if not self.tabs[i].get("pinned", False)]
+            for i in reversed(to_remove):
+                self.close_tab(i)
 
     def _get_tab_index(self, tab_info):
         try:
@@ -1797,7 +2154,6 @@ class DashboardTabBar(QFrame):
             return -1
 
     def mover_tab(self, from_idx, to_idx):
-        """Mueve una pestaña de from_idx a to_idx en la barra horizontal."""
         if from_idx < 0 or to_idx < 0 or from_idx >= len(self.tabs) or to_idx >= len(self.tabs) or from_idx == to_idx:
             return
 
@@ -1826,6 +2182,10 @@ class DashboardTabBar(QFrame):
 
     def close_tab(self, idx):
         if 0 <= idx < len(self.tabs):
+            # No permitir cerrar si está fijada
+            if self.tabs[idx].get("pinned", False):
+                return
+
             item = self.tabs.pop(idx)
             item["widget"].deleteLater()
 
@@ -1847,8 +2207,21 @@ class DashboardTabBar(QFrame):
 
         for idx, t in enumerate(self.tabs):
             is_active = (idx == self.current_index)
+            is_pinned = t.get("pinned", False)
             w = t["widget"]
             lbl = t["lbl"]
+            btn_close = t["btn_close"]
+
+            # Si está fijada, ocultar botón cerrar y mostrar icono 📌
+            if is_pinned:
+                btn_close.hide()
+                clean_title = t["title"].replace("📌 ", "")
+                lbl.setText(f"📌 {clean_title}")
+            else:
+                btn_close.show()
+                clean_title = t["title"].replace("📌 ", "")
+                lbl.setText(clean_title)
+
             if is_active:
                 w.setStyleSheet(f"""
                     QFrame {{
