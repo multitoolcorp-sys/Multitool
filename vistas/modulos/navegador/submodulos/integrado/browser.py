@@ -587,6 +587,13 @@ class MultiTabBrowser(QWidget):
                         target_container = prev
                         break
 
+            # Si cerramos la pestaña activa y tenemos una pestaña previa del historial MRU,
+            # cambiamos a ella ANTES de invocar removeTab. De lo contrario, Qt cambiaría por
+            # defecto a la pestaña anterior en la lista (index - 1), disparando su despertar
+            # y cargándola innecesariamente antes de cambiar a la deseada.
+            if target_container and self.tabs.indexOf(target_container) != -1:
+                self.tabs.setCurrentWidget(target_container)
+
             if container:
                 if hasattr(container, "detener_animacion_carga"):
                     container.detener_animacion_carga()
@@ -599,11 +606,9 @@ class MultiTabBrowser(QWidget):
                         pass
                 container.deleteLater()
 
-            self.tabs.removeTab(index)
-
-            # Si cerramos la pestaña activa, cambiar explícitamente a la última visitada
-            if target_container and self.tabs.indexOf(target_container) != -1:
-                self.tabs.setCurrentWidget(target_container)
+            idx_to_remove = self.tabs.indexOf(container) if container else index
+            if idx_to_remove != -1:
+                self.tabs.removeTab(idx_to_remove)
 
             self._actualizar_botones_pestanas()
             self._actualizar_estado_boton_pin()

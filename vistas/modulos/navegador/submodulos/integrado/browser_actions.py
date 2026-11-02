@@ -23,9 +23,16 @@ class BrowserActionsHandler:
     def mostrar_menu_pestanas(self, pos):
         """Muestra el menú contextual de la pestaña (fijar, política de reposo, cerrar, etc.)."""
         tab_bar = self.b.tabs.tabBar()
-        tab_idx = tab_bar.tabAt(pos)
+        # 'pos' proviene de QTabWidget.customContextMenuRequested (coordenadas del QTabWidget).
+        # Para que QTabBar.tabAt devuelva el índice correcto (especialmente con el botón '+' en TopLeftCorner),
+        # convertimos las coordenadas de QTabWidget a QTabBar:
+        pos_in_tabbar = tab_bar.mapFrom(self.b.tabs, pos) if tab_bar else pos
+        tab_idx = tab_bar.tabAt(pos_in_tabbar) if tab_bar else -1
         if tab_idx < 0:
-            tab_idx = self.b.tabs.currentIndex()
+            # Fallback intentando directamente o usando la pestaña actual
+            tab_idx = tab_bar.tabAt(pos) if tab_bar else -1
+            if tab_idx < 0:
+                tab_idx = self.b.tabs.currentIndex()
 
         container = self.b.tabs.widget(tab_idx)
         is_pinned = getattr(container, "is_pinned", False) if container else False
@@ -117,7 +124,7 @@ class BrowserActionsHandler:
         if self.b.tabs.count() <= 1:
             act_close.setEnabled(False)
 
-        menu.exec(tab_bar.mapToGlobal(pos))
+        menu.exec(self.b.tabs.mapToGlobal(pos))
 
     def configurar_atajos_teclado(self):
         """Configura los atajos de teclado globales del navegador."""
