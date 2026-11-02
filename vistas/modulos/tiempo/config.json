@@ -4,46 +4,69 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "🌐 Reloj Mundial",
+            "name": "Reloj Mundial",
             "file_name": "submodulos/reloj_mundial.py",
             "class_name": "RelojMundialSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🌐",
+            "alias": "reloj_mundial",
+            "position": 1
         },
         {
-            "name": "⏰ Alarmas & Temporizador",
+            "name": "Alarmas & Temporizador",
             "file_name": "submodulos/alarmas_timer.py",
             "class_name": "AlarmasTimerSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "⏰",
+            "alias": "alarmas_temporizador",
+            "position": 2
         },
         {
-            "name": "⏱️ Cronómetro & Vueltas",
+            "name": "Cronómetro & Vueltas",
             "file_name": "submodulos/cronometro.py",
             "class_name": "CronometroSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "⏱",
+            "alias": "cronómetro_vueltas",
+            "position": 3
         },
         {
-            "name": "🍅 Pomodoro & Enfoque",
+            "name": "Pomodoro & Enfoque",
             "file_name": "submodulos/pomodoro.py",
             "class_name": "PomodoroSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🍅",
+            "alias": "pomodoro_enfoque",
+            "position": 4
         },
         {
-            "name": "📅 Calendario & Eventos",
+            "name": "Calendario & Eventos",
             "file_name": "submodulos/calendario_eventos.py",
             "class_name": "CalendarioEventosSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📅",
+            "alias": "calendario_eventos",
+            "position": 5
         },
         {
-            "name": "📊 Time Tracker",
+            "name": "Time Tracker",
             "file_name": "submodulos/time_tracker.py",
             "class_name": "TimeTrackerSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📊",
+            "alias": "time_tracker",
+            "position": 6
         },
         {
-            "name": "🧮 Calculadora de Fechas",
+            "name": "Calculadora de Fechas",
             "file_name": "submodulos/calculadora_fechas.py",
             "class_name": "CalculadoraFechasSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🧮",
+            "alias": "calculadora_de",
+            "position": 7
         }
-    ]
+    ],
+    "alias": "tiempo",
+    "icon": "⏱️"
 }

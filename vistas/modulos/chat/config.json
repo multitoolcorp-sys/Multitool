@@ -4,34 +4,51 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "💬 Sala de Chat",
+            "name": "Sala de Chat",
             "file_name": "submodulos/sala_chat.py",
             "class_name": "SalaChatSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "💬",
+            "alias": "sala_de",
+            "position": 1
         },
         {
-            "name": "🌐 Servidor & Conexión LAN",
+            "name": "Servidor & Conexión LAN",
             "file_name": "submodulos/conexion_lan.py",
             "class_name": "ConexionLanSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🌐",
+            "alias": "servidor_conexión",
+            "position": 2
         },
         {
-            "name": "🎨 Stickers & Emojis",
+            "name": "Stickers & Emojis",
             "file_name": "submodulos/stickers_emojis.py",
             "class_name": "StickersEmojisSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎨",
+            "alias": "stickers_emojis",
+            "position": 3
         },
         {
-            "name": "📜 Historial de Chats",
+            "name": "Historial de Chats",
             "file_name": "submodulos/historial_chats.py",
             "class_name": "HistorialChatsSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📜",
+            "alias": "historial_de",
+            "position": 4
         },
         {
-            "name": "🤖 Asistente IA (Privado)",
+            "name": "Asistente IA (Privado)",
             "file_name": "submodulos/asistente_ia.py",
             "class_name": "AsistenteIASubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🤖",
+            "alias": "asistente_ia",
+            "position": 5
         }
-    ]
+    ],
+    "alias": "chat",
+    "icon": "💬"
 }

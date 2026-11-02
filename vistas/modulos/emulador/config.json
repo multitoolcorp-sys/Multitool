@@ -4,28 +4,42 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "🎮 Consola Arcade",
+            "name": "Consola Arcade",
             "file_name": "submodulos/consola_arcade.py",
             "class_name": "ConsolaArcadeSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎮",
+            "alias": "consola_arcade",
+            "position": 1
         },
         {
-            "name": "🕹️ Teclado Virtual & Mapeo",
+            "name": "Teclado Virtual & Mapeo",
             "file_name": "submodulos/teclado_mapeo.py",
             "class_name": "TecladoMapeoSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🕹",
+            "alias": "teclado_virtual",
+            "position": 2
         },
         {
-            "name": "📁 Gestor de ROMs & N64",
+            "name": "Gestor de ROMs & N64",
             "file_name": "submodulos/gestor_roms.py",
             "class_name": "GestorRomsSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📁",
+            "alias": "gestor_de",
+            "position": 3
         },
         {
-            "name": "⚙️ Ajustes & Paletas CRT",
+            "name": "Ajustes & Paletas CRT",
             "file_name": "submodulos/opciones_retro.py",
             "class_name": "OpcionesRetroSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "⚙",
+            "alias": "ajustes_paletas",
+            "position": 4
         }
-    ]
+    ],
+    "alias": "emulador",
+    "icon": "🕹️"
 }

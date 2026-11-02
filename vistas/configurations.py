@@ -1,3 +1,5 @@
+import zipfile
+import datetime
 import os
 import json
 import sys
@@ -369,9 +371,77 @@ def load_class_dynamically(sub_info):
     return None
 
 
+def guardar_modulo_usuario_config(ruta_usuario, folder_name, config_data):
+    """Guarda la configuración personalizada de un módulo en la cuenta del usuario (modulesconf)."""
+    if not ruta_usuario:
+        return False
+    try:
+        user_dir = Path(ruta_usuario) / "modulesconf" / folder_name
+        user_dir.mkdir(parents=True, exist_ok=True)
+        cfg_file = user_dir / "config.json"
+        with open(cfg_file, "w", encoding="utf-8") as f:
+            json.dump(config_data, f, indent=4, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"[Configurations] Error guardando config de usuario para {folder_name}: {e}")
+        return False
+
+
+def backup_and_reset_modulesconf(ruta_usuario, modulos_dir=None):
+    """
+    Realiza un backup comprimido en .zip de la configuración actual del usuario (modulesconf)
+    en la carpeta 'backups' y restablece los config.json desde las plantillas originales en vistas/modulos/.
+    """
+    if not ruta_usuario:
+        return False, "Ruta de usuario no especificada."
+
+    ruta_u = Path(ruta_usuario)
+    user_mod_dir = ruta_u / "modulesconf"
+    backups_dir = ruta_u / "backups"
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_path = backups_dir / f"backup_modulesconf_{timestamp}.zip"
+
+    try:
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # 1. Respaldar carpeta modulesconf
+            if user_mod_dir.exists():
+                for item in user_mod_dir.rglob("*"):
+                    if item.is_file():
+                        arcname = item.relative_to(ruta_u)
+                        zf.write(item, arcname)
+
+            # 2. Respaldar modulos.conf si existe
+            mod_conf = ruta_u / "modulos.conf"
+            if mod_conf.exists():
+                zf.write(mod_conf, "modulos.conf")
+
+        # 3. Restaurar configuraciones de fábrica desde vistas/modulos
+        if not modulos_dir:
+            from controlador.utils.paths import get_resource_path
+            modulos_dir = get_resource_path() / "vistas" / "modulos"
+
+        modulos_dir = Path(modulos_dir)
+        if modulos_dir.exists():
+            for item in modulos_dir.iterdir():
+                if item.is_dir() and not item.name.startswith((".", "_")):
+                    src_cfg = item / "config.json"
+                    if src_cfg.exists():
+                        target_dir = user_mod_dir / item.name
+                        target_dir.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_cfg, target_dir / "config.json")
+
+        return True, str(zip_path)
+
+    except Exception as e:
+        return False, f"Error durante el reinicio: {e}"
+
+
 def discover_modules_and_plugins(ruta_usuario=None):
     """
-    Busca módulos core en vistas/modulos/ utilizando sus archivos de configuración config.json.
+    Busca módulos core en vistas/modulos/ utilizando los archivos de configuración config.json.
+    Prioriza las configuraciones personalizadas del usuario en cuentas/<Usuario>/modulesconf/<modulo>/config.json.
     Retorna la lista ordenada de módulos con sus submódulos correspondientes.
     """
     from controlador.utils.paths import get_resource_path
@@ -379,15 +449,20 @@ def discover_modules_and_plugins(ruta_usuario=None):
     base_dir = get_resource_path()
     modulos_dir = base_dir / "vistas" / "modulos"
 
-    # Preferencias de orden y visibilidad del usuario
+    # Preferencias de orden y visibilidad del usuario (retrocompatibilidad)
     user_prefs = {}
+    user_mod_dir = None
     if ruta_usuario:
-        user_prefs_path = Path(ruta_usuario) / "modulos.conf"
+        ruta_u = Path(ruta_usuario)
+        user_mod_dir = ruta_u / "modulesconf"
+        user_mod_dir.mkdir(parents=True, exist_ok=True)
+
+        user_prefs_path = ruta_u / "modulos.conf"
         if user_prefs_path.exists():
             try:
                 with open(user_prefs_path, "r", encoding="utf-8") as f:
                     user_prefs = json.load(f)
-            except:
+            except Exception:
                 pass
 
     modules_map = {}
@@ -395,38 +470,42 @@ def discover_modules_and_plugins(ruta_usuario=None):
     def registrar_config_modulo(config_data, folder_name):
         module_name = config_data.get("name", "").capitalize()
         if not module_name:
-            return
+            module_name = folder_name.capitalize()
 
         position = config_data.get("position", 99)
         visible = config_data.get("visible", True)
 
-        # Aplicar preferencias del usuario
+        # Aplicar preferencias del usuario si existían en modulos.conf
         u_cfg = user_prefs.get(module_name, {})
         position = u_cfg.get("position", position)
         visible = u_cfg.get("visible", visible)
         autostart = u_cfg.get("autostart", False)
 
-        # Crear estructura del módulo si no existe
+        # Icono predeterminado "🧩" si no tiene ninguno asignado
+        icon_val = config_data.get("icon") or config_data.get("icono") or "🧩"
+        alias_val = config_data.get("alias") or folder_name.lower()
+
+        # Crear estructura del módulo
         if module_name not in modules_map:
             modules_map[module_name] = {
                 "name": module_name,
+                "alias": alias_val,
                 "position": position,
                 "visible": visible,
                 "autostart": autostart,
                 "folder": folder_name,
-                "icon": config_data.get("icon"),
+                "icon": icon_val,
                 "submodules": []
             }
         else:
+            modules_map[module_name]["alias"] = alias_val
             modules_map[module_name]["position"] = position
             modules_map[module_name]["visible"] = visible
             modules_map[module_name]["autostart"] = autostart
             modules_map[module_name]["folder"] = folder_name
-            modules_map[module_name]["icon"] = config_data.get("icon")
+            modules_map[module_name]["icon"] = icon_val
 
-        # Si el módulo tiene una clase orquestadora principal (ej: TabTiempo, TabGeneral, TabGrabadora, etc.),
-        # se registra como el submódulo ejecutable para que el contenedor lo instancie, permitiendo que
-        # el módulo maneje sus dependencias y cargue dinámicamente sus submódulos mediante load_submodules_from_config.
+        # Submódulos ejecutables
         main_file = config_data.get("file_name")
         main_class = config_data.get("class_name")
         
@@ -452,38 +531,65 @@ def discover_modules_and_plugins(ruta_usuario=None):
         if main_file and main_class and (modulos_dir / folder_name / main_file).exists():
             modules_map[module_name]["submodules"] = [{
                 "name": module_name,
+                "alias": alias_val,
                 "folder": folder_name,
                 "file_name": main_file,
                 "class_name": main_class,
                 "position": 0,
                 "visible": True,
+                "icon": icon_val,
                 "cls": None
             }]
         else:
             submodulos_lista = config_data.get("submodulos", [])
-            for sub in submodulos_lista:
+            for idx_s, sub in enumerate(submodulos_lista, 1):
+                s_name = sub.get("name", module_name)
+                s_alias = sub.get("alias") or s_name.lower().replace(" ", "_")
+                s_icon = sub.get("icon") or "🧩"
                 modules_map[module_name]["submodules"].append({
-                    "name": sub.get("name", module_name),
+                    "name": s_name,
+                    "alias": s_alias,
                     "folder": folder_name,
                     "file_name": sub.get("file_name", "main.py"),
                     "class_name": sub.get("class_name", "Tab"),
-                    "position": sub.get("position", 99),
+                    "position": sub.get("position", idx_s),
                     "visible": sub.get("visible", True),
+                    "icon": s_icon,
                     "cls": None
                 })
 
     # Escanear vistas/modulos/
     if modulos_dir.exists():
         for item in modulos_dir.iterdir():
-            if item.is_dir() and not item.name.startswith("__"):
-                cfg_file = item / "config.json"
-                if cfg_file.exists():
+            if item.is_dir() and not item.name.startswith((".", "_")):
+                # Determinar si el usuario tiene configuración personalizada en modulesconf
+                cfg_to_read = None
+                if user_mod_dir:
+                    u_cfg = user_mod_dir / item.name / "config.json"
+                    if u_cfg.exists():
+                        cfg_to_read = u_cfg
+                    else:
+                        # Inicializar modulesconf/<folder>/config.json desde el original
+                        core_cfg = item / "config.json"
+                        if core_cfg.exists():
+                            try:
+                                u_target_dir = user_mod_dir / item.name
+                                u_target_dir.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(core_cfg, u_cfg)
+                                cfg_to_read = u_cfg
+                            except Exception:
+                                cfg_to_read = core_cfg
+
+                if not cfg_to_read:
+                    cfg_to_read = item / "config.json"
+
+                if cfg_to_read and cfg_to_read.exists():
                     try:
-                        with open(cfg_file, "r", encoding="utf-8") as f:
+                        with open(cfg_to_read, "r", encoding="utf-8") as f:
                             config_data = json.load(f)
                         registrar_config_modulo(config_data, item.name)
                     except Exception as e:
-                        print(f"[Loader] Error al cargar config.json de core {item.name}: {e}")
+                        print(f"[Loader] Error al cargar config.json de {item.name}: {e}")
 
     # Convertir mapa a lista y ordenar por posición
     res = list(modules_map.values())

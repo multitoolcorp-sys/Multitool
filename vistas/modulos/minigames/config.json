@@ -6,46 +6,69 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "🕹️ Juegos Arcade",
+            "name": "Juegos Arcade",
             "file_name": "submodulos/juegos_arcade.py",
             "class_name": "JuegosArcadeSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🕹",
+            "alias": "juegos_arcade",
+            "position": 1
         },
         {
-            "name": "♟️ Estrategia 1v1",
+            "name": "Estrategia 1v1",
             "file_name": "submodulos/juegos_tablero.py",
             "class_name": "JuegosTableroSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "♟",
+            "alias": "estrategia_1v1",
+            "position": 2
         },
         {
-            "name": "🧠 Batalla Naval & Adivinanza",
+            "name": "Batalla Naval & Adivinanza",
             "file_name": "submodulos/juegos_combate_adivinanza.py",
             "class_name": "JuegosCombateAdivinanzaSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🧠",
+            "alias": "batalla_naval",
+            "position": 3
         },
         {
-            "name": "🎴 Desafíos Mentales",
+            "name": "Desafíos Mentales",
             "file_name": "submodulos/juegos_mentales.py",
             "class_name": "JuegosMentalesSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎴",
+            "alias": "desafíos_mentales",
+            "position": 4
         },
         {
-            "name": "🔥 Isaac Roguelike",
+            "name": "Isaac Roguelike",
             "file_name": "submodulos/isaac_game.py",
             "class_name": "TabIsaacGame",
-            "visible": true
+            "visible": true,
+            "icon": "🔥",
+            "alias": "isaac_roguelike",
+            "position": 5
         },
         {
-            "name": "🎰 Casino & Apuestas",
+            "name": "Casino & Apuestas",
             "file_name": "submodulos/casino.py",
             "class_name": "CasinoSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎰",
+            "alias": "casino_apuestas",
+            "position": 6
         },
         {
-            "name": "🏆 Marcadores & Récords",
+            "name": "Marcadores & Récords",
             "file_name": "submodulos/marcadores_records.py",
             "class_name": "MarcadoresRecordsSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🏆",
+            "alias": "marcadores_récords",
+            "position": 7
         }
-    ]
+    ],
+    "alias": "minigames",
+    "icon": "🎮"
 }

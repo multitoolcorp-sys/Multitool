@@ -475,7 +475,7 @@ if HAS_PYQT:
         def run(self):
             sys_os = platform.system()
             ext_bin = ".pyd" if sys_os == "Windows" else ".so"
-            updates_out = self.base_dir / "DISTRIBUCION" / "UPDATES"
+            updates_out = self.base_dir / "UPDATES"
             updates_out.mkdir(parents=True, exist_ok=True)
             
             num_outputs = (1 if self.compilar_sistema else 0) + (1 if self.compilar_autenticacion else 0) + (1 if (self.modulos and self.unificar) else len(self.modulos))
@@ -1243,7 +1243,7 @@ def main():
         else:
             modulos_solicitados.append(arg)
             
-    updates_out = base_dir / "DISTRIBUCION" / "UPDATES"
+    updates_out = base_dir / "UPDATES"
     num_outputs = (1 if compilar_sistema else 0) + (1 if compilar_autenticacion else 0) + (1 if (modulos_solicitados and unificar_modulos) else len(modulos_solicitados))
     updates_out.mkdir(parents=True, exist_ok=True)
     sys_os = platform.system()

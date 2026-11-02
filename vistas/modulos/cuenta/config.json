@@ -4,40 +4,60 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "👤 Mi Perfil & Ajustes",
+            "name": "Mi Perfil & Ajustes",
             "file_name": "submodulos/gui_user.py",
             "class_name": "GuiUser",
-            "visible": true
+            "visible": true,
+            "icon": "👤",
+            "alias": "mi_perfil",
+            "position": 1
         },
         {
-            "name": "📊 Auditoría & Actividad",
+            "name": "Auditoría & Actividad",
             "file_name": "submodulos/actividad.py",
             "class_name": "TabActividad",
-            "visible": true
+            "visible": true,
+            "icon": "📊",
+            "alias": "auditoría_actividad",
+            "position": 2
         },
         {
-            "name": "🛡️ Privacidad & Auto-Bloqueo",
+            "name": "Privacidad & Auto-Bloqueo",
             "file_name": "submodulos/privacidad.py",
             "class_name": "TabPrivacidad",
-            "visible": true
+            "visible": true,
+            "icon": "🛡",
+            "alias": "privacidad_auto",
+            "position": 3
         },
         {
-            "name": "🔑 Bóveda de Claves & 2FA",
+            "name": "Bóveda de Claves & 2FA",
             "file_name": "submodulos/boveda.py",
             "class_name": "TabBoveda",
-            "visible": true
+            "visible": true,
+            "icon": "🔑",
+            "alias": "bóveda_de",
+            "position": 4
         },
         {
-            "name": "📱 Dispositivo & Sesión",
+            "name": "Dispositivo & Sesión",
             "file_name": "submodulos/dispositivos.py",
             "class_name": "TabDispositivos",
-            "visible": true
+            "visible": true,
+            "icon": "📱",
+            "alias": "dispositivo_sesión",
+            "position": 5
         },
         {
-            "name": "💾 Almacenamiento & Cuotas",
+            "name": "Almacenamiento & Cuotas",
             "file_name": "submodulos/almacenamiento.py",
             "class_name": "TabAlmacenamientoGUI",
-            "visible": true
+            "visible": true,
+            "icon": "💾",
+            "alias": "almacenamiento_cuotas",
+            "position": 6
         }
-    ]
+    ],
+    "alias": "cuenta",
+    "icon": "👤"
 }

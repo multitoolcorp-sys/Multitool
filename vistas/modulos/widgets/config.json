@@ -5,11 +5,15 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "Widgets",
+            "name": "Widgets Main",
             "file_name": "widgets_main.py",
             "class_name": "TabWidgets",
             "position": 0,
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "widgets_main"
         }
-    ]
+    ],
+    "alias": "widgets",
+    "icon": "📊"
 }

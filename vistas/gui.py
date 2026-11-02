@@ -15,6 +15,7 @@ from PyQt6.QtGui import QIcon, QAction, QFont, QKeySequence, QShortcut
 from vistas.utils.titlebar_app import CustomTitleBarApp
 from vistas.utils.notification import show_notification
 from vistas.scrollable import ScrollableNavBar
+from vistas.dashboard_layout import DashboardSidebar, DashboardTabBar, DashboardEmptyView
 from vistas.utils.updates_log_dialog import UpdatesLogDialog
 
 class BaseAppGUI(QMainWindow):
@@ -56,24 +57,81 @@ class BaseAppGUI(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # 2. Barra de Navegación de Módulos (Usa componente especializado)
+        # 2. Barra de Navegación de Módulos (Modo Clásico)
         self.nav_bar = ScrollableNavBar(self, self.COLORES)
         self.main_layout.addWidget(self.nav_bar)
 
+        # 3. Contenedor Central Adaptable (Soporta Modo Clásico y Modo Dashboard)
+        self.center_container = QWidget()
+        self.center_container.setStyleSheet("background: transparent;")
+        self.center_layout = QHBoxLayout(self.center_container)
+        self.center_layout.setContentsMargins(0, 0, 0, 0)
+        self.center_layout.setSpacing(0)
+
+        # Sidebar Lateral Izquierdo (Modo Dashboard)
+        self.sidebar = DashboardSidebar(self, self.COLORES)
+        self.center_layout.addWidget(self.sidebar)
+
+        # Área de trabajo central
+        self.work_area = QWidget()
+        self.work_area.setStyleSheet("background: transparent;")
+        self.work_layout = QVBoxLayout(self.work_area)
+        self.work_layout.setContentsMargins(0, 0, 0, 0)
+        self.work_layout.setSpacing(0)
+
+        # Barra superior de pestañas editor estilo VS Code / Antigravity (Modo Dashboard)
+        self.editor_tab_bar = DashboardTabBar(self, self.COLORES)
+        self.work_layout.addWidget(self.editor_tab_bar)
+
+        # Pantalla de Bienvenida / Empty Dashboard (cuando se cierran todas las pestañas)
+        self.dashboard_empty_view = DashboardEmptyView(self, self.COLORES, app_name="Multitool")
+        self.dashboard_empty_view.hide()
+        self.work_layout.addWidget(self.dashboard_empty_view, 1)
+
+        # Notebook principal contenedor de módulos
         self.notebook = QTabWidget()
         self.notebook.tabBar().hide() 
         self.notebook.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.notebook.setStyleSheet(f"QTabWidget::pane {{ border: 0; background: {self.COLORES['bg_principal']}; }}")
-        self.main_layout.addWidget(self.notebook, 1) # Toma el resto del espacio
+        self.work_layout.addWidget(self.notebook, 1)
+
+        self.center_layout.addWidget(self.work_area, 1)
+        self.main_layout.addWidget(self.center_container, 1)
         
         # Conexiones de sincronización
         self.nav_bar.tabSelected.connect(self.notebook.setCurrentIndex)
         self.notebook.currentChanged.connect(self.on_tab_changed)
 
-        # 4. Barra de Estado Inferior
+        # Conexiones del modo Dashboard
+        self.sidebar.submoduleSelected.connect(self._on_dashboard_submodule_selected)
+        self.editor_tab_bar.tabSelected.connect(self._on_dashboard_editor_tab_selected)
+        self.editor_tab_bar.tabClosed.connect(self._on_dashboard_editor_tab_closed)
+
+        # 4. Barra de Estado Inferior con Botón Conmutador de Vista
+        self.barra_estado_frame = QFrame()
+        self.barra_estado_frame.setFixedHeight(28)
+        self.barra_estado_frame.setStyleSheet(f"""
+            QFrame {{
+                background: {self.COLORES['bg_secundario']};
+                border-top: 1px solid {self.COLORES['bg_terciario']};
+            }}
+        """)
+        be_layout = QHBoxLayout(self.barra_estado_frame)
+        be_layout.setContentsMargins(12, 0, 10, 0)
+        be_layout.setSpacing(8)
+
         self.barra_estado = QLabel(f"Conectado: {self.usuario}")
-        self.barra_estado.setStyleSheet(f"background: {self.COLORES['bg_secundario']}; color: {self.COLORES['fg_secundario']}; padding: 5px 15px; font-size: 11px; border-top: 1px solid {self.COLORES['bg_terciario']};")
-        self.main_layout.addWidget(self.barra_estado)
+        self.barra_estado.setStyleSheet(f"background: transparent; color: {self.COLORES['fg_secundario']}; font-size: 11px; border: none;")
+        be_layout.addWidget(self.barra_estado, 1)
+
+        self.btn_toggle_view = None
+
+        self.main_layout.addWidget(self.barra_estado_frame)
+
+        # Modo de vista actual: 'clasico' o 'dashboard'
+        self.modo_vista = "clasico"
+        self.sidebar.hide()
+        self.editor_tab_bar.hide()
 
         # Crear QMenuBar Estándar (Nativo)
         self.crear_menu()
@@ -94,6 +152,16 @@ class BaseAppGUI(QMainWindow):
         self.shortcut_f11.activated.connect(self.toggle_pantalla_completa)
         self.shortcut_esc = QShortcut(QKeySequence("Esc"), self)
         self.shortcut_esc.activated.connect(self._on_escape_pressed)
+
+        # Atajo Ctrl+T para búsqueda rápida / selector de módulos
+        self.shortcut_ctrl_t = QShortcut(QKeySequence("Ctrl+T"), self)
+        self.shortcut_ctrl_t.activated.connect(self.abrir_buscador_general_rapido)
+
+        # Buffer para captura de números con Ctrl (Ctrl+1, Ctrl+10...)
+        self._ctrl_digit_buffer = ""
+        self._ctrl_digit_timer = QTimer(self)
+        self._ctrl_digit_timer.setSingleShot(True)
+        self._ctrl_digit_timer.timeout.connect(self._timeout_ctrl_digits)
 
         # Atajos de Terminal / Consola de Comandos estilo Minecraft (F1 y F12)
         try:
@@ -131,14 +199,27 @@ class BaseAppGUI(QMainWindow):
             self.toggle_pantalla_completa()
 
     def toggle_pantalla_completa(self):
-        """Alterna el modo Pantalla Completa ocultando la barra de módulos, submódulos y barra de estado."""
+        """Alterna el modo Pantalla Completa ocultando la barra de módulos, submódulos y barra de estado respetando el modo de vista."""
         self.is_fullscreen_mode = not getattr(self, "is_fullscreen_mode", False)
         
-        # 1. Ocultar o mostrar barra de módulos principal y barra de estado
-        self.nav_bar.setVisible(not self.is_fullscreen_mode)
-        self.barra_estado.setVisible(not self.is_fullscreen_mode)
-        if self.menuBar():
-            self.menuBar().setVisible(not self.is_fullscreen_mode)
+        # 1. Ocultar o mostrar barras según fullscreen y modo de vista
+        if self.is_fullscreen_mode:
+            self.nav_bar.hide()
+            self.barra_estado.hide()
+            if hasattr(self, "sidebar"):
+                self.sidebar.hide()
+            if hasattr(self, "editor_tab_bar"):
+                self.editor_tab_bar.hide()
+            if self.menuBar():
+                self.menuBar().hide()
+            self.showFullScreen()
+            self._mostrar_boton_flotante_salir_fullscreen()
+        else:
+            # Restaurar vista exacta según el modo actual (clasico / dashboard)
+            self._aplicar_modo_vista(self.modo_vista)
+            self.barra_estado.show()
+            self.showNormal()
+            self._ocultar_boton_flotante_salir_fullscreen()
         
         # 2. Ocultar o mostrar las barras de submódulos de todos los módulos
         try:
@@ -146,8 +227,9 @@ class BaseAppGUI(QMainWindow):
                 for i in range(self.notebook.count()):
                     mod = self.notebook.widget(i)
                     if mod:
-                        if hasattr(mod, "tabs") and hasattr(mod.tabs, "tabBar"):
-                            mod.tabs.tabBar().setVisible(not self.is_fullscreen_mode)
+                        if hasattr(mod, "tabs") and hasattr(mod.tabs, "tabBar") and mod.tabs.tabBar():
+                            debe_mostrar = (not self.is_fullscreen_mode) and (self.modo_vista == "clasico")
+                            mod.tabs.tabBar().setVisible(debe_mostrar)
                         if hasattr(mod, "toggle_fullscreen_mode"):
                             try:
                                 mod.toggle_fullscreen_mode(self.is_fullscreen_mode)
@@ -155,14 +237,6 @@ class BaseAppGUI(QMainWindow):
                                 pass
         except Exception as e:
             print(f"[BaseAppGUI] Error alternando barras en submódulos: {e}")
-
-        # 3. Alternar estado de la ventana
-        if self.is_fullscreen_mode:
-            self.showFullScreen()
-            self._mostrar_boton_flotante_salir_fullscreen()
-        else:
-            self.showNormal()
-            self._ocultar_boton_flotante_salir_fullscreen()
 
     def _mostrar_boton_flotante_salir_fullscreen(self):
         if not hasattr(self, "btn_exit_fullscreen") or not self.btn_exit_fullscreen:
@@ -545,18 +619,35 @@ class BaseAppGUI(QMainWindow):
     def update_idletasks(self): QApplication.processEvents()
 
     def crear_menu(self):
-        """Inicializa los menús en la QMenuBar nativa"""
+        """Inicializa los menús en la QMenuBar nativa organizados en TOOLBAR y MODULES."""
         menubar = self.menuBar()
         menubar.setStyleSheet(f"""
             QMenuBar {{ background: {self.COLORES['bg_secundario']}; color: white; padding: 2px; }}
             QMenuBar::item {{ background: transparent; padding: 5px 12px; border-radius: 4px; font-weight: bold; font-size: 11px; }}
             QMenuBar::item:selected {{ background: {self.COLORES['bg_terciario']}; color: {self.COLORES['acento']}; }}
             QMenu {{ background: {self.COLORES['bg_secundario']}; color: white; border: 1px solid {self.COLORES['bg_terciario']}; }}
-            QMenu::item:selected {{ background: {self.COLORES['acento']}; }}
+            QMenu::item:selected {{ background: {self.COLORES['acento']}; color: #0A0A0F; font-weight: bold; }}
         """)
 
-        # Menú Archivo
-        m_arc = menubar.addMenu("ARCHIVO")
+        # 1. Menú TOOLBAR (Herramientas del sistema: Archivo, Actualizaciones, Aclaraciones, Consola Dev, Reset Backup)
+        self.menu_toolbar = menubar.addMenu("🛠️ TOOLBAR")
+
+        # Submenú ARCHIVO dentro de Toolbar
+        m_arc = self.menu_toolbar.addMenu("📁 ARCHIVO")
+        self.menu_viewapp = m_arc.addMenu("Viewapp")
+        self.act_view_mms = QAction("MMS (MultiModulesStatics - Modo Clásico)", self)
+        self.act_view_mms.setCheckable(True)
+        self.act_view_mms.setChecked(self.modo_vista == "clasico")
+        self.act_view_mms.triggered.connect(lambda: self._set_modo_vista("clasico"))
+        self.menu_viewapp.addAction(self.act_view_mms)
+
+        self.act_view_ide = QAction("IDE (Modo Dashboard / Sidebar)", self)
+        self.act_view_ide.setCheckable(True)
+        self.act_view_ide.setChecked(self.modo_vista == "dashboard")
+        self.act_view_ide.triggered.connect(lambda: self._set_modo_vista("dashboard"))
+        self.menu_viewapp.addAction(self.act_view_ide)
+
+        m_arc.addSeparator()
         m_arc.addAction("Instalar Actualización (.mtu)...", self.instalar_actualizacion_mtu)
         m_arc.addSeparator()
         import sys
@@ -565,39 +656,87 @@ class BaseAppGUI(QMainWindow):
             m_arc.addSeparator()
         m_arc.addAction("Salir", self.salir_aplicacion)
 
-        # Menú Log de Actualizaciones (Al lado de ARCHIVO)
-        act_log = QAction("📋 ACTUALIZACIONES", self)
-        act_log.triggered.connect(self.mostrar_log_actualizaciones)
-        menubar.addAction(act_log)
+        # Opciones de Toolbar
+        act_log = self.menu_toolbar.addAction("📋 ACTUALIZACIONES", self.mostrar_log_actualizaciones)
+        act_aclara = self.menu_toolbar.addAction("⚠️ ACLARACIONES", self.mostrar_aclaraciones_sistema)
 
-        # Menú Ver
-        self.menu_ver = menubar.addMenu("VER")
-        self.action_gestionar = QAction("Gestionar Módulos...", self)
-        self.action_gestionar.triggered.connect(self.abrir_gestor_modulos)
-        self.menu_ver.addAction(self.action_gestionar)
-        self.menu_ver.addSeparator()
-
-        # Menú Aclaraciones (Se integra como acción de menú principal por visibilidad)
-        act_aclara = QAction("⚠️ ACLARACIONES", self)
-        act_aclara.triggered.connect(self.mostrar_aclaraciones_sistema)
-        menubar.addAction(act_aclara)
-
-        # Botón Consola Dev (visible cuando se active 'mode dev' en el buscador general)
+        # Consola Dev dentro de Toolbar
         self.act_dev_console = QAction("⚡ CONSOLA", self)
         self.act_dev_console.setToolTip("Abrir Terminal de Comandos y Automatización (Modo Programador)")
         self.act_dev_console.triggered.connect(self._toggle_console)
         self.act_dev_console.setVisible(getattr(self, "_dev_mode_activo", False))
-        menubar.addAction(self.act_dev_console)
+        self.menu_toolbar.addAction(self.act_dev_console)
 
-        # Menú Ayuda
-        m_ayu = menubar.addMenu("AYUDA")
-        m_ayu.addAction("Acerca de", self.mostrar_acerca_de)
+        self.menu_toolbar.addSeparator()
+        act_reset_zip = self.menu_toolbar.addAction("🔄 Reiniciar Configuración (Backup .ZIP)...", self.reiniciar_configuracion_modulos_zip)
+        self.menu_toolbar.addSeparator()
+        self.menu_toolbar.addAction("❓ Acerca de", self.mostrar_acerca_de)
+
+        # 2. Menú MODULES (Módulos y su gestión)
+        self.menu_modules = menubar.addMenu("📦 MODULES")
+        self.action_gestionar = QAction("⚙️ Gestionar Módulos...", self)
+        self.action_gestionar.triggered.connect(self.abrir_gestor_modulos)
+        self.menu_modules.addAction(self.action_gestionar)
+        self.menu_modules.addSeparator()
+
+        # 3. Menú VER (Se activa en modo MMS y se oculta en modo IDE)
+        self.menu_ver = menubar.addMenu("👁️ VER")
+        self.menu_ver.addAction(self.action_gestionar)
+        self.menu_ver.addSeparator()
+        self.menu_ver.menuAction().setVisible(self.modo_vista == "clasico")
+
+        # Acciones directas visibles en la barra superior para acceso rápido
+        self.act_bar_console = QAction("⚡ CONSOLA", self)
+        self.act_bar_console.triggered.connect(self._toggle_console)
+        self.act_bar_console.setVisible(getattr(self, "_dev_mode_activo", False))
+        menubar.addAction(self.act_bar_console)
+    def reiniciar_configuracion_modulos_zip(self):
+        """Reinicia la configuración de módulos a fábrica generando un backup comprimido en .zip."""
+        resp = QMessageBox.question(
+            self,
+            "Confirmar Reinicio de Configuración",
+            "¿Está seguro de restablecer la configuración de los módulos a sus valores de fábrica?\n\n"
+            "Se creará automáticamente una copia de respaldo comprimida (.zip) en la carpeta 'backups' "
+            "de su cuenta con todas sus configuraciones e iconos personalizados actuales.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+
+        from vistas.configurations import backup_and_reset_modulesconf
+        from controlador.utils.paths import get_resource_path
+        mod_dir = get_resource_path() / "vistas" / "modulos"
+
+        ok, zip_path = backup_and_reset_modulesconf(self.ruta_usuario, mod_dir)
+        if ok:
+            QMessageBox.information(
+                self,
+                "Reinicio Exitoso",
+                f"✅ Configuración restaurada con éxito a valores de fábrica.\n\n"
+                f"📦 Copia de respaldo guardada en:\n{zip_path}\n\n"
+                "Se recargarán las listas y vistas inmediatamente."
+            )
+            # Refrescar módulos en caliente
+            from vistas.configurations import discover_modules_and_plugins
+            self.modulos_cargados = discover_modules_and_plugins(self.ruta_usuario)
+            if hasattr(self, "actualizar_menu_ver"):
+                self.actualizar_menu_ver(self.modulos_cargados)
+            if hasattr(self, "sidebar"):
+                self.sidebar.set_modulos(self.modulos_cargados)
+        else:
+            QMessageBox.critical(self, "Error al Reiniciar", f"Ocurrió un error durante el reinicio: {zip_path}")
+
 
     def activar_modo_dev(self, activar=True):
         """Activa o desactiva el modo desarrollador y muestra/oculta el botón en la barra superior."""
         self._dev_mode_activo = bool(activar)
         if hasattr(self, "act_dev_console") and self.act_dev_console:
             self.act_dev_console.setVisible(self._dev_mode_activo)
+        if hasattr(self, "act_bar_console") and self.act_bar_console:
+            self.act_bar_console.setVisible(self._dev_mode_activo)
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.renderizar_arbol()
         return self._dev_mode_activo
 
     def crear_btn_aclaraciones(self):
@@ -624,7 +763,7 @@ class BaseAppGUI(QMainWindow):
         )
 
     def actualizar_menu_ver(self, modulos_cargados):
-        """Actualiza los botones de navegación en la nav_bar sincronizadamente con scrollbar vertical"""
+        """Actualiza los botones de navegación en la nav_bar (MMS) sincronizadamente con círculo de estado (🟢/🔴)."""
         print("[*] Sincronizando menú navegabilidad...")
         # 1. Limpiar menú 'Ver'
         for action in self.menu_ver.actions():
@@ -646,9 +785,12 @@ class BaseAppGUI(QMainWindow):
 
         for i, mod in enumerate(tabs_reales):
             name = mod['name'].capitalize()
+            is_loaded = mod.get("loaded", False)
+            status_circle = "🟢" if is_loaded else "🔴"
+            btn_display_text = f"{name}  {status_circle}"
 
             # Botón estilizado dentro del menú scrollable
-            btn_mod = QPushButton(f"  {name}")
+            btn_mod = QPushButton(f"  {btn_display_text}")
             btn_mod.setCursor(Qt.CursorShape.PointingHandCursor)
             btn_mod.setFont(QFont(getattr(self, "font_family", "Segoe UI"), 9))
             btn_mod.setStyleSheet(f"""
@@ -669,8 +811,8 @@ class BaseAppGUI(QMainWindow):
             btn_mod.clicked.connect(lambda ch, idx=i: (self.notebook.setCurrentIndex(idx), self.menu_ver.close()))
             scroll_layout.addWidget(btn_mod)
 
-            # Botón en nav_bar
-            self.nav_bar.add_tab(name, i, checked=(self.notebook.currentIndex() == i))
+            # Botón en nav_bar con nombre y círculo de estado
+            self.nav_bar.add_tab(btn_display_text, i, checked=(self.notebook.currentIndex() == i))
 
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -950,3 +1092,250 @@ class BaseAppGUI(QMainWindow):
         dialog = UpdatesLogDialog(self)
         dialog.exec()
 
+
+
+
+    def _set_modo_vista(self, modo="clasico"):
+        """Establece directamente el modo de vista (clasico o dashboard) y lo persiste."""
+        self._aplicar_modo_vista(modo)
+        if hasattr(self, "config") and isinstance(self.config, dict):
+            self.config["modo_vista"] = modo
+            if hasattr(self, "guardar_configuracion") and callable(self.guardar_configuracion):
+                self.guardar_configuracion()
+            elif hasattr(self, "context") and hasattr(self.context, "ruta_usuario"):
+                try:
+                    cfg_p = Path(self.context.ruta_usuario) / "config.json"
+                    with open(cfg_p, "w", encoding="utf-8") as f:
+                        json.dump(self.config, f, indent=4)
+                except Exception:
+                    pass
+
+    def toggle_modo_vista(self):
+        """Conmuta entre MMS (Clásico) e IDE (Dashboard)."""
+        nuevo_modo = "dashboard" if getattr(self, "modo_vista", "clasico") == "clasico" else "clasico"
+        self._set_modo_vista(nuevo_modo)
+
+    def _aplicar_modo_vista(self, modo="clasico"):
+        """Aplica la disposición visual según el modo: 'clasico' (MMS) o 'dashboard' (IDE)."""
+        self.modo_vista = modo
+        
+        # Sincronizar checks del menú Viewapp
+        if hasattr(self, "act_view_mms") and self.act_view_mms:
+            self.act_view_mms.setChecked(modo == "clasico")
+        if hasattr(self, "act_view_ide") and self.act_view_ide:
+            self.act_view_ide.setChecked(modo == "dashboard")
+
+        # Inyectar modulos_dir en el sidebar si no lo tenía
+        if hasattr(self, "sidebar") and not self.sidebar.modulos_dir:
+            from controlador.utils.paths import get_resource_path
+            self.sidebar.modulos_dir = get_resource_path() / "vistas" / "modulos"
+            self.sidebar.ruta_usuario = getattr(self, "ruta_usuario", None)
+
+        # Ocultar o mostrar el menú VER según el modo
+        if hasattr(self, "menu_ver") and self.menu_ver:
+            self.menu_ver.menuAction().setVisible(modo == "clasico")
+
+        if modo == "dashboard":
+            # Ocultar barra superior en modo IDE para maximizar el espacio de trabajo (el Toolbar se integra en el Sidebar)
+            if self.menuBar():
+                self.menuBar().hide()
+            self.nav_bar.hide()
+            self.sidebar.show()
+            self.editor_tab_bar.show()
+
+            # Ocultar pestañas internas de submódulos para dar apariencia limpia estilo VS Code
+            self._sincronizar_visibilidad_subtabs_dashboard(ocultar=True)
+            self._sincronizar_dashboard_sidebar()
+            
+            # Sincronizar visibilidad del empty placeholder o notebook
+            if len(self.editor_tab_bar.tabs) == 0:
+                self.notebook.hide()
+                if hasattr(self, "dashboard_empty_view"):
+                    self.dashboard_empty_view.show()
+            else:
+                self.notebook.show()
+                if hasattr(self, "dashboard_empty_view"):
+                    self.dashboard_empty_view.hide()
+        else:
+            # Restaurar barra de menú superior en modo MMS (Clásico)
+            if self.menuBar():
+                self.menuBar().show()
+            self.sidebar.hide()
+            self.editor_tab_bar.hide()
+            if hasattr(self, "dashboard_empty_view"):
+                self.dashboard_empty_view.hide()
+            self.notebook.show()
+            self.nav_bar.show()
+
+            # Restaurar visibilidad de pestañas internas de submódulos
+            self._sincronizar_visibilidad_subtabs_dashboard(ocultar=False)
+
+    def _sincronizar_visibilidad_subtabs_dashboard(self, ocultar=True):
+        """Oculta o muestra la barra de pestañas interna de los submódulos de manera confiable según el modo de vista."""
+        try:
+            # 1. Recorrer instancias conocidas en clases_modulos
+            for k, cont in getattr(self, "clases_modulos", {}).items():
+                if cont:
+                    if hasattr(cont, "tabs") and hasattr(cont.tabs, "tabBar") and cont.tabs.tabBar():
+                        cont.tabs.tabBar().setVisible(not ocultar)
+
+            # 2. Recorrer todos los widgets del notebook y buscar recursivamente QTabWidgets secundarios
+            if hasattr(self, "notebook"):
+                for i in range(self.notebook.count()):
+                    w = self.notebook.widget(i)
+                    if w:
+                        for tw in w.findChildren(QTabWidget):
+                            if tw != self.notebook and tw.tabBar():
+                                tw.tabBar().setVisible(not ocultar)
+        except Exception as e:
+            print(f"[BaseAppGUI] Error sincronizando visibilidad de subtabs: {e}")
+
+    def _sincronizar_dashboard_sidebar(self):
+        """Actualiza el árbol del sidebar con los módulos cargados."""
+        if hasattr(self, "sidebar") and hasattr(self, "modulos_cargados"):
+            if not self.sidebar.modulos_dir:
+                from controlador.utils.paths import get_resource_path
+                self.sidebar.modulos_dir = get_resource_path() / "vistas" / "modulos"
+            self.sidebar.ruta_usuario = getattr(self, "ruta_usuario", None)
+            curr_mod = ""
+            curr_sub = ""
+            if 0 <= self.editor_tab_bar.current_index < len(self.editor_tab_bar.tabs):
+                t = self.editor_tab_bar.tabs[self.editor_tab_bar.current_index]
+                curr_mod = t["mod_name"]
+                curr_sub = t["sub_name"]
+            self.sidebar.set_modulos(self.modulos_cargados, curr_mod, curr_sub)
+
+    def _on_dashboard_submodule_selected(self, mod_name, sub_name, mod_idx, sub_idx):
+        """Manejador cuando el usuario hace doble clic en un módulo/submódulo del sidebar."""
+        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+        if 0 <= mod_idx < len(visibles):
+            mod = visibles[mod_idx]
+            if not mod.get("loaded", False):
+                self._instanciar_modulo(mod)
+
+        # Cambiar el notebook al módulo
+        for idx_m, m in enumerate(visibles):
+            if m.get("name", "").lower() == mod_name.lower():
+                self.notebook.setCurrentIndex(idx_m)
+                break
+
+        # Sincronizar el submódulo interno
+        container = getattr(self, "clases_modulos", {}).get(mod_name)
+        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+            if hasattr(container.tabs, "tabBar") and container.tabs.tabBar():
+                container.tabs.tabBar().hide()
+            if 0 <= sub_idx < container.tabs.count():
+                container.tabs.setCurrentIndex(sub_idx)
+
+        # Mostrar el notebook y ocultar la pantalla de bienvenida
+        self.notebook.show()
+        if hasattr(self, "dashboard_empty_view"):
+            self.dashboard_empty_view.hide()
+
+        # Agregar o activar en la barra de pestañas editor
+        clean_sub = sub_name.strip()
+        display_title = f"{mod_name.capitalize()} › {clean_sub}" if clean_sub else mod_name.capitalize()
+        self.editor_tab_bar.add_tab(mod_name, clean_sub, display_title, make_active=True)
+        if hasattr(self, "logger"):
+            self.logger.log("INFO", f"Módulo: {mod_name.capitalize()} > Pestaña: {clean_sub}", modulo="Navegación")
+
+    def _on_dashboard_editor_tab_selected(self, idx):
+        """Manejador cuando el usuario cambia de pestaña en la barra superior estilo editor."""
+        if idx < 0 or idx >= len(self.editor_tab_bar.tabs):
+            self.notebook.hide()
+            if hasattr(self, "dashboard_empty_view"):
+                self.dashboard_empty_view.show()
+            return
+
+        self.notebook.show()
+        if hasattr(self, "dashboard_empty_view"):
+            self.dashboard_empty_view.hide()
+
+        tab_info = self.editor_tab_bar.tabs[idx]
+        mod_name = tab_info["mod_name"]
+        sub_name = tab_info["sub_name"]
+
+        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+        for i, m in enumerate(visibles):
+            if m.get("name", "").lower() == mod_name.lower():
+                if not m.get("loaded", False):
+                    self._instanciar_modulo(m)
+                self.notebook.setCurrentIndex(i)
+                break
+
+        container = getattr(self, "clases_modulos", {}).get(mod_name)
+        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+            if hasattr(container.tabs, "tabBar") and container.tabs.tabBar():
+                container.tabs.tabBar().hide()
+            if sub_name:
+                for s_i in range(container.tabs.count()):
+                    txt = container.tabs.tabText(s_i).lower()
+                    if sub_name.lower() in txt or txt in sub_name.lower():
+                        container.tabs.setCurrentIndex(s_i)
+                        break
+
+        # Sincronizar selección en sidebar
+        self.sidebar._active_mod_name = mod_name
+        self.sidebar._active_sub_name = sub_name
+        self.sidebar.renderizar_arbol()
+
+    def _on_dashboard_editor_tab_closed(self, idx):
+        """Manejador cuando el usuario cierra una pestaña con '✕'."""
+        if len(self.editor_tab_bar.tabs) == 0:
+            self.notebook.hide()
+            if hasattr(self, "dashboard_empty_view"):
+                self.dashboard_empty_view.show()
+            self.sidebar._active_mod_name = ""
+            self.sidebar._active_sub_name = ""
+            self.sidebar.renderizar_arbol()
+
+    def abrir_buscador_general_rapido(self):
+        """Abre la búsqueda rápida / selector de módulos (Ctrl+T)."""
+        if hasattr(self, "abrir_gestor_modulos"):
+            self.abrir_gestor_modulos()
+
+    def keyPressEvent(self, event):
+        """Gestiona combinaciones de teclas globales como Ctrl + Números (1 a 99) con Enter."""
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            k = event.key()
+            if Qt.Key.Key_0 <= k <= Qt.Key.Key_9:
+                digit = str(k - Qt.Key.Key_0)
+                self._ctrl_digit_buffer += digit
+                if hasattr(self, "_ctrl_digit_timer"):
+                    self._ctrl_digit_timer.start(1500)
+                if hasattr(self, "barra_estado"):
+                    self.set_status(f"Seleccionando Módulo #{self._ctrl_digit_buffer} (Presiona Enter para ir)...")
+                event.accept()
+                return
+
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            if getattr(self, "_ctrl_digit_buffer", ""):
+                self._activar_modulo_por_numero(self._ctrl_digit_buffer)
+                self._ctrl_digit_buffer = ""
+                event.accept()
+                return
+
+        super().keyPressEvent(event)
+
+    def _timeout_ctrl_digits(self):
+        """Si el usuario no presiona Enter tras 1.5s, navega al número acumulado automáticamente."""
+        if getattr(self, "_ctrl_digit_buffer", ""):
+            self._activar_modulo_por_numero(self._ctrl_digit_buffer)
+            self._ctrl_digit_buffer = ""
+
+    def _activar_modulo_por_numero(self, num_str):
+        try:
+            val = int(num_str)
+            target_idx = val - 1 # 1-based a 0-based
+            visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+            if 0 <= target_idx < len(visibles):
+                mod = visibles[target_idx]
+                if self.modo_vista == "dashboard":
+                    self._on_dashboard_submodule_selected(mod["name"], "", target_idx, 0)
+                else:
+                    self.notebook.setCurrentIndex(target_idx)
+                self.set_status(f"Módulo activo: {mod['name'].capitalize()} (#{val})")
+            else:
+                self.set_status(f"Número de módulo inválido: #{val} (Rango: 1-{len(visibles)})")
+        except Exception as e:
+            print(f"[BaseAppGUI] Error activando módulo por número: {e}")

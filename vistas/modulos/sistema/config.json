@@ -7,55 +7,84 @@
             "name": "Resumen",
             "file_name": "submodulos/tab_resumen.py",
             "class_name": "TabResumen",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "resumen",
+            "position": 1
         },
         {
             "name": "Monitoreo",
             "file_name": "submodulos/tab_monitoreo.py",
             "class_name": "TabMonitoreo",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "monitoreo",
+            "position": 2
         },
         {
             "name": "Procesos",
             "file_name": "submodulos/tab_procesos.py",
             "class_name": "TabProcesos",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "procesos",
+            "position": 3
         },
         {
             "name": "Inicio de Windows",
             "file_name": "submodulos/tab_startup.py",
             "class_name": "TabStartup",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "inicio_de",
+            "position": 4
         },
         {
             "name": "Limpiador",
             "file_name": "submodulos/tab_limpiador.py",
             "class_name": "TabLimpiador",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "limpiador",
+            "position": 5
         },
         {
             "name": "Antivirus & EDR",
             "file_name": "submodulos/tab_antivirus.py",
             "class_name": "TabAntivirus",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "antivirus_edr",
+            "position": 6
         },
         {
             "name": "Control Remoto",
             "file_name": "submodulos/tab_remote.py",
             "class_name": "TabRemote",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "control_remoto",
+            "position": 7
         },
         {
             "name": "Herramientas Avanzadas",
             "file_name": "submodulos/tab_avanzado.py",
             "class_name": "TabAvanzado",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "herramientas_avanzadas",
+            "position": 8
         },
         {
             "name": "Seguridad",
             "file_name": "submodulos/tab_seguridad.py",
             "class_name": "TabSeguridad",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "seguridad",
+            "position": 9
         }
-    ]
+    ],
+    "alias": "sistema",
+    "icon": "💻"
 }

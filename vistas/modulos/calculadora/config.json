@@ -5,88 +5,131 @@
     "icon": "🧮",
     "submodulos": [
         {
-            "name": "🔢 Básica",
+            "name": "Básica",
             "file_name": "submodulos/basica.py",
             "class_name": "TabCalculadoraBasica",
-            "visible": true
+            "visible": true,
+            "icon": "🔢",
+            "alias": "básica",
+            "position": 1
         },
         {
-            "name": "⚗️ Científica",
+            "name": "Científica",
             "file_name": "submodulos/cientifica.py",
             "class_name": "TabCalculadoraCientifica",
-            "visible": true
+            "visible": true,
+            "icon": "⚗",
+            "alias": "científica",
+            "position": 2
         },
         {
-            "name": "🧪 Química & Tabla",
+            "name": "Química & Tabla",
             "file_name": "submodulos/quimica.py",
             "class_name": "TabCalculadoraQuimica",
-            "visible": true
+            "visible": true,
+            "icon": "🧪",
+            "alias": "química_tabla",
+            "position": 3
         },
         {
-            "name": "🏃 Masa Corporal",
+            "name": "Masa Corporal",
             "file_name": "submodulos/cuerpo_humano.py",
             "class_name": "TabCalculadoraCuerpoHumano",
-            "visible": true
+            "visible": true,
+            "icon": "🏃",
+            "alias": "masa_corporal",
+            "position": 4
         },
         {
-            "name": "💻 Programador",
+            "name": "Programador",
             "file_name": "submodulos/programador.py",
             "class_name": "TabCalculadoraProgramador",
-            "visible": true
+            "visible": true,
+            "icon": "💻",
+            "alias": "programador",
+            "position": 5
         },
         {
-            "name": "📐 Geometría",
+            "name": "Geometría",
             "file_name": "submodulos/geometria.py",
             "class_name": "TabCalculadoraGeometria",
-            "visible": true
+            "visible": true,
+            "icon": "📐",
+            "alias": "geometría",
+            "position": 6
         },
         {
-            "name": "⚖️ Conversor",
+            "name": "Conversor",
             "file_name": "submodulos/conversor.py",
             "class_name": "TabCalculadoraConversor",
-            "visible": true
+            "visible": true,
+            "icon": "⚖",
+            "alias": "conversor",
+            "position": 7
         },
         {
-            "name": "💰 Financiera",
+            "name": "Financiera",
             "file_name": "submodulos/financiera.py",
             "class_name": "TabCalculadoraFinanciera",
-            "visible": true
+            "visible": true,
+            "icon": "💰",
+            "alias": "financiera",
+            "position": 8
         },
         {
-            "name": "🎯 Finanzas & Gastos",
+            "name": "Finanzas & Gastos",
             "file_name": "submodulos/finance_tracker.py",
             "class_name": "TabCalculadoraFinanzas",
-            "visible": true
+            "visible": true,
+            "icon": "🎯",
+            "alias": "finanzas_gastos",
+            "position": 9
         },
         {
-            "name": "📅 Fechas",
+            "name": "Fechas",
             "file_name": "submodulos/fechas.py",
             "class_name": "TabCalculadoraFechas",
-            "visible": true
+            "visible": true,
+            "icon": "📅",
+            "alias": "fechas",
+            "position": 10
         },
         {
-            "name": "🔄 Archivos",
+            "name": "Archivos",
             "file_name": "submodulos/conversor_archivos.py",
             "class_name": "TabCalculadoraConversorArchivos",
-            "visible": true
+            "visible": true,
+            "icon": "🔄",
+            "alias": "archivos",
+            "position": 11
         },
         {
-            "name": "📈 Graficador & Matrices",
+            "name": "Graficador & Matrices",
             "file_name": "submodulos/graficador.py",
             "class_name": "TabCalculadoraGraficador",
-            "visible": true
+            "visible": true,
+            "icon": "📈",
+            "alias": "graficador_matrices",
+            "position": 12
         },
         {
-            "name": "📊 Estadística",
+            "name": "Estadística",
             "file_name": "submodulos/estadistica.py",
             "class_name": "TabCalculadoraEstadistica",
-            "visible": true
+            "visible": true,
+            "icon": "📊",
+            "alias": "estadística",
+            "position": 13
         },
         {
-            "name": "📜 Historial",
+            "name": "Historial",
             "file_name": "submodulos/historial.py",
             "class_name": "TabCalculadoraHistorial",
-            "visible": true
+            "visible": true,
+            "icon": "📜",
+            "alias": "historial",
+            "position": 14
         }
-    ]
+    ],
+    "alias": "calculadora"
 }

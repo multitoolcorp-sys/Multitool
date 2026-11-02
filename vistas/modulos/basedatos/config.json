@@ -11,7 +11,11 @@
             "name": "Gestor de Bases de Datos",
             "file_name": "basedatos.py",
             "class_name": "TabBasedatos",
-            "visible": true
+            "visible": true,
+            "icon": "🧩",
+            "alias": "gestor_de",
+            "position": 1
         }
-    ]
+    ],
+    "alias": "basedatos"
 }

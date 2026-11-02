@@ -1,3 +1,5 @@
+import urllib.request
+import shutil
 import os
 import sys
 import re
@@ -235,6 +237,16 @@ class CommandEngine:
                 return ["§e[Command Engine] Contexto restablecido a comandos globales.§r"]
             elif nombre in ["modules", "modulos", "list"]:
                 return self._cmd_modules(args)
+            elif nombre in ["submodules", "submodulos"]:
+                return self._cmd_submodules(args)
+            elif nombre in ["change", "cambiar"]:
+                return self._cmd_change(args)
+            elif nombre in ["viewapp"]:
+                return self._cmd_change(["viewapp"] + args)
+            elif nombre in ["edit", "editar", "modificar"]:
+                return self._cmd_edit(args)
+            elif nombre in ["reset", "restablecer", "restaurar"]:
+                return self._cmd_reset(args)
             elif nombre in ["goto", "ir"]:
                 return self._cmd_goto(args)
             elif nombre in ["status", "info"]:
@@ -350,13 +362,22 @@ class CommandEngine:
             lineas.append("§7Para salir de este módulo y volver al contexto global escribe §euse default§7.")
             lineas.append("")
 
+        modo = getattr(self.main_window, "modo_vista", "clasico") if self.main_window else "clasico"
+        goto_desc = (
+            "§egoto <modulo> <submodulo> §7- En modo IDE, abre directamente un submódulo en el editor."
+            if modo == "dashboard"
+            else "§egoto <modulo> §7- Navega visualmente hacia el módulo indicado."
+        )
+
         # Comandos globales
         lineas.extend([
             "§6=== ⚡ COMANDOS GLOBALES DE MULTITOOL ===§r",
+            "§echange viewapp [MMS|IDE] §7- Cambia el estilo de vista (MMS Clásico vs IDE Dashboard).",
+            "§esubmodules [modulo] §7- Lista los submódulos configurados del módulo indicado.",
+            goto_desc,
             "§euse module <nombre> §7- Selecciona un módulo para usar sus comandos personalizados.",
             "§euse default §7- Restablece el contexto a comandos globales.",
             "§emodules §7- Lista todos los módulos y cuáles tienen commands.json.",
-            "§egoto <modulo> §7- Navega visualmente hacia el módulo indicado.",
             "§estatus §7- Muestra información del usuario, módulo activo y estado.",
             "§eclear §7- Limpia la pantalla de la terminal.",
             "§epoints [add|set] <cant> §7- Administra puntos del perfil de usuario.",
@@ -672,20 +693,490 @@ class CommandEngine:
         self.cheat_mgr.force_jackpot = True
         return ["§6[Casino] ¡Jackpot 777 garantizado para la siguiente tirada de Tragamonedas!"]
 
-    def _cmd_goto(self, args):
+    def _cmd_change(self, args: list) -> list:
+        """Comando /change viewapp MMS/IDE para alternar modos de vista."""
         if not args:
-            return ["§cFormato: goto <nombre_modulo> (ej: goto minigames)"]
-        destino = args[0].lower()
+            return [
+                "§cFormato: /change viewapp <MMS|IDE>§r",
+                "§7Ejemplo: §e/change viewapp IDE §7o §e/change viewapp MMS§r"
+            ]
 
-        if self.main_window and hasattr(self.main_window, "notebook"):
-            nb = self.main_window.notebook
-            for i in range(nb.count()):
-                t_name = nb.tabText(i).lower()
-                if destino in t_name:
-                    nb.setCurrentIndex(i)
-                    return [f"§a[Navegación] Cambiado a módulo: §e{nb.tabText(i)}§r"]
+        sub = args[0].lower()
+        if sub in ["viewapp", "vista", "mode", "modo"]:
+            if not self.main_window:
+                return ["§c[Viewapp] Ventana principal no vinculada.§r"]
 
-        return [f"§cNo se pudo encontrar el módulo '{destino}' o la interfaz no está vinculada."]
+            if len(args) > 1:
+                target_mode = args[1].lower()
+                if target_mode in ["mms", "clasico", "classic", "standard"]:
+                    self.main_window._set_modo_vista("clasico")
+                    return [
+                        "§a[Viewapp] Modo de interfaz cambiado a: §eMMS (MultiModulesStatics - Clásico)§r",
+                        "§7Las pestañas principales se muestran en la barra superior."
+                    ]
+                elif target_mode in ["ide", "dashboard", "sidebar"]:
+                    self.main_window._set_modo_vista("dashboard")
+                    return [
+                        "§a[Viewapp] Modo de interfaz cambiado a: §eIDE (Dashboard / Sidebar)§r",
+                        "§7Los módulos y submódulos se organizan en el explorador lateral con pestañas de editor."
+                    ]
+                else:
+                    return [
+                        f"§cModo '{args[1]}' desconocido. Modos disponibles: §eMMS§c o §eIDE§r.",
+                        "§7Ejemplo: §e/change viewapp IDE§r"
+                    ]
+            else:
+                self.main_window.toggle_modo_vista()
+                actual = getattr(self.main_window, "modo_vista", "clasico")
+                modo_str = "IDE (Dashboard)" if actual == "dashboard" else "MMS (Clásico)"
+                return [f"§a[Viewapp] Modo de interfaz alternado a: §e{modo_str}§r"]
+
+        return [
+            f"§cOpción de cambio '{sub}' no reconocida.§r",
+            "§7Usa: §e/change viewapp <MMS|IDE>§r"
+        ]
+
+    def _cmd_submodules(self, args: list) -> list:
+        """Comando /submodules [modulo] que lista todos los submódulos configurados en config.json."""
+        target = None
+        if args:
+            target = args[0].lower()
+        elif self.active_module:
+            target = self.active_module.lower()
+
+        todos = self.registry.obtener_modulos_disponibles()
+
+        if not target:
+            return [
+                "§cFormato: /submodules <nombre_modulo>§r",
+                f"§7Módulos disponibles: {', '.join(todos)}",
+                "§7O activa un módulo con §euse module <nombre>§7 para consultar sus submódulos directamente."
+            ]
+
+        if target not in todos:
+            match = next((m for m in todos if target in m.lower()), None)
+            if match:
+                target = match
+            else:
+                return [
+                    f"§cMódulo '{target}' no encontrado.§r",
+                    f"§7Módulos existentes: {', '.join(todos)}"
+                ]
+
+        # Extraer submódulos
+        try:
+            from vistas.dashboard_layout import extraer_submodulos_modulo
+            subs = extraer_submodulos_modulo(target.capitalize(), target, self.registry.modulos_dir)
+        except Exception:
+            subs = []
+            cfg_file = self.registry.modulos_dir / target / "config.json"
+            if cfg_file.exists():
+                try:
+                    with open(cfg_file, "r", encoding="utf-8") as f:
+                        cfg_data = json.load(f)
+                    for item in cfg_data.get("submodulos", []):
+                        if isinstance(item, dict):
+                            subs.append(item.get("nombre") or item.get("name") or str(item))
+                        elif isinstance(item, str):
+                            subs.append(item)
+                except Exception:
+                    pass
+
+        if not subs:
+            return [
+                f"§6=== 📑 SUBMÓDULOS DE [{target.upper()}] ===§r",
+                f"§7No se encontraron submódulos definidos en config.json para '{target}'."
+            ]
+
+        lineas = [f"§6=== 📑 SUBMÓDULOS DE [{target.upper()}] ({len(subs)}) ===§r"]
+        for idx, s in enumerate(subs, 1):
+            s_name = s.get("nombre", str(s)) if isinstance(s, dict) else str(s)
+            lineas.append(f"§f  [{idx}] §e{s_name}§r")
+
+        lineas.append(f"§7Para abrir en modo IDE usa: §e/goto {target} <nombre_submodulo>§r")
+        return lineas
+
+
+    def _cmd_reset(self, args: list) -> list:
+        """Comando /reset config para restablecer módulos con backup .zip previo."""
+        if not args or args[0].lower() not in ["config", "modulos", "modules"]:
+            return [
+                "§cFormato: /reset config§r",
+                "§7Crea automáticamente un respaldo .zip de sus configuraciones actuales en 'backups' y restaura los valores de fábrica."
+            ]
+
+        try:
+            from vistas.configurations import backup_and_reset_modulesconf
+            ok, res_path = backup_and_reset_modulesconf(self.user_path, self.registry.modulos_dir)
+            if ok:
+                if self.main_window and hasattr(self.main_window, "reiniciar_configuracion_modulos_zip"):
+                    from vistas.configurations import discover_modules_and_plugins
+                    self.main_window.modulos_cargados = discover_modules_and_plugins(self.user_path)
+                    if hasattr(self.main_window, "sidebar"):
+                        self.main_window.sidebar.set_modulos(self.main_window.modulos_cargados)
+                return [
+                    "§a[Reset] ✅ Configuración de módulos restablecida de fábrica.§r",
+                    f"§7Copia de respaldo generada en: §f{res_path}§r"
+                ]
+            else:
+                return [f"§c[Reset Error]: {res_path}§r"]
+        except Exception as e:
+            return [f"§c[Reset Error]: {e}§r"]
+
+    def _cmd_edit(self, args: list) -> list:
+        """
+        Comando /edit para editar atributos de módulos o submódulos.
+        Uso:
+          /edit <modulo> <name|alias|icon|position> <valor>
+          /edit <modulo> submodule <sub_name_o_alias> <name|alias|icon|position> <valor>
+        """
+        if not args or len(args) < 2:
+            return [
+                "§6=== ✏️ ASISTENTE DE COMANDO /edit ===§r",
+                "§e/edit <modulo> name <nuevo_nombre>§7 - Modifica el nombre del módulo.",
+                "§e/edit <modulo> alias <nuevo_alias>§7 - Atajo rápido para comandos en consola.",
+                "§e/edit <modulo> icon <emoji_o_archivo.ico_o_url>§7 - Icono (.ico exclusivamente o emoji).",
+                "§e/edit <modulo> position <numero>§7 - Posición de orden.",
+                "§e/edit <modulo> submodule <submodulo> <campo> <valor>§7 - Edita un submódulo específico.",
+                "§7Ejemplos: §f/edit notas alias notes §7| §f/edit calc icon 🧮 §7| §f/edit general icon C:/iconos/app.ico"
+            ]
+
+        mod_target = args[0].lower()
+        todos = self.registry.obtener_modulos_disponibles()
+
+        # Buscar módulo por nombre, folder o alias
+        mod_found = None
+        for m in todos:
+            if m.lower() == mod_target:
+                mod_found = m
+                break
+            # Revisar alias en config
+            cfg_p = self.registry.modulos_dir / m / "config.json"
+            if cfg_p.exists():
+                try:
+                    with open(cfg_p, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                    if d.get("alias", "").lower() == mod_target:
+                        mod_found = m
+                        break
+                except Exception:
+                    pass
+
+        if not mod_found:
+            match = next((m for m in todos if mod_target in m.lower()), None)
+            if match:
+                mod_found = match
+            else:
+                return [
+                    f"§cMódulo '{mod_target}' no encontrado.§r",
+                    f"§7Módulos disponibles: {', '.join(todos)}"
+                ]
+
+        # Determinar archivo config en modulesconf del usuario o en modulos_dir
+        target_dir = None
+        if self.user_path:
+            target_dir = Path(self.user_path) / "modulesconf" / mod_found
+            target_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            target_dir = self.registry.modulos_dir / mod_found
+
+        cfg_file = target_dir / "config.json"
+        if not cfg_file.exists():
+            orig_cfg = self.registry.modulos_dir / mod_found / "config.json"
+            if orig_cfg.exists():
+                shutil.copy2(orig_cfg, cfg_file)
+
+        try:
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                cfg_data = json.load(f)
+        except Exception as e:
+            return [f"§cError al leer configuración de {mod_found}: {e}§r"]
+
+        # Parsear si es edición de submódulo o del módulo raíz
+        is_sub = False
+        sub_key = ""
+        field = ""
+        val = ""
+
+        if args[1].lower() in ["submodule", "sub", "submodulo"]:
+            if len(args) < 5:
+                return ["§cFormato: /edit <modulo> submodule <submodulo> <name|alias|icon|position> <valor>§r"]
+            is_sub = True
+            sub_key = args[2].lower()
+            field = args[3].lower()
+            val = " ".join(args[4:]).strip()
+        elif len(args) >= 4 and args[1].lower() not in ["name", "alias", "icon", "position", "pos"]:
+            # Posible sintaxis abreviada: /edit <modulo> <submodulo> <campo> <valor>
+            # Verificar si args[1] coincide con algún submódulo
+            subs_list = cfg_data.get("submodulos", [])
+            match_sub = None
+            for s in subs_list:
+                s_n = s.get("name", "").lower()
+                s_a = s.get("alias", "").lower()
+                if args[1].lower() in [s_n, s_a] or args[1].lower() in s_n:
+                    match_sub = s
+                    break
+            if match_sub:
+                is_sub = True
+                sub_key = args[1].lower()
+                field = args[2].lower()
+                val = " ".join(args[3:]).strip()
+            else:
+                field = args[1].lower()
+                val = " ".join(args[2:]).strip()
+        else:
+            field = args[1].lower()
+            val = " ".join(args[2:]).strip()
+
+        if not field or not val:
+            return ["§cDebe especificar el campo y el nuevo valor.§r"]
+
+        if field in ["pos", "orden"]:
+            field = "position"
+
+        # Validaciones específicas de icono
+        final_val = val
+        if field == "icon":
+            es_url = val.startswith(("http://", "https://"))
+            es_archivo = ("." in val and not es_url and len(val) > 4)
+
+            if (es_url or es_archivo) and not val.lower().endswith(".ico"):
+                return [
+                    "§c[Edit] Error: Solo se admiten archivos .ico, URLs a .ico o emojis directos.§r",
+                    "§7No se permiten otras imágenes (.png, .jpg, etc.)."
+                ]
+
+            if es_url or es_archivo:
+                suffix_id = f"sub_{re.sub(r'[^\w]', '', sub_key)}" if is_sub else "mod"
+                dest_ico_name = f"icon_{suffix_id}.ico"
+                dest_ico_path = target_dir / dest_ico_name
+
+                # Eliminar icono anterior diferente para garantizar espacio
+                try:
+                    for old_f in target_dir.glob(f"icon_{suffix_id}*.ico"):
+                        if old_f.exists() and old_f.resolve() != dest_ico_path.resolve():
+                            old_f.unlink()
+                except Exception:
+                    pass
+
+                if es_url:
+                    try:
+                        urllib.request.urlretrieve(val, str(dest_ico_path))
+                        final_val = dest_ico_name
+                    except Exception as e:
+                        return [f"§c[Edit] Error al descargar icono desde URL: {e}§r"]
+                else:
+                    src_ico = Path(val)
+                    if src_ico.exists() and src_ico.is_file():
+                        try:
+                            shutil.copy2(src_ico, dest_ico_path)
+                            final_val = dest_ico_name
+                        except Exception as e:
+                            return [f"§c[Edit] Error al copiar archivo .ico: {e}§r"]
+                    else:
+                        return [f"§c[Edit] El archivo .ico especificado no existe: {val}§r"]
+
+        if field == "position":
+            try:
+                final_val = int(val)
+            except ValueError:
+                return [f"§c[Edit] La posición debe ser un número entero.§r"]
+
+        # Aplicar el cambio
+        if is_sub:
+            subs = cfg_data.get("submodulos", [])
+            target_sub = None
+            for s in subs:
+                s_name = s.get("name", "").lower()
+                s_alias = s.get("alias", "").lower()
+                if sub_key in [s_name, s_alias] or sub_key in s_name:
+                    target_sub = s
+                    break
+            if not target_sub:
+                return [
+                    f"§cSubmódulo '{sub_key}' no encontrado en '{mod_found}'.§r",
+                    f"§7Submódulos existentes: {', '.join([s.get('name','') for s in subs])}"
+                ]
+            target_sub[field] = final_val
+            sub_display_name = target_sub.get("name", sub_key)
+            msg_target = f"{mod_found.capitalize()} > {sub_display_name}"
+        else:
+            cfg_data[field] = final_val
+            msg_target = mod_found.capitalize()
+
+        # Guardar archivo config.json
+        try:
+            with open(cfg_file, "w", encoding="utf-8") as f:
+                json.dump(cfg_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            return [f"§c[Edit] Error al guardar config.json: {e}§r"]
+
+        # Refrescar vista si la ventana principal está vinculada
+        if self.main_window:
+            from vistas.configurations import discover_modules_and_plugins
+            self.main_window.modulos_cargados = discover_modules_and_plugins(self.user_path)
+            if hasattr(self.main_window, "sidebar") and self.main_window.sidebar:
+                self.main_window.sidebar.set_modulos(self.main_window.modulos_cargados)
+            if hasattr(self.main_window, "actualizar_menu_ver"):
+                try:
+                    self.main_window.actualizar_menu_ver(self.main_window.modulos_cargados)
+                except Exception:
+                    pass
+
+        return [
+            f"§a[Edit] ✅ Atributo '§e{field}§a' de '§e{msg_target}§a' actualizado con éxito a: §f{final_val}§r",
+            f"§7Configuración guardada en: §f{cfg_file.name}§r"
+        ]
+
+    def _cmd_goto(self, args: list) -> list:
+        if not self.main_window:
+            return ["§c[Navegación] Ventana principal no vinculada.§r"]
+
+        modo = getattr(self.main_window, "modo_vista", "clasico")
+
+        if modo == "dashboard":
+            # Modo IDE: requiere o soporta modulo y submodulo: /goto (module submodule)
+            if not args:
+                return [
+                    "§cFormato en modo IDE: /goto <modulo> <submodulo>§r",
+                    "§7Ejemplo: §e/goto general dashboard §7o §e/goto archivos explorador§r",
+                    "§7Usa §e/submodules <modulo> §7para ver los submódulos disponibles."
+                ]
+
+            mod_target = args[0].lower()
+            todos = self.registry.obtener_modulos_disponibles()
+
+            # Buscar el módulo correspondiente por nombre, carpeta o alias
+            mod_found = None
+            if mod_target in todos:
+                mod_found = mod_target
+            else:
+                for m in todos:
+                    if m.lower() == mod_target:
+                        mod_found = m
+                        break
+                    # Revisar alias
+                    cfg_p = self.registry.modulos_dir / m / "config.json"
+                    if cfg_p.exists():
+                        try:
+                            with open(cfg_p, "r", encoding="utf-8") as f:
+                                d = json.load(f)
+                            if d.get("alias", "").lower() == mod_target:
+                                mod_found = m
+                                break
+                        except Exception:
+                            pass
+                if not mod_found:
+                    mod_found = next((m for m in todos if mod_target in m.lower()), None)
+
+            if not mod_found:
+                return [
+                    f"§cMódulo '{mod_target}' no encontrado.§r",
+                    f"§7Módulos existentes: {', '.join(todos)}"
+                ]
+
+            # Extraer submódulos disponibles del módulo
+            try:
+                from vistas.dashboard_layout import extraer_submodulos_modulo
+                subs = extraer_submodulos_modulo(mod_found.capitalize(), mod_found, self.registry.modulos_dir)
+            except Exception:
+                subs = []
+
+            # Obtener índice del módulo en los visibles de la app
+            visibles = [m for m in getattr(self.main_window, "modulos_cargados", []) if m.get("visible", True)]
+            mod_idx = 0
+            for idx_m, m in enumerate(visibles):
+                if m.get("name", "").lower() == mod_found.lower() or m.get("folder_name", "").lower() == mod_found.lower():
+                    mod_idx = idx_m
+                    break
+
+            if len(args) == 1:
+                if subs:
+                    sub_nombres = [s if isinstance(s, str) else s.get("nombre", str(s)) for s in subs]
+                    return [
+                        f"§e[Modo IDE] Especifica también el submódulo: §f/goto {mod_found} <submodulo>§r",
+                        f"§7Submódulos de {mod_found.upper()}: {', '.join(sub_nombres)}",
+                        f"§7Ejemplo: §e/goto {mod_found} 1 §7o §e/goto {mod_found} {sub_nombres[0]}"
+                    ]
+                else:
+                    if hasattr(self.main_window, "_on_dashboard_submodule_selected"):
+                        self.main_window._on_dashboard_submodule_selected(mod_found.capitalize(), "", mod_idx, 0)
+                    elif hasattr(self.main_window, "notebook"):
+                        self.main_window.notebook.setCurrentIndex(mod_idx)
+                    return [f"§a[Navegación IDE] Abierto módulo: §e{mod_found.capitalize()}§r"]
+
+            sub_target = " ".join(args[1:]).lower()
+            sub_idx_found = None
+            sub_name_found = None
+
+            # 1. Por índice numérico (1-based o 0-based)
+            if sub_target.isdigit():
+                num = int(sub_target)
+                if 1 <= num <= len(subs):
+                    sub_idx_found = num - 1
+                    s_item = subs[sub_idx_found]
+                    sub_name_found = s_item if isinstance(s_item, str) else s_item.get("nombre", str(s_item))
+                elif 0 <= num < len(subs):
+                    sub_idx_found = num
+                    s_item = subs[sub_idx_found]
+                    sub_name_found = s_item if isinstance(s_item, str) else s_item.get("nombre", str(s_item))
+
+            # 2. Por coincidencia de texto o alias
+            if sub_name_found is None:
+                # Leer config para consultar alias de submódulos
+                sub_configs = []
+                cfg_p = self.registry.modulos_dir / mod_found / "config.json"
+                if cfg_p.exists():
+                    try:
+                        with open(cfg_p, "r", encoding="utf-8") as f:
+                            sub_configs = json.load(f).get("submodulos", [])
+                    except Exception:
+                        pass
+
+                for idx_s, s in enumerate(subs):
+                    s_str = s if isinstance(s, str) else s.get("nombre", str(s))
+                    s_alias = ""
+                    if idx_s < len(sub_configs) and isinstance(sub_configs[idx_s], dict):
+                        s_alias = sub_configs[idx_s].get("alias", "").lower()
+
+                    s_clean = re.sub(r'[^\w\s]', '', s_str).strip().lower()
+                    t_clean = re.sub(r'[^\w\s]', '', sub_target).strip().lower()
+                    if (s_alias and sub_target == s_alias) or t_clean in s_clean or sub_target in s_str.lower():
+                        sub_idx_found = idx_s
+                        sub_name_found = s_str
+                        break
+
+            if sub_name_found is not None and sub_idx_found is not None:
+                if hasattr(self.main_window, "_on_dashboard_submodule_selected"):
+                    self.main_window._on_dashboard_submodule_selected(
+                        mod_found.capitalize(), sub_name_found, mod_idx, sub_idx_found
+                    )
+                return [
+                    f"§a[Navegación IDE] Abierto: §e{mod_found.capitalize()} §a> §e{sub_name_found}§r"
+                ]
+            else:
+                sub_nombres = [s if isinstance(s, str) else s.get("nombre", str(s)) for s in subs]
+                return [
+                    f"§cSubmódulo '{sub_target}' no encontrado en '{mod_found}'.§r",
+                    f"§7Submódulos válidos: {', '.join(sub_nombres)}",
+                    f"§7Ejemplo: §e/goto {mod_found} 1 §7o §e/goto {mod_found} {sub_nombres[0] if sub_nombres else 'inicio'}§r"
+                ]
+
+        else:
+            # Modo MMS (Clásico): /goto (module)
+            if not args:
+                return ["§cFormato: /goto <nombre_modulo> (ej: /goto minigames)§r"]
+
+            destino = args[0].lower()
+            if hasattr(self.main_window, "notebook"):
+                nb = self.main_window.notebook
+                for i in range(nb.count()):
+                    t_name = nb.tabText(i).lower()
+                    if destino in t_name:
+                        nb.setCurrentIndex(i)
+                        return [f"§a[Navegación MMS] Cambiado a módulo: §e{nb.tabText(i)}§r"]
+
+            return [f"§cNo se pudo encontrar el módulo '{destino}' en las pestañas principales.§r"]
 
     def _cmd_status(self, args):
         pts = 0

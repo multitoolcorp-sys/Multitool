@@ -161,6 +161,8 @@ class NavButton(QPushButton):
         self.index = index
         self.parent_nav = parent_nav
         self.setAcceptDrops(True)
+        self.setProperty("is_nav_modulo", True)
+        self.setProperty("modulo_nombre", name)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() or event.mimeData().hasText():

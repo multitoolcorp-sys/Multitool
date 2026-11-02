@@ -4,40 +4,60 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "🎬 Reproductor ARK",
+            "name": "Reproductor ARK",
             "file_name": "submodulos/reproductor_multimedia.py",
             "class_name": "ReproductorMultimediaSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎬",
+            "alias": "reproductor_ark",
+            "position": 1
         },
         {
-            "name": "🔍 Buscador & Descargas",
+            "name": "Buscador & Descargas",
             "file_name": "submodulos/descargas_snaptube.py",
             "class_name": "DescargasSnaptubeSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🔍",
+            "alias": "buscador_descargas",
+            "position": 2
         },
         {
-            "name": "🎵 Playlists & Biblioteca",
+            "name": "Playlists & Biblioteca",
             "file_name": "submodulos/listas_reproduccion.py",
             "class_name": "ListasReproduccionSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎵",
+            "alias": "playlists_biblioteca",
+            "position": 3
         },
         {
-            "name": "📻 Radio Online",
+            "name": "Radio Online",
             "file_name": "submodulos/radio_streaming.py",
             "class_name": "RadioStreamingSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📻",
+            "alias": "radio_online",
+            "position": 4
         },
         {
-            "name": "📺 Televisión Online",
+            "name": "Televisión Online",
             "file_name": "submodulos/television_online.py",
             "class_name": "TelevisionOnlineSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📺",
+            "alias": "televisión_online",
+            "position": 5
         },
         {
-            "name": "🎛️ Ecualizador & Efectos",
+            "name": "Ecualizador & Efectos",
             "file_name": "submodulos/ecualizador_efectos.py",
             "class_name": "EcualizadorEfectosSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🎛",
+            "alias": "ecualizador_efectos",
+            "position": 6
         }
-    ]
+    ],
+    "alias": "reproductor",
+    "icon": "🎵"
 }

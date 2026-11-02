@@ -4,34 +4,51 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "📱 Espejo Celular",
+            "name": "Espejo Celular",
             "file_name": "submodulos/espejo_celular.py",
             "class_name": "EspejoCelularGUI",
-            "visible": true
+            "visible": true,
+            "icon": "📱",
+            "alias": "espejo_celular",
+            "position": 1
         },
         {
-            "name": "📸 Recortes & OCR",
+            "name": "Recortes & OCR",
             "file_name": "submodulos/snipper.py",
             "class_name": "SnipperGUI",
-            "visible": true
+            "visible": true,
+            "icon": "📸",
+            "alias": "recortes_ocr",
+            "position": 2
         },
         {
-            "name": "📌 Kanban & Pizarra",
+            "name": "Kanban & Pizarra",
             "file_name": "submodulos/kanban_pizarra.py",
             "class_name": "KanbanPizarraSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📌",
+            "alias": "kanban_pizarra",
+            "position": 3
         },
         {
-            "name": "🚀 Lanzador & Sonidos",
+            "name": "Lanzador & Sonidos",
             "file_name": "submodulos/lanzador_soundboard.py",
             "class_name": "LanzadorSoundboardSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "🚀",
+            "alias": "lanzador_sonidos",
+            "position": 4
         },
         {
-            "name": "🎡 Ruleta",
+            "name": "Ruleta",
             "file_name": "submodulos/ruleta.py",
             "class_name": "RouletteGUI",
-            "visible": true
+            "visible": true,
+            "icon": "🎡",
+            "alias": "ruleta",
+            "position": 5
         }
-    ]
+    ],
+    "alias": "extras",
+    "icon": "✨"
 }

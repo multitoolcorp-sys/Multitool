@@ -28,8 +28,16 @@ class GlobalActionFilter(QObject):
     def eventFilter(self, obj, event):
         if event.type() == QEvent.Type.MouseButtonRelease:
             if isinstance(obj, QPushButton):
-                texto = obj.text().replace("\n", " ").strip() or obj.toolTip() or "Botón"
-                JsonLogger.log_global("INFO", f"Clic en Botón: {texto}", modulo="AcciónUsuario")
+                if obj.property("is_nav_modulo"):
+                    mod_nom = obj.property("modulo_nombre") or obj.text()
+                    JsonLogger.log_global("INFO", f"Módulo: {mod_nom}", modulo="Navegación")
+                elif obj.property("is_nav_submodulo"):
+                    sub_nom = obj.property("submodulo_nombre") or obj.text()
+                    mod_nom = obj.property("modulo_padre") or ""
+                    JsonLogger.log_global("INFO", f"Módulo: {mod_nom} > Pestaña: {sub_nom}", modulo="Navegación")
+                else:
+                    texto = obj.text().replace("\n", " ").strip() or obj.toolTip() or "Botón"
+                    JsonLogger.log_global("INFO", f"Clic en Botón: {texto}", modulo="AcciónUsuario")
             elif isinstance(obj, QTabBar):
                 idx = obj.currentIndex()
                 txt = obj.tabText(idx) if idx >= 0 else "Pestaña"

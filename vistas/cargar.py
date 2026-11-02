@@ -127,6 +127,10 @@ class AppMultitareasGUI(BaseAppGUI):
 
         # Inicializa UI base PyQt6 (crea la ventana, notebook, etc.)
         super().__init__(usuario, colores=colores_tema)
+
+        # Aplicar modo de vista guardado (clasico o dashboard)
+        modo_vista_guardado = self.config.get('modo_vista', 'clasico')
+        self._aplicar_modo_vista(modo_vista_guardado)
         
         fondo_img = self.config.get("fondo_imagen", "")
         if fondo_img:
@@ -280,6 +284,8 @@ class AppMultitareasGUI(BaseAppGUI):
             self.notebook.setCurrentIndex(idx_general)
             if hasattr(self, "nav_bar"):
                 self.nav_bar.select_tab(idx_general)
+            if hasattr(self, "_sincronizar_dashboard_sidebar"):
+                self._sincronizar_dashboard_sidebar()
 
         if self.callback_progreso:
             self.callback_progreso(100, "¡Multitool Listo!")
@@ -346,6 +352,10 @@ class AppMultitareasGUI(BaseAppGUI):
 
             import datetime, time
             mod["loaded"] = True
+            if hasattr(self, "actualizar_menu_ver"):
+                self.actualizar_menu_ver(self.modulos_cargados)
+            if hasattr(self, "sidebar") and self.sidebar:
+                self.sidebar.renderizar_arbol()
             mod["last_opened"] = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             mod["last_opened_timestamp"] = time.time()
             self.logger.log("INFO", f"'{mod['name']}' instanciado OK.", modulo="Cargador")
@@ -394,6 +404,10 @@ class AppMultitareasGUI(BaseAppGUI):
             parent_frame.layout().addWidget(lbl)
 
         target_mod["loaded"] = False
+        if hasattr(self, "actualizar_menu_ver"):
+            self.actualizar_menu_ver(self.modulos_cargados)
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.renderizar_arbol()
         name = target_mod["name"]
         if hasattr(self, f"tab_{name}"):
             delattr(self, f"tab_{name}")
@@ -458,13 +472,38 @@ class AppMultitareasGUI(BaseAppGUI):
         return discover_modules_and_plugins(self.ruta_usuario)
 
     def guardar_modificaciones_modulos(self, modulos):
-        """Guarda la visibilidad y orden en el modulos.conf del usuario."""
+        """Guarda la visibilidad y orden en modulesconf del usuario (y modulos.conf para retrocompatibilidad)."""
         user_data = {}
         for mod in modulos:
-            user_data[mod["name"]] = {
-                "visible": mod.get("visible", True),
-                "position": mod.get("position", 99)
+            mod_name = mod.get("name", "")
+            mod_folder = mod.get("folder", mod_name.lower())
+            pos = mod.get("position", 99)
+            vis = mod.get("visible", True)
+
+            user_data[mod_name] = {
+                "visible": vis,
+                "position": pos
             }
+
+            try:
+                u_dir = self.ruta_usuario / "modulesconf" / mod_folder
+                u_dir.mkdir(parents=True, exist_ok=True)
+                u_cfg = u_dir / "config.json"
+                cfg_dict = {}
+                if u_cfg.exists():
+                    try:
+                        with open(u_cfg, "r", encoding="utf-8") as f:
+                            cfg_dict = json.load(f)
+                    except Exception:
+                        pass
+                cfg_dict["position"] = pos
+                cfg_dict["visible"] = vis
+                if "name" not in cfg_dict:
+                    cfg_dict["name"] = mod_name
+                with open(u_cfg, "w", encoding="utf-8") as f:
+                    json.dump(cfg_dict, f, indent=4, ensure_ascii=False)
+            except Exception as ex_m:
+                print(f"[Cargar] Error actualizando modulesconf/{mod_folder}: {ex_m}")
 
         try:
             user_prefs_path = self.ruta_usuario / "modulos.conf"
@@ -472,8 +511,7 @@ class AppMultitareasGUI(BaseAppGUI):
                 json.dump(user_data, f, indent=4)
             QMessageBox.information(
                 self, "Módulos",
-                "Configuración guardada. Los cambios se aplicarán al reiniciar."
+                "Configuración guardada en su perfil. Los cambios se aplicarán al reiniciar o recargar."
             )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo guardar: {e}")
-

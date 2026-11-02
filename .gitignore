@@ -84,3 +84,8 @@ tiempo/alarmas.json
 # ------------------------------------------------------------------------------
 # 7. ENTORNO LOCAL Y ARCHIVOS DE EDITORES
 # ------------------------------------------------------------------------------
+
+# 8. ACTUALIZACIONES Y PAQUETES .MTU
+/UPDATES/
+UPDATES/
+*.mtu

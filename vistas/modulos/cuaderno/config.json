@@ -4,28 +4,42 @@
     "visible": true,
     "submodulos": [
         {
-            "name": "📊 Editor Grid & Gráficos",
+            "name": "Editor Grid & Gráficos",
             "file_name": "submodulos/editor_grid.py",
             "class_name": "EditorGridSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📊",
+            "alias": "editor_grid",
+            "position": 1
         },
         {
-            "name": "📝 Editor Notas & Markdown",
+            "name": "Editor Notas & Markdown",
             "file_name": "submodulos/editor_texto.py",
             "class_name": "EditorTextoSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📝",
+            "alias": "editor_notas",
+            "position": 2
         },
         {
-            "name": "👁️ Vista Previa & Impresión",
+            "name": "Vista Previa & Impresión",
             "file_name": "submodulos/vista_previa.py",
             "class_name": "VistaPreviaSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "👁",
+            "alias": "vista_previa",
+            "position": 3
         },
         {
-            "name": "📤 Exportador & Plantillas",
+            "name": "Exportador & Plantillas",
             "file_name": "submodulos/exportador_plantillas.py",
             "class_name": "ExportadorPlantillasSubmodule",
-            "visible": true
+            "visible": true,
+            "icon": "📤",
+            "alias": "exportador_plantillas",
+            "position": 4
         }
-    ]
+    ],
+    "alias": "cuaderno",
+    "icon": "📓"
 }

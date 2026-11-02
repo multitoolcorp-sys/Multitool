@@ -80,7 +80,7 @@ MinecraftCommandEngine = CommandEngine
 try:
     from PyQt6.QtWidgets import (
         QDialog, QFrame, QVBoxLayout, QHBoxLayout, QTextEdit, 
-        QLineEdit, QLabel, QPushButton, QApplication
+        QLineEdit, QLabel, QPushButton, QApplication, QListWidget, QListWidgetItem
     )
     from PyQt6.QtCore import Qt, pyqtSignal, QPoint
     from PyQt6.QtGui import QFont, QTextCursor
@@ -335,7 +335,34 @@ try:
                 QLineEdit:focus { border: 2px solid #55FF55; }
             """)
             self.input_edit.returnPressed.connect(self._on_enter_pressed)
+            self.input_edit.textChanged.connect(self._on_input_text_changed)
             input_box.addWidget(self.input_edit, 1)
+
+            # Panel flotante de autocompletado de comandos estilo videojuego
+            self.suggestions_list = QListWidget()
+            self.suggestions_list.setFixedHeight(120)
+            self.suggestions_list.setFont(QFont("Consolas", 9))
+            self.suggestions_list.setStyleSheet("""
+                QListWidget {
+                    background-color: rgba(14, 18, 26, 0.98);
+                    border: 1px solid #34D399;
+                    border-radius: 6px;
+                    color: #E2E8F0;
+                    padding: 4px;
+                }
+                QListWidget::item {
+                    padding: 4px 8px;
+                    border-radius: 4px;
+                }
+                QListWidget::item:selected {
+                    background-color: #34D399;
+                    color: #0A0A0F;
+                    font-weight: bold;
+                }
+            """)
+            self.suggestions_list.hide()
+            self.suggestions_list.itemClicked.connect(self._on_suggestion_clicked)
+            c_lay.addWidget(self.suggestions_list)
 
             btn_send = QPushButton("Ejecutar")
             btn_send.setAutoDefault(False)
@@ -406,6 +433,7 @@ try:
                 self.lbl_prompt.setText("> ")
 
         def _on_enter_pressed(self):
+            if hasattr(self, 'suggestions_list'): self.suggestions_list.hide()
             cmd = self.input_edit.text().strip()
             if not cmd:
                 return
@@ -430,6 +458,150 @@ try:
                 self.append_formatted_text(linea)
 
             self.input_edit.setFocus()
+
+
+        def _get_catalogo_comandos(self):
+            return [
+                ("help", "help - Consultar lista de comandos disponibles"),
+                ("goto", "goto <modulo> [submodulo] - Ir a un módulo o submódulo"),
+                ("submodules", "submodules [modulo] - Listar submódulos de un módulo"),
+                ("change", "change viewapp [MMS|IDE] - Cambiar estilo de interfaz"),
+                ("edit", "edit <modulo> <campo> <valor> - Modificar configuración de un módulo"),
+                ("reset", "reset config - Restablecer módulos con copia de seguridad .zip"),
+                ("use", "use module <nombre> - Activar contexto de comandos de un módulo"),
+                ("unuse", "unuse - Volver al contexto de comandos globales"),
+                ("modules", "modules - Listar todos los módulos de la aplicación"),
+                ("points", "points [add|set] <cant> - Administrar puntos"),
+                ("cheats", "cheats - Opciones de ventaja"),
+                ("status", "status - Información de la sesión activa"),
+                ("logs", "logs - Administrar registros de terminal"),
+                ("clear", "clear - Limpiar pantalla de la consola")
+            ]
+
+        def _on_input_text_changed(self, text: str):
+            raw = text.strip()
+            if not raw:
+                self.suggestions_list.hide()
+                return
+
+            has_slash = raw.startswith("/")
+            clean = raw[1:] if has_slash else raw
+            prefix_slash = "/" if has_slash else ""
+
+            parts = clean.split()
+            cmd = parts[0].lower() if parts else ""
+            ends_with_space = text.endswith(" ")
+
+            sugerencias = [] # Lista de (texto_a_insertar, texto_mostrar)
+
+            # Caso 1: Escribiendo el nombre del comando
+            if len(parts) <= 1 and not ends_with_space:
+                for c_name, c_desc in self._get_catalogo_comandos():
+                    if c_name.startswith(cmd):
+                        sugerencias.append((f"{prefix_slash}{c_name}", f"⚡ {c_desc}"))
+
+            # Caso 2: Comando /goto
+            elif cmd in ["goto", "ir"]:
+                todos = self.engine.registry.obtener_modulos_disponibles() if hasattr(self.engine, "registry") else []
+                if len(parts) == 1 or (len(parts) == 2 and not ends_with_space):
+                    filter_mod = parts[1].lower() if len(parts) == 2 else ""
+                    for m in todos:
+                        if m.lower().startswith(filter_mod):
+                            sugerencias.append((f"{prefix_slash}goto {m}", f"📦 goto {m.capitalize()} (Módulo)"))
+                elif len(parts) >= 2:
+                    mod_target = parts[1].lower()
+                    filter_sub = parts[2].lower() if len(parts) >= 3 and not ends_with_space else ""
+                    try:
+                        from vistas.dashboard_layout import extraer_submodulos_modulo
+                        subs = extraer_submodulos_modulo(mod_target.capitalize(), mod_target, self.engine.registry.modulos_dir)
+                        for s in subs:
+                            s_clean = s.lower().replace(" ", "_")
+                            if s_clean.startswith(filter_sub) or filter_sub in s.lower():
+                                sugerencias.append((f"{prefix_slash}goto {mod_target} {s_clean}", f"📑 goto {mod_target} {s} (Submódulo)"))
+                    except Exception:
+                        pass
+
+            # Caso 3: Comando /submodules
+            elif cmd in ["submodules", "submodulos"]:
+                todos = self.engine.registry.obtener_modulos_disponibles() if hasattr(self.engine, "registry") else []
+                filter_mod = parts[1].lower() if len(parts) >= 2 and not ends_with_space else ""
+                for m in todos:
+                    if m.lower().startswith(filter_mod):
+                        sugerencias.append((f"{prefix_slash}submodules {m}", f"📦 submodules {m.capitalize()}"))
+
+            # Caso 4: Comando /change viewapp
+            elif cmd in ["change", "cambiar", "viewapp"]:
+                if len(parts) == 1 or (len(parts) == 2 and not ends_with_space):
+                    sugerencias.append((f"{prefix_slash}change viewapp", "🔄 change viewapp (Alternar)"))
+                    sugerencias.append((f"{prefix_slash}change viewapp MMS", "🖥️ change viewapp MMS (Clásico)"))
+                    sugerencias.append((f"{prefix_slash}change viewapp IDE", "💻 change viewapp IDE (Dashboard)"))
+                elif len(parts) >= 2 and parts[1].lower() == "viewapp":
+                    sugerencias.append((f"{prefix_slash}change viewapp MMS", "🖥️ change viewapp MMS (Modo Clásico)"))
+                    sugerencias.append((f"{prefix_slash}change viewapp IDE", "💻 change viewapp IDE (Modo Dashboard)"))
+
+            # Caso 5: Comando /edit
+            elif cmd in ["edit", "editar"]:
+                todos = self.engine.registry.obtener_modulos_disponibles() if hasattr(self.engine, "registry") else []
+                if len(parts) == 1 or (len(parts) == 2 and not ends_with_space):
+                    filter_mod = parts[1].lower() if len(parts) == 2 else ""
+                    for m in todos:
+                        if m.lower().startswith(filter_mod):
+                            sugerencias.append((f"{prefix_slash}edit {m}", f"✏️ edit {m.capitalize()}"))
+                elif len(parts) >= 2:
+                    mod_target = parts[1].lower()
+                    campos = ["name", "alias", "icon", "position", "submodule"]
+                    filter_field = parts[2].lower() if len(parts) >= 3 and not ends_with_space else ""
+                    for f in campos:
+                        if f.startswith(filter_field):
+                            sugerencias.append((f"{prefix_slash}edit {mod_target} {f}", f"⚙️ edit {mod_target} {f} <valor>"))
+
+            # Caso 6: Comando /reset
+            elif cmd in ["reset", "restablecer"]:
+                sugerencias.append((f"{prefix_slash}reset config", "🔄 reset config - Respaldar en .zip y restaurar de fábrica"))
+
+            # Caso 7: Comando /use
+            elif cmd in ["use", "usar"]:
+                todos = self.engine.registry.obtener_modulos_disponibles() if hasattr(self.engine, "registry") else []
+                filter_mod = parts[1].lower() if len(parts) >= 2 and not ends_with_space else ""
+                for m in todos:
+                    if m.lower().startswith(filter_mod):
+                        sugerencias.append((f"{prefix_slash}use {m}", f"⭐ use {m.capitalize()} (Activar contexto)"))
+
+            # Caso 8: Comando /points
+            elif cmd in ["points", "puntos"]:
+                sugerencias.append((f"{prefix_slash}points get", "💰 points get - Consultar puntos acumulados"))
+                sugerencias.append((f"{prefix_slash}points add 500", "➕ points add <cant> - Añadir puntos"))
+                sugerencias.append((f"{prefix_slash}points set 1000", "✏️ points set <cant> - Establecer puntos"))
+
+            if sugerencias:
+                self.suggestions_list.clear()
+                for insert_val, display_val in sugerencias[:8]:
+                    item = QListWidgetItem(display_val)
+                    item.setData(Qt.ItemDataRole.UserRole, insert_val)
+                    self.suggestions_list.addItem(item)
+                self.suggestions_list.setCurrentRow(0)
+                self.suggestions_list.show()
+            else:
+                self.suggestions_list.hide()
+
+        def _on_suggestion_clicked(self, item):
+            insert_val = item.data(Qt.ItemDataRole.UserRole)
+            if insert_val:
+                self.input_edit.setText(insert_val + " ")
+                self.input_edit.setFocus()
+                self.suggestions_list.hide()
+
+        def _autocompletar_seleccion(self):
+            if self.suggestions_list.isVisible() and self.suggestions_list.count() > 0:
+                current_item = self.suggestions_list.currentItem() or self.suggestions_list.item(0)
+                if current_item:
+                    insert_val = current_item.data(Qt.ItemDataRole.UserRole)
+                    if insert_val:
+                        self.input_edit.setText(insert_val + " ")
+                        self.input_edit.setFocus()
+                        self.suggestions_list.hide()
+                        return True
+            return False
 
         def accept(self):
             pass
@@ -457,21 +629,50 @@ try:
             super().mouseReleaseEvent(event)
 
         def keyPressEvent(self, event):
+            # Autocompletado con TAB
+            if event.key() == Qt.Key.Key_Tab:
+                if self._autocompletar_seleccion():
+                    event.accept()
+                    return
+
             if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                if hasattr(self, "suggestions_list"):
+                    self.suggestions_list.hide()
                 self._on_enter_pressed()
                 event.accept()
                 return
+
             elif event.key() == Qt.Key.Key_Escape:
+                if hasattr(self, "suggestions_list") and self.suggestions_list.isVisible():
+                    self.suggestions_list.hide()
+                    event.accept()
+                    return
                 self.hide()
                 event.accept()
                 return
+
             elif event.key() == Qt.Key.Key_Up:
+                if hasattr(self, "suggestions_list") and self.suggestions_list.isVisible():
+                    row = self.suggestions_list.currentRow()
+                    if row > 0:
+                        self.suggestions_list.setCurrentRow(row - 1)
+                        event.accept()
+                        return
+
                 if self.historial_comandos and self.hist_idx > 0:
                     self.hist_idx -= 1
                     self.input_edit.setText(self.historial_comandos[self.hist_idx])
                 event.accept()
                 return
+
             elif event.key() == Qt.Key.Key_Down:
+                if hasattr(self, "suggestions_list") and self.suggestions_list.isVisible():
+                    row = self.suggestions_list.currentRow()
+                    if row < self.suggestions_list.count() - 1:
+                        self.suggestions_list.setCurrentRow(row + 1)
+                        event.accept()
+                        return
+
                 if self.historial_comandos and self.hist_idx < len(self.historial_comandos) - 1:
                     self.hist_idx += 1
                     self.input_edit.setText(self.historial_comandos[self.hist_idx])
@@ -480,6 +681,7 @@ try:
                     self.input_edit.clear()
                 event.accept()
                 return
+
             else:
                 super().keyPressEvent(event)
 
