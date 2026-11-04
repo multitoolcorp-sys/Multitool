@@ -105,6 +105,7 @@ class TabArchivos(QWidget):
             "ejecutar_comando_ruta": self.ejecutar_comando_ruta,
             "mostrar_arbol_carpetas": self.mostrar_arbol_carpetas,
             "abrir_con_seleccionado": self.abrir_con_seleccionado,
+            "abrir_en_modulo": self.abrir_en_modulo_mt,
             "mover_archivo": self.mover_archivo,
             "busqueda_global": self.busqueda_global,
             "mostrar_papelera": self.mostrar_papelera,
@@ -531,9 +532,41 @@ class TabArchivos(QWidget):
             if self.manager.ir_a_ruta(ruta): self.refrescar()
         else:
             try:
-                self._abrir_ruta_sistema(ruta)
+                # Detección inteligente para abrir dentro de módulos de MultiTool
+                ext = ruta.suffix.lower()
+                mw = getattr(self.context, "app", None) if hasattr(self, "context") else None
+                if not mw:
+                    mw = self.window()
+
+                opened_internal = False
+                if mw and hasattr(mw, "abrir_en_modulo"):
+                    if ext in [".mp3", ".wav", ".ogg", ".flac", ".mp4", ".mkv", ".avi", ".webm", ".m4a"]:
+                        opened_internal = mw.abrir_en_modulo("reproductor", ruta_archivo=str(ruta.resolve()))
+                    elif ext in [".txt", ".md", ".json", ".log", ".py", ".ini", ".cfg", ".xml", ".yaml", ".yml", ".sql"]:
+                        opened_internal = mw.abrir_en_modulo("notas", ruta_archivo=str(ruta.resolve()))
+                    elif ext in [".html", ".htm", ".pdf", ".svg"]:
+                        opened_internal = mw.abrir_en_modulo("navegador", ruta_archivo=str(ruta.resolve()))
+                    elif ext in [".csv", ".tsv"]:
+                        opened_internal = mw.abrir_en_modulo("cuaderno", ruta_archivo=str(ruta.resolve()))
+
+                if not opened_internal:
+                    self._abrir_ruta_sistema(ruta)
             except Exception as e:
                 QMessageBox.critical(self.gui, "Error", f"No se pudo abrir:\n{e}")
+
+    def abrir_en_modulo_mt(self, modulo_nombre):
+        """Abre el archivo seleccionado en el módulo interno especificado."""
+        nombre = self.gui.get_selected_name()
+        if not nombre:
+            return
+        ruta = self.manager.ruta_actual / nombre
+        if not ruta.is_file():
+            return
+        mw = getattr(self.context, "app", None) if hasattr(self, "context") else None
+        if not mw:
+            mw = self.window()
+        if mw and hasattr(mw, "abrir_en_modulo"):
+            mw.abrir_en_modulo(modulo_nombre, ruta_archivo=str(ruta.resolve()))
 
     def abrir_con_seleccionado(self):
         """Abre el diálogo 'Abrir con...' del sistema operativo"""

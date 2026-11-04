@@ -113,9 +113,6 @@ class BaseAppGUI(QMainWindow):
         # 6. Paleta de Comandos Flotante (Ctrl+P / Ctrl+Shift+P)
         self.command_palette = None
 
-        # 7. Monitor de Memoria RAM en Tiempo Real
-        self._setup_ram_monitor()
-
         # 4. Barra de Estado Inferior con Botón Conmutador de Vista
         self.barra_estado_frame = QFrame()
         self.barra_estado_frame.setFixedHeight(28)
@@ -125,15 +122,92 @@ class BaseAppGUI(QMainWindow):
                 border-top: 1px solid {self.COLORES['bg_terciario']};
             }}
         """)
-        be_layout = QHBoxLayout(self.barra_estado_frame)
-        be_layout.setContentsMargins(12, 0, 10, 0)
-        be_layout.setSpacing(8)
+        self.barra_estado_layout = QHBoxLayout(self.barra_estado_frame)
+        self.barra_estado_layout.setContentsMargins(8, 0, 10, 0)
+        self.barra_estado_layout.setSpacing(6)
+
+        # Botones de historial Atrás / Adelante (Alt+← / Alt+→)
+        self.btn_nav_back = QPushButton("◀", self.barra_estado_frame)
+        self.btn_nav_back.setFixedSize(22, 20)
+        self.btn_nav_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_nav_back.setToolTip("Navegar Atrás (Alt+←)")
+        self.btn_nav_back.setEnabled(False)
+        self.btn_nav_back.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.COLORES.get('fg_secundario', '#AAB0B8')};
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 3px;
+                font-size: 9px;
+                font-weight: bold;
+            }}
+            QPushButton:hover:enabled {{
+                background: {self.COLORES.get('bg_terciario', '#2D2D3D')};
+                color: white;
+            }}
+            QPushButton:disabled {{
+                color: rgba(255,255,255,0.2);
+                border-color: transparent;
+            }}
+        """)
+        self.btn_nav_back.clicked.connect(self.navegar_atras)
+        self.barra_estado_layout.addWidget(self.btn_nav_back)
+
+        self.btn_nav_forward = QPushButton("▶", self.barra_estado_frame)
+        self.btn_nav_forward.setFixedSize(22, 20)
+        self.btn_nav_forward.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_nav_forward.setToolTip("Navegar Adelante (Alt+→)")
+        self.btn_nav_forward.setEnabled(False)
+        self.btn_nav_forward.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.COLORES.get('fg_secundario', '#AAB0B8')};
+                border: 1px solid rgba(255,255,255,0.1);
+                border-radius: 3px;
+                font-size: 9px;
+                font-weight: bold;
+            }}
+            QPushButton:hover:enabled {{
+                background: {self.COLORES.get('bg_terciario', '#2D2D3D')};
+                color: white;
+            }}
+            QPushButton:disabled {{
+                color: rgba(255,255,255,0.2);
+                border-color: transparent;
+            }}
+        """)
+        self.btn_nav_forward.clicked.connect(self.navegar_adelante)
+        self.barra_estado_layout.addWidget(self.btn_nav_forward)
 
         self.barra_estado = QLabel(f"Conectado: {self.usuario}")
         self.barra_estado.setStyleSheet(f"background: transparent; color: {self.COLORES['fg_secundario']}; font-size: 11px; border: none;")
-        be_layout.addWidget(self.barra_estado, 1)
+        self.barra_estado_layout.addWidget(self.barra_estado, 1)
+
+        # Botón de Centro de Notificaciones y Registro (🔔)
+        self.btn_bell = QPushButton("🔔", self.barra_estado_frame)
+        self.btn_bell.setFixedSize(24, 20)
+        self.btn_bell.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_bell.setToolTip("Centro de Notificaciones y Auditoría")
+        self.btn_bell.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent;
+                color: {self.COLORES.get('fg_secundario', '#AAB0B8')};
+                border: none;
+                border-radius: 3px;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background: {self.COLORES.get('bg_terciario', '#2D2D3D')};
+                color: white;
+            }}
+        """)
+        self.btn_bell.clicked.connect(self.mostrar_centro_notificaciones)
+        self.barra_estado_layout.addWidget(self.btn_bell)
 
         self.btn_toggle_view = None
+
+        # 7. Monitor de Memoria RAM en Tiempo Real (insertado dentro de la barra de estado)
+        self._setup_ram_monitor()
 
         self.main_layout.addWidget(self.barra_estado_frame)
 
@@ -161,6 +235,21 @@ class BaseAppGUI(QMainWindow):
         self.shortcut_f11.activated.connect(self.toggle_pantalla_completa)
         self.shortcut_esc = QShortcut(QKeySequence("Esc"), self)
         self.shortcut_esc.activated.connect(self._on_escape_pressed)
+
+        # Modo Zen / Enfoque limpio (F10)
+        self.shortcut_zen = QShortcut(QKeySequence("F10"), self)
+        self.shortcut_zen.activated.connect(self.toggle_zen_mode)
+        self.is_zen_mode = False
+        self._zen_saved_state = {}
+
+        # Atajos de Historial de Navegación (Alt+← y Alt+→)
+        self.shortcut_nav_back = QShortcut(QKeySequence("Alt+Left"), self)
+        self.shortcut_nav_back.activated.connect(self.navegar_atras)
+        self.shortcut_nav_fwd = QShortcut(QKeySequence("Alt+Right"), self)
+        self.shortcut_nav_fwd.activated.connect(self.navegar_adelante)
+        self._nav_history = []
+        self._nav_history_idx = -1
+        self._nav_history_locked = False
 
         # Atajo Ctrl+T para búsqueda rápida / selector de módulos
         self.shortcut_ctrl_t = QShortcut(QKeySequence("Ctrl+T"), self)
@@ -960,6 +1049,7 @@ class BaseAppGUI(QMainWindow):
 
     def _guardar_todo_el_estado(self):
         self._guardar_geometria_ventana()
+        self._guardar_sesion_editor_tabs()
         try:
             if hasattr(self, "notebook"):
                 for i in range(self.notebook.count()):
@@ -1156,7 +1246,23 @@ class BaseAppGUI(QMainWindow):
             self._sincronizar_visibilidad_subtabs_dashboard(ocultar=True)
             self._sincronizar_dashboard_sidebar()
             
-            # Sincronizar visibilidad del empty placeholder o notebook
+            # Sincronizar estado actual: si no hay pestañas en editor_tab_bar, tomar la activa de MMS
+            if len(self.editor_tab_bar.tabs) == 0:
+                curr_idx = self.notebook.currentIndex()
+                visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+                if 0 <= curr_idx < len(visibles):
+                    curr_mod = visibles[curr_idx]
+                    mod_name = curr_mod.get("name", "")
+                    container = getattr(self, "clases_modulos", {}).get(mod_name)
+                    sub_name = ""
+                    if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                        sub_idx = container.tabs.currentIndex()
+                        if 0 <= sub_idx < container.tabs.count():
+                            sub_name = container.tabs.tabText(sub_idx)
+                    clean_sub = sub_name.strip()
+                    display_title = f"{mod_name.capitalize()} › {clean_sub}" if clean_sub else mod_name.capitalize()
+                    self.editor_tab_bar.add_tab(mod_name, clean_sub, display_title, make_active=True)
+
             if len(self.editor_tab_bar.tabs) == 0:
                 self.notebook.hide()
                 if hasattr(self, "dashboard_empty_view"):
@@ -1176,26 +1282,51 @@ class BaseAppGUI(QMainWindow):
             self.notebook.show()
             self.nav_bar.show()
 
+            # Sincronizar estado: seleccionar en MMS la pestaña que estaba activa en IDE
+            curr_tab_idx = getattr(self.editor_tab_bar, "current_index", -1)
+            if 0 <= curr_tab_idx < len(self.editor_tab_bar.tabs):
+                tab_info = self.editor_tab_bar.tabs[curr_tab_idx]
+                mod_name = tab_info.get("mod_name", "")
+                sub_name = tab_info.get("sub_name", "")
+                visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+                for i, m in enumerate(visibles):
+                    if m.get("name", "").lower() == mod_name.lower():
+                        self.notebook.setCurrentIndex(i)
+                        if hasattr(self, "nav_bar"):
+                            self.nav_bar.select_tab(i)
+                        container = getattr(self, "clases_modulos", {}).get(mod_name)
+                        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                            for si in range(container.tabs.count()):
+                                if container.tabs.tabText(si).strip().lower() == sub_name.strip().lower():
+                                    container.tabs.setCurrentIndex(si)
+                                    break
+                        break
+
             # Restaurar visibilidad de pestañas internas de submódulos
             self._sincronizar_visibilidad_subtabs_dashboard(ocultar=False)
 
     def _sincronizar_visibilidad_subtabs_dashboard(self, ocultar=True):
-        """Oculta o muestra la barra de pestañas interna de los submódulos de manera confiable según el modo de vista."""
+        """Oculta o muestra la barra de pestañas interna de los submódulos (DynamicModuleContainer) según el modo de vista, sin afectar pestañas web del navegador."""
         try:
-            # 1. Recorrer instancias conocidas en clases_modulos
+            from vistas.configurations import DynamicModuleContainer
+            # 1. Recorrer instancias conocidas en clases_modulos que sean contenedores de submódulos
             for k, cont in getattr(self, "clases_modulos", {}).items():
-                if cont:
+                if cont and (isinstance(cont, DynamicModuleContainer) or cont.__class__.__name__ == "DynamicModuleContainer"):
                     if hasattr(cont, "tabs") and hasattr(cont.tabs, "tabBar") and cont.tabs.tabBar():
                         cont.tabs.tabBar().setVisible(not ocultar)
 
-            # 2. Recorrer todos los widgets del notebook y buscar recursivamente QTabWidgets secundarios
+            # 2. Recorrer widgets del notebook y filtrar exclusivamente contenedores DynamicModuleContainer
             if hasattr(self, "notebook"):
                 for i in range(self.notebook.count()):
                     w = self.notebook.widget(i)
                     if w:
-                        for tw in w.findChildren(QTabWidget):
-                            if tw != self.notebook and tw.tabBar():
-                                tw.tabBar().setVisible(not ocultar)
+                        if isinstance(w, DynamicModuleContainer) or w.__class__.__name__ == "DynamicModuleContainer":
+                            if hasattr(w, "tabs") and hasattr(w.tabs, "tabBar") and w.tabs.tabBar():
+                                w.tabs.tabBar().setVisible(not ocultar)
+                        else:
+                            for dmc in w.findChildren(DynamicModuleContainer):
+                                if hasattr(dmc, "tabs") and hasattr(dmc.tabs, "tabBar") and dmc.tabs.tabBar():
+                                    dmc.tabs.tabBar().setVisible(not ocultar)
         except Exception as e:
             print(f"[BaseAppGUI] Error sincronizando visibilidad de subtabs: {e}")
 
@@ -1364,8 +1495,9 @@ class BaseAppGUI(QMainWindow):
     # ── Monitor de Memoria RAM & Optimización en Vivo ────────────────────────
 
     def _setup_ram_monitor(self):
-        """Inicializa el widget y timer para monitorear el consumo de RAM en tiempo real."""
-        self.btn_ram_monitor = QPushButton("⚡ RAM: -- MB")
+        """Inicializa el widget y timer para monitorear el consumo de RAM en tiempo real insertándolo en la barra de estado."""
+        parent_w = getattr(self, "barra_estado_frame", self)
+        self.btn_ram_monitor = QPushButton("⚡ RAM: -- MB", parent_w)
         self.btn_ram_monitor.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_ram_monitor.setToolTip("Consumo de RAM en tiempo real. Haz clic para optimizar y liberar memoria (Garbage Collector).")
         self.btn_ram_monitor.setStyleSheet(f"""
@@ -1388,46 +1520,31 @@ class BaseAppGUI(QMainWindow):
         self.btn_ram_monitor.clicked.connect(self._liberar_memoria_manual)
 
         # Insertar en la barra de estado inferior
-        if hasattr(self, "barra_layout") and self.barra_layout:
+        if hasattr(self, "barra_estado_layout") and self.barra_estado_layout:
+            self.barra_estado_layout.addWidget(self.btn_ram_monitor)
+        elif hasattr(self, "barra_layout") and self.barra_layout:
             self.barra_layout.addWidget(self.btn_ram_monitor)
-        elif hasattr(self, "barra_estado"):
-            pass
 
         self._ram_timer = QTimer(self)
         self._ram_timer.timeout.connect(self._actualizar_ram_display)
-        self._ram_timer.start(3500)
+        self._ram_timer.start(2000)
         self._actualizar_ram_display()
 
     def _get_ram_usage_mb(self):
-        """Calcula el uso de RAM actual del proceso en MB usando psutil o WinAPI nativo."""
+        """Retorna el consumo actual de memoria RAM del proceso en MB usando psutil o fallbacks."""
         try:
+            import os
             import psutil
-            return round(psutil.Process().memory_info().rss / 1048576, 1)
+            proc = psutil.Process(os.getpid())
+            mem_bytes = proc.memory_info().rss
+            return round(mem_bytes / (1024 * 1024), 1)
         except Exception:
-            pass
-        try:
-            import ctypes
-            from ctypes import wintypes
-            class PMC(ctypes.Structure):
-                _fields_ = [
-                    ('cb', wintypes.DWORD),
-                    ('PageFaultCount', wintypes.DWORD),
-                    ('PeakWorkingSetSize', ctypes.c_size_t),
-                    ('WorkingSetSize', ctypes.c_size_t),
-                    ('QuotaPeakPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaPeakNonPagedPoolUsage', ctypes.c_size_t),
-                    ('QuotaNonPagedPoolUsage', ctypes.c_size_t),
-                    ('PagefileUsage', ctypes.c_size_t),
-                    ('PeakPagefileUsage', ctypes.c_size_t)
-                ]
-            c = PMC()
-            c.cb = ctypes.sizeof(PMC)
-            if ctypes.windll.psapi.GetProcessMemoryInfo(ctypes.windll.kernel32.GetCurrentProcess(), ctypes.byref(c), c.cb):
-                return round(c.WorkingSetSize / 1048576, 1)
-        except Exception:
-            pass
-        return 0.0
+            try:
+                import os, resource
+                mem_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                return round(mem_kb / 1024, 1)
+            except Exception:
+                return 0.0
 
     def _actualizar_ram_display(self):
         ram_mb = self._get_ram_usage_mb()
@@ -1462,24 +1579,7 @@ class BaseAppGUI(QMainWindow):
         self.command_palette.show_centered()
 
     def _on_palette_submodule_requested(self, mod_name, sub_name):
-        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
-        mod_idx = 0
-        for i, m in enumerate(visibles):
-            if m.get("name", "").lower() == mod_name.lower():
-                mod_idx = i
-                break
-
-        if self.modo_vista == "dashboard":
-            self._on_dashboard_submodule_selected(mod_name, sub_name, mod_idx, 0)
-        else:
-            self.notebook.setCurrentIndex(mod_idx)
-            w = self.notebook.widget(mod_idx)
-            if w:
-                for tw in w.findChildren(QTabWidget):
-                    for s_i in range(tw.count()):
-                        if sub_name.lower() in tw.tabText(s_i).lower():
-                            tw.setCurrentIndex(s_i)
-                            break
+        self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name)
 
     # ── Drag & Drop Inteligente desde el Sistema Operativo ──────────────────
 
@@ -1517,40 +1617,302 @@ class BaseAppGUI(QMainWindow):
 
         event.acceptProposedAction()
 
-    def _abrir_en_reproductor(self, path_str):
-        if self.modo_vista == "dashboard":
-            self._on_palette_submodule_requested("reproductor", "Reproductor ARK")
-        else:
-            self._navegar_a_modulo_nombre("reproductor")
-        rep = getattr(self, "tab_reproductor", None)
-        if rep and hasattr(rep, "cargar_archivo"):
+    # ── Navegación con Historial (Atrás / Adelante) ──────────────────────────
+
+    def navegar_atras(self):
+        """Vuelve al módulo/submódulo anterior en el historial (Alt+←)."""
+        if getattr(self, "_nav_history_idx", -1) > 0:
+            self._nav_history_idx -= 1
+            mod_name, sub_name = self._nav_history[self._nav_history_idx]
+            self._nav_history_locked = True
             try:
-                rep.cargar_archivo(path_str)
-            except Exception:
+                self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name, registrar_historial=False)
+            finally:
+                self._nav_history_locked = False
+            self._actualizar_botones_historial()
+
+    def navegar_adelante(self):
+        """Avanza al siguiente módulo/submódulo en el historial (Alt+→)."""
+        if hasattr(self, "_nav_history") and getattr(self, "_nav_history_idx", -1) + 1 < len(self._nav_history):
+            self._nav_history_idx += 1
+            mod_name, sub_name = self._nav_history[self._nav_history_idx]
+            self._nav_history_locked = True
+            try:
+                self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name, registrar_historial=False)
+            finally:
+                self._nav_history_locked = False
+            self._actualizar_botones_historial()
+
+    def _actualizar_botones_historial(self):
+        """Habilita o deshabilita los botones ◀ y ▶ según la posición en el historial."""
+        if hasattr(self, "btn_nav_back") and self.btn_nav_back:
+            can_back = getattr(self, "_nav_history_idx", -1) > 0
+            self.btn_nav_back.setEnabled(can_back)
+        if hasattr(self, "btn_nav_forward") and self.btn_nav_forward:
+            can_fwd = hasattr(self, "_nav_history") and getattr(self, "_nav_history_idx", -1) + 1 < len(self._nav_history)
+            self.btn_nav_forward.setEnabled(can_fwd)
+
+    # ── Modo Zen / Enfoque Limpio (F10) ─────────────────────────────────────
+
+    def toggle_zen_mode(self):
+        """Alterna el Modo Zen / Enfoque limpio (F10) ocultando o restaurando barras."""
+        if not getattr(self, "is_zen_mode", False):
+            self.is_zen_mode = True
+            self._zen_saved_state = {
+                "sidebar": self.sidebar.isVisible() if hasattr(self, "sidebar") else False,
+                "editor_tab_bar": self.editor_tab_bar.isVisible() if hasattr(self, "editor_tab_bar") else False,
+                "nav_bar": self.nav_bar.isVisible() if hasattr(self, "nav_bar") else False,
+                "menu_bar": self.menuBar().isVisible() if self.menuBar() else False,
+                "barra_estado": self.barra_estado_frame.isVisible() if hasattr(self, "barra_estado_frame") else False,
+            }
+            if hasattr(self, "sidebar"): self.sidebar.hide()
+            if hasattr(self, "editor_tab_bar"): self.editor_tab_bar.hide()
+            if hasattr(self, "nav_bar"): self.nav_bar.hide()
+            if self.menuBar(): self.menuBar().hide()
+            if hasattr(self, "barra_estado_frame"): self.barra_estado_frame.hide()
+            self.mostrar_notificacion("Modo Zen", "🧘 Modo Enfoque activado. Presiona F10 para restaurar las barras.", "info")
+        else:
+            self.is_zen_mode = False
+            modo = getattr(self, "modo_vista", "clasico")
+            self._aplicar_modo_vista(modo)
+            if hasattr(self, "barra_estado_frame"): self.barra_estado_frame.show()
+            self.mostrar_notificacion("Modo Zen", "Modo normal restaurado.", "info")
+
+    # ── Centro de Notificaciones y Auditoría ────────────────────────────────
+
+    def mostrar_centro_notificaciones(self):
+        """Abre el panel del Centro de Notificaciones y Registro de Auditoría."""
+        from vistas.utils.notification_center import NotificationCenterDialog
+        ruta_u = getattr(self, "ruta_usuario", None)
+        if not ruta_u and hasattr(self, "context") and hasattr(self.context, "ruta_usuario"):
+            ruta_u = self.context.ruta_usuario
+        dlg = NotificationCenterDialog(self, self.COLORES, ruta_usuario=ruta_u)
+        dlg.exec()
+
+    # ── Persistencia de Sesión de Pestañas (Modo IDE) ─────────────────────────
+
+    def _guardar_sesion_editor_tabs(self):
+        """Guarda en config.json la lista de pestañas activas del editor (Modo IDE)."""
+        if not hasattr(self, "editor_tab_bar"):
+            return
+        try:
+            import json
+            tabs_data = []
+            for t in getattr(self.editor_tab_bar, "tabs", []):
+                tabs_data.append({
+                    "mod_name": t.get("mod_name", ""),
+                    "sub_name": t.get("sub_name", ""),
+                    "title": t.get("title", ""),
+                    "pinned": t.get("pinned", False)
+                })
+            
+            cfg_p = None
+            if hasattr(self, "context") and hasattr(self.context, "ruta_usuario") and self.context.ruta_usuario:
+                cfg_p = Path(self.context.ruta_usuario) / "config.json"
+            elif hasattr(self, "ruta_usuario") and self.ruta_usuario:
+                cfg_p = Path(self.ruta_usuario) / "config.json"
+
+            if cfg_p and cfg_p.exists():
+                try:
+                    with open(cfg_p, "r", encoding="utf-8") as f:
+                        d = json.load(f)
+                except Exception:
+                    d = {}
+                d["session_editor_tabs"] = tabs_data
+                d["session_editor_current_idx"] = getattr(self.editor_tab_bar, "current_index", 0)
+                with open(cfg_p, "w", encoding="utf-8") as f:
+                    json.dump(d, f, indent=4)
+        except Exception as e:
+            print(f"[Dashboard] Error guardando sesión de pestañas: {e}")
+
+    def _restaurar_sesion_editor_tabs(self):
+        """Restaura las pestañas de sesión guardadas en el modo IDE."""
+        if not hasattr(self, "editor_tab_bar"):
+            return
+        try:
+            import json
+            cfg_p = None
+            if hasattr(self, "context") and hasattr(self.context, "ruta_usuario") and self.context.ruta_usuario:
+                cfg_p = Path(self.context.ruta_usuario) / "config.json"
+            elif hasattr(self, "ruta_usuario") and self.ruta_usuario:
+                cfg_p = Path(self.ruta_usuario) / "config.json"
+
+            if cfg_p and cfg_p.exists():
+                with open(cfg_p, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                tabs_data = d.get("session_editor_tabs", [])
+                curr_idx = d.get("session_editor_current_idx", 0)
+                for t in tabs_data:
+                    m_name = t.get("mod_name", "")
+                    s_name = t.get("sub_name", "")
+                    is_pinned = t.get("pinned", False)
+                    if m_name:
+                        self.abrir_en_modulo(m_name, submodulo_nombre=s_name, registrar_historial=False)
+                        if is_pinned and len(self.editor_tab_bar.tabs) > 0:
+                            self.editor_tab_bar.tabs[-1]["pinned"] = True
+                if 0 <= curr_idx < len(self.editor_tab_bar.tabs):
+                    self.editor_tab_bar.set_current_index(curr_idx)
+        except Exception as e:
+            print(f"[Dashboard] Error restaurando sesión de pestañas: {e}")
+
+    # ── Despachador Universal Inter-Módulos (Archivos & Navegación) ─────────
+
+    def abrir_en_modulo(self, modulo_nombre, submodulo_nombre=None, ruta_archivo=None, registrar_historial=True):
+        """
+        Método central universal para abrir o enviar archivos a cualquier módulo/submódulo
+        compatible tanto en Modo MMS (Clásico) como en Modo IDE (Dashboard).
+        """
+        try:
+            mod_target = None
+            mod_idx = -1
+            visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+            for i, m in enumerate(visibles):
+                if m.get("name", "").lower() == modulo_nombre.lower():
+                    mod_target = m
+                    mod_idx = i
+                    break
+
+            if not mod_target:
+                print(f"[MultiTool] Módulo '{modulo_nombre}' no encontrado.")
+                return False
+
+            # Asegurar instanciación si estaba en reposo
+            if not mod_target.get("loaded", False):
+                self._instanciar_modulo(mod_target)
+
+            container = getattr(self, "clases_modulos", {}).get(mod_target["name"])
+
+            # Determinar submódulo adecuado
+            sub_idx = 0
+            if submodulo_nombre and container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                for si in range(container.tabs.count()):
+                    t_text = container.tabs.tabText(si).strip().lower()
+                    if t_text == submodulo_nombre.strip().lower() or submodulo_nombre.strip().lower() in t_text:
+                        sub_idx = si
+                        submodulo_nombre = container.tabs.tabText(si).strip()
+                        break
+            elif not submodulo_nombre and container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                if container.tabs.count() > 0:
+                    sub_idx = container.tabs.currentIndex()
+                    submodulo_nombre = container.tabs.tabText(sub_idx).strip()
+
+            # 1. Navegación según el modo actual
+            modo = getattr(self, "modo_vista", "clasico")
+            if modo == "dashboard":
+                self.notebook.setCurrentIndex(mod_idx)
+                if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                    container.tabs.setCurrentIndex(sub_idx)
+                self.notebook.show()
+                if hasattr(self, "dashboard_empty_view"):
+                    self.dashboard_empty_view.hide()
+                clean_sub = (submodulo_nombre or "").strip()
+                title = f"{modulo_nombre.capitalize()} › {clean_sub}" if clean_sub else modulo_nombre.capitalize()
+                self.editor_tab_bar.add_tab(modulo_nombre, clean_sub, title, make_active=True)
+                if hasattr(self, "sidebar") and self.sidebar:
+                    self.sidebar.renderizar_arbol()
+            else:
+                self.notebook.setCurrentIndex(mod_idx)
+                if hasattr(self, "nav_bar"):
+                    self.nav_bar.select_tab(mod_idx)
+                if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
+                    container.tabs.setCurrentIndex(sub_idx)
+
+            # 2. Despacho del archivo si se proporcionó una ruta
+            if ruta_archivo:
+                self._despachar_archivo_a_modulo(modulo_nombre, container, ruta_archivo)
+
+            # 3. Registrar en historial de navegación
+            if registrar_historial and not getattr(self, "_nav_history_locked", False):
+                if not hasattr(self, "_nav_history"):
+                    self._nav_history = []
+                    self._nav_history_idx = -1
+                if self._nav_history_idx + 1 < len(self._nav_history):
+                    self._nav_history = self._nav_history[:self._nav_history_idx + 1]
+                self._nav_history.append((modulo_nombre, submodulo_nombre))
+                self._nav_history_idx = len(self._nav_history) - 1
+                self._actualizar_botones_historial()
+
+            if getattr(self, "modo_vista", "") == "dashboard":
+                self._guardar_sesion_editor_tabs()
+
+            return True
+        except Exception as e:
+            print(f"[MultiTool] Error en abrir_en_modulo ({modulo_nombre}): {e}")
+            return False
+
+    def _despachar_archivo_a_modulo(self, modulo_nombre, container, ruta_archivo):
+        """Despacha la ruta de archivo al módulo destino de manera desacoplada."""
+        from pathlib import Path
+        p = Path(ruta_archivo)
+        if not p.exists():
+            return
+
+        m_low = modulo_nombre.lower()
+        try:
+            # 1. NOTAS / EDITOR
+            if m_low == "notas":
+                notas_inst = None
+                if container:
+                    if hasattr(container, "import_manager"):
+                        notas_inst = container
+                    elif hasattr(container, "submodules_instances"):
+                        for inst in container.submodules_instances.values():
+                            if hasattr(inst, "import_manager"):
+                                notas_inst = inst
+                                break
+                    if not notas_inst and hasattr(container, "tabs") and hasattr(container.tabs, "currentWidget"):
+                        cw = container.tabs.currentWidget()
+                        if hasattr(cw, "import_manager"):
+                            notas_inst = cw
+                if notas_inst and hasattr(notas_inst, "import_manager"):
+                    notas_inst.import_manager.importar_archivo_individual(str(p))
+                    if hasattr(notas_inst, "cargar_lista_notas"):
+                        notas_inst.cargar_lista_notas()
+
+            # 2. REPRODUCTOR MULTIMEDIA
+            elif m_low == "reproductor":
+                rep_inst = None
+                if container:
+                    if hasattr(container, "reproducir_directo"):
+                        rep_inst = container
+                    elif hasattr(container, "submodules_instances"):
+                        for inst in container.submodules_instances.values():
+                            if hasattr(inst, "reproducir_directo"):
+                                rep_inst = inst
+                                break
+                if rep_inst:
+                    rep_inst.reproducir_directo(str(p))
+
+            # 3. NAVEGADOR WEB
+            elif m_low == "navegador":
+                nav_browser = None
+                if container:
+                    from vistas.modulos.navegador.submodulos.integrado.browser import MultiTabBrowser
+                    for ch in container.findChildren(MultiTabBrowser):
+                        nav_browser = ch
+                        break
+                if nav_browser and hasattr(nav_browser, "add_new_tab"):
+                    from PyQt6.QtCore import QUrl
+                    nav_browser.add_new_tab(QUrl.fromLocalFile(str(p.resolve())), label=p.name)
+
+            # 4. CUADERNO
+            elif m_low == "cuaderno":
                 pass
+        except Exception as ex:
+            print(f"[MultiTool] Error despachando archivo a {modulo_nombre}: {ex}")
+
+    def _abrir_en_reproductor(self, path_str):
+        self.abrir_en_modulo("reproductor", ruta_archivo=path_str)
 
     def _abrir_en_notas(self, path_str):
-        if self.modo_vista == "dashboard":
-            self._on_palette_submodule_requested("notas", "Mis Notas & Editor")
-        else:
-            self._navegar_a_modulo_nombre("notas")
+        self.abrir_en_modulo("notas", ruta_archivo=path_str)
 
     def _abrir_en_archivos(self, path_str):
-        if self.modo_vista == "dashboard":
-            self._on_palette_submodule_requested("archivos", "EXPLORADOR")
-        else:
-            self._navegar_a_modulo_nombre("archivos")
+        self.abrir_en_modulo("archivos", ruta_archivo=path_str)
 
     def _abrir_en_navegador(self, path_str):
-        if self.modo_vista == "dashboard":
-            self._on_palette_submodule_requested("navegador", "INTEGRADO")
-        else:
-            self._navegar_a_modulo_nombre("navegador")
+        self.abrir_en_modulo("navegador", ruta_archivo=path_str)
 
     def _navegar_a_modulo_nombre(self, mod_name):
-        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
-        for i, m in enumerate(visibles):
-            if m.get("name", "").lower() == mod_name.lower():
-                self.notebook.setCurrentIndex(i)
-                break
+        self.abrir_en_modulo(mod_name)
 

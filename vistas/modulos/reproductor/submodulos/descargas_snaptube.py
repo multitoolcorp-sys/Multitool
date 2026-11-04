@@ -16,7 +16,26 @@ from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 from PyQt6.QtGui import QFont, QPixmap, QImage
 from PyQt6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
 
-import yt_dlp
+# Compatibilidad para entornos congelados (Nuitka) donde optparse no está en el bundle
+try:
+    import optparse
+except ModuleNotFoundError:
+    try:
+        from controlador.utils.paths import get_resource_path
+        compat_path = get_resource_path() / "controlador" / "utils" / "compat"
+        if compat_path.exists() and str(compat_path) not in sys.path:
+            sys.path.insert(0, str(compat_path))
+        import optparse
+    except Exception:
+        pass
+
+try:
+    import yt_dlp
+    YT_DLP_DISPONIBLE = True
+except Exception as e_yt:
+    yt_dlp = None
+    YT_DLP_DISPONIBLE = False
+    print(f"[Snaptube] Aviso: yt_dlp no disponible: {e_yt}")
 
 try:
     from ..utils.reproductor_logger import ReproductorLogger

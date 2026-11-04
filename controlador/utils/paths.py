@@ -11,9 +11,16 @@ from pathlib import Path
 def get_resource_path():
     """Ruta de recursos empaquetados."""
     if getattr(sys, "_MEIPASS", None):
-        return Path(sys._MEIPASS)
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).resolve().parent.parent.parent
 
-    return Path(__file__).resolve().parent.parent.parent
+    # Asegurar compatibilidad para módulos podados en compilados (ej: optparse)
+    compat = base / "controlador" / "utils" / "compat"
+    if compat.exists() and str(compat) not in sys.path:
+        sys.path.append(str(compat))
+
+    return base
 
 
 def get_data_path():
@@ -131,4 +138,4 @@ def reiniciar_aplicacion(parent=None):
                 f"No se pudo reiniciar automáticamente ({e}).\n"
                 "Por favor, cierra y abre MultiTool manualmente para aplicar los cambios."
             )
-        return False
+        return False

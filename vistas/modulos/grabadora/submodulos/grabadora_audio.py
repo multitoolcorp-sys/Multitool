@@ -1,6 +1,13 @@
 import platform
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+    MATPLOTLIB_DISPONIBLE = True
+except Exception:
+    plt = None
+    FigureCanvas = None
+    MATPLOTLIB_DISPONIBLE = False
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
@@ -54,25 +61,35 @@ class GrabadoraAudioSubmodule(QWidget):
         v_layout = QVBoxLayout(self.visual_frame)
         v_layout.setContentsMargins(8, 8, 8, 8)
 
-        self.fig_audio = plt.Figure(figsize=(5, 2), dpi=100)
-        self.fig_audio.patch.set_facecolor(bg_sec)
-        self.ax_audio = self.fig_audio.add_subplot(111)
-        self.ax_audio.set_facecolor(bg_sec)
-        self.ax_audio.set_ylim(-1, 1)
-        self.ax_audio.set_xlim(0, 100)
-        
-        self.ax_audio.spines['top'].set_visible(False)
-        self.ax_audio.spines['right'].set_visible(False)
-        self.ax_audio.spines['bottom'].set_visible(False)
-        self.ax_audio.spines['left'].set_visible(False)
-        self.ax_audio.get_xaxis().set_visible(False)
-        self.ax_audio.get_yaxis().set_visible(False)
-        
-        self.line_audio, = self.ax_audio.plot([], [], lw=2, color=acento)
+        if MATPLOTLIB_DISPONIBLE and plt and FigureCanvas:
+            self.fig_audio = plt.Figure(figsize=(5, 2), dpi=100)
+            self.fig_audio.patch.set_facecolor(bg_sec)
+            self.ax_audio = self.fig_audio.add_subplot(111)
+            self.ax_audio.set_facecolor(bg_sec)
+            self.ax_audio.set_ylim(-1, 1)
+            self.ax_audio.set_xlim(0, 100)
+            
+            self.ax_audio.spines['top'].set_visible(False)
+            self.ax_audio.spines['right'].set_visible(False)
+            self.ax_audio.spines['bottom'].set_visible(False)
+            self.ax_audio.spines['left'].set_visible(False)
+            self.ax_audio.get_xaxis().set_visible(False)
+            self.ax_audio.get_yaxis().set_visible(False)
+            
+            self.line_audio, = self.ax_audio.plot([], [], lw=2, color=acento)
 
-        self.canvas_plot = FigureCanvas(self.fig_audio)
-        self.canvas_plot.setStyleSheet("background: transparent; border: none;")
-        v_layout.addWidget(self.canvas_plot)
+            self.canvas_plot = FigureCanvas(self.fig_audio)
+            self.canvas_plot.setStyleSheet("background: transparent; border: none;")
+            v_layout.addWidget(self.canvas_plot)
+        else:
+            self.fig_audio = None
+            self.ax_audio = None
+            self.line_audio = None
+            self.canvas_plot = None
+            lbl_no_plot = QLabel("📊 Gráfico de onda en tiempo real disponible con 'matplotlib'.\nLa grabación de audio funciona con normalidad.")
+            lbl_no_plot.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lbl_no_plot.setStyleSheet("color: #9CA3AF; font-size: 10pt; font-style: italic;")
+            v_layout.addWidget(lbl_no_plot)
         layout.addWidget(self.visual_frame)
 
         # ── Controles de Grabación ──

@@ -35,19 +35,7 @@ class TabMiniGames(QWidget):
     def inicializar_ui(self):
         self.main_layout = QVBoxLayout(self)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-
-        # Barra de cabecera arcade
-        top_bar = QHBoxLayout()
-        top_bar.setContentsMargins(14, 6, 14, 6)
-        
-        lbl_hub = QLabel("🎮 MINIGAMES ARCADE HUB")
-        lbl_hub.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
-        lbl_hub.setStyleSheet(f"color: {self.colores.get('acento', '#6366F1')}; letter-spacing: 0.5px;")
-        top_bar.addWidget(lbl_hub)
-        top_bar.addStretch()
-        self.main_layout.addLayout(top_bar)
-        
+        self.main_layout.setSpacing(0)     
         # QTabWidget Superior de Alto Contraste
         self.tabs = QTabWidget()
         self.tabs.setFont(QFont(self.font_family, 9))

@@ -123,6 +123,14 @@ class DynamicModuleContainer(QWidget):
                     folder_clean = folder.replace("modulos/", "")
                     folder_path = get_resource_path() / "vistas" / "modulos" / folder_clean
                     faltantes = DependencyManager.analizar_dependencias_faltantes(folder_path)
+                    last_err = sub.get("_last_load_error", "")
+                    if not faltantes and "no module named" in last_err.lower():
+                        import re
+                        m = re.search(r'''no module named ['"]([^'"]+)['"]''', last_err, re.IGNORECASE)
+                        if m:
+                            missing_mod = m.group(1).split(".")[0]
+                            faltantes.append(missing_mod)
+
                     if faltantes:
                         def _on_installed():
                             sub["cls"] = load_class_dynamically(sub)
@@ -137,6 +145,11 @@ class DynamicModuleContainer(QWidget):
                                 self.main_layout.removeWidget(missing_w)
                                 missing_w.deleteLater()
                                 self.main_layout.addWidget(new_w)
+                            elif not new_w:
+                                err = sub.get("_last_load_error", "Error desconocido al instanciar")
+                                missing_w.lbl_status.setText(f"❌ Error al iniciar: {err}")
+                                missing_w.lbl_status.setStyleSheet("color: #EF4444; border: none; background: transparent;")
+                                missing_w.btn_install.setEnabled(True)
 
                         missing_w = MissingDependenciesWidget(
                             folder_path, sub.get("name", "Módulo"), faltantes,
@@ -352,6 +365,7 @@ def load_class_dynamically(sub_info):
                     print(f"[Loader Dynamic Patch] Clase '{class_name}' cargada con ÉXITO desde archivo físico: {candidate.name}")
                     return cls
         except Exception as e:
+            sub_info["_last_load_error"] = str(e)
             print(f"[Loader] Falló carga dinámica desde {candidate.name}: {e}. Probando siguiente...")
 
     # 2. FALLBACK: Carga desde el binario original estático de Nuitka

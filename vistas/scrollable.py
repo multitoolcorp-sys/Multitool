@@ -39,9 +39,18 @@ class ScrollableNavBar(QFrame):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
+        # Botón Buscador Rápido MMS
+        self.btn_search = QPushButton("🔍")
+        self.btn_search.setFixedSize(28, 50)
+        self.btn_search.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_search.setToolTip("Buscar y saltar a módulo (Ctrl+P)")
+        self.btn_search.setStyleSheet(f"border: none; color: {self.colores['fg_secundario']}; background: transparent; font-size: 13px;")
+        self.btn_search.clicked.connect(self._abrir_busqueda_mms)
+        self.main_layout.addWidget(self.btn_search)
+
         # Botón Izquierdo
         self.btn_left = QPushButton("◀")
-        self.btn_left.setFixedSize(30, 50)
+        self.btn_left.setFixedSize(24, 50)
         self.btn_left.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_left.setStyleSheet(f"border: none; color: {self.colores['fg_secundario']}; background: transparent; font-weight: bold;")
         self.btn_left.clicked.connect(lambda: self.scroll(-100))
@@ -155,6 +164,38 @@ class ScrollableNavBar(QFrame):
         hbar = self.scroll_area.horizontalScrollBar()
         hbar.setValue(hbar.value() + delta)
 
+    def wheelEvent(self, event):
+        """Permite desplazamiento horizontal suave con la rueda del ratón en la barra MMS."""
+        delta = event.angleDelta().y()
+        if delta != 0:
+            hbar = self.scroll_area.horizontalScrollBar()
+            hbar.setValue(hbar.value() - delta)
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
+    def _abrir_busqueda_mms(self):
+        """Abre la paleta de comandos para saltar instantáneamente a cualquier módulo en MMS."""
+        mw = self.window()
+        if mw and hasattr(mw, "abrir_paleta_comandos"):
+            mw.abrir_paleta_comandos()
+
+    def actualizar_estado_modulos(self, modulos_cargados):
+        """Actualiza los indicadores de estado (🟢 activo / 🔴 en reposo) en los botones de MMS."""
+        estado_map = {}
+        for m in (modulos_cargados or []):
+            name = m.get("name", "").strip()
+            loaded = m.get("loaded", False)
+            if name:
+                estado_map[name.lower()] = loaded
+
+        for btn in self.buttons:
+            m_nom = (btn.property("modulo_nombre") or "").strip()
+            if m_nom.lower() in estado_map:
+                is_on = estado_map[m_nom.lower()]
+                dot = "🟢" if is_on else "🔴"
+                btn.setText(f"{dot}  {m_nom}")
+
 class NavButton(QPushButton):
     def __init__(self, name, index, parent_nav):
         super().__init__(name)
@@ -174,8 +215,19 @@ class NavButton(QPushButton):
         event.acceptProposedAction()
 
     def dropEvent(self, event):
-        # Si sueltan el archivo justo en el botón, no hacemos nada especial, 
-        # pero permitimos que el drag termine limpiamente.
-        event.ignore()
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                f_path = urls[0].toLocalFile()
+                mw = self.parent_nav.window()
+                if mw and hasattr(mw, "abrir_en_modulo"):
+                    mod_nom = self.property("modulo_nombre") or self.text()
+                    # Limpiar prefijo de punto si existe
+                    if "  " in mod_nom:
+                        mod_nom = mod_nom.split("  ", 1)[-1]
+                    mw.abrir_en_modulo(mod_nom, ruta_archivo=f_path)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 

@@ -282,7 +282,13 @@ class FileExplorerList(QFrame):
                         menu.addSeparator()
                 
                 menu.addAction("📂 Abrir", self.callbacks.get("abrir_seleccionado"))
-                menu.addAction("⚙️ Abrir con...", self.callbacks.get("abrir_con_seleccionado"))
+                if self.callbacks.get("abrir_en_modulo"):
+                    menu_mt = menu.addMenu("🚀 Abrir en MultiTool")
+                    menu_mt.addAction("📝 Abrir en Notas / Editor", lambda: self.callbacks.get("abrir_en_modulo")("notas"))
+                    menu_mt.addAction("🎵 Abrir en Reproductor", lambda: self.callbacks.get("abrir_en_modulo")("reproductor"))
+                    menu_mt.addAction("🌐 Abrir en Navegador Web", lambda: self.callbacks.get("abrir_en_modulo")("navegador"))
+                    menu_mt.addAction("📊 Abrir en Cuaderno", lambda: self.callbacks.get("abrir_en_modulo")("cuaderno"))
+                menu.addAction("⚙️ Abrir con... (Sistema)", self.callbacks.get("abrir_con_seleccionado"))
                 menu.addSeparator()
                 
                 menu.addAction("📦 Comprimir en ZIP", self.comprimir_seleccionado)

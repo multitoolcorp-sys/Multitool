@@ -914,7 +914,7 @@ class DashboardSidebar(QFrame):
         self.btn_collapse = QPushButton("◀")
         self.btn_collapse.setFixedSize(22, 22)
         self.btn_collapse.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_collapse.setToolTip("Contraer / Expandir Explorador")
+        # self.btn_collapse.setToolTip("Contraer / Expandir Explorador")
         self.btn_collapse.setStyleSheet(f"""
             QPushButton {{
                 background: transparent;
@@ -957,7 +957,10 @@ class DashboardSidebar(QFrame):
                 border: 1px solid {self.colores.get('acento', '#6366F1')};
             }}
         """)
-        self.txt_filter.textChanged.connect(lambda _: self.renderizar_arbol())
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.timeout.connect(self.renderizar_arbol)
+        self.txt_filter.textChanged.connect(lambda _: self._filter_timer.start(160))
         f_lay.addWidget(self.txt_filter, 1)
 
         self.btn_clear_filter = QPushButton("✕")
@@ -1175,11 +1178,14 @@ class DashboardSidebar(QFrame):
             abiertos = 0
             if is_loaded:
                 mw = self._get_main_window()
-                cont = getattr(mw, "clases_modulos", {}).get(mod_name) if mw else None
-                if cont and hasattr(cont, "tabs") and hasattr(cont.tabs, "count"):
-                    abiertos = cont.tabs.count()
-                elif cont:
-                    abiertos = 1
+                if mw and hasattr(mw, "editor_tab_bar") and getattr(mw, "modo_vista", "") == "dashboard":
+                    abiertos = sum(1 for t in mw.editor_tab_bar.tabs if t.get("mod_name", "").lower() == mod_name.lower())
+                else:
+                    cont = getattr(mw, "clases_modulos", {}).get(mod_name) if mw else None
+                    if cont and hasattr(cont, "tabs") and hasattr(cont.tabs, "count"):
+                        abiertos = cont.tabs.count()
+                    elif cont:
+                        abiertos = 1
                 if abiertos > total_subs:
                     total_subs = abiertos
 
@@ -1344,7 +1350,7 @@ class DashboardSidebar(QFrame):
             b = QPushButton(texto)
             b.setFixedHeight(26)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
-            b.setToolTip(tooltip)
+            # b.setToolTip(tooltip)
             b.setStyleSheet(f"""
                 QPushButton {{
                     text-align: left;
@@ -1482,7 +1488,55 @@ class DashboardSidebar(QFrame):
     def _on_sub_single_click(self, mod_name, sub_name):
         self._active_mod_name = mod_name
         self._active_sub_name = sub_name
-        self.renderizar_arbol()
+        self._actualizar_seleccion_visual()
+
+    def _actualizar_seleccion_visual(self):
+        """Actualiza el estilo visual de selección sin recrear todo el árbol de widgets."""
+        acento = self.colores.get('acento', '#6366F1')
+        fg_sec = self.colores.get('fg_secundario', '#AAB0B8')
+        fg_pri = self.colores.get('fg_principal', '#FFFFFF')
+        bg_ter = self.colores.get('bg_terciario', '#2D2D3D')
+
+        for btn in self.findChildren(QPushButton):
+            if btn.property("is_nav_modulo"):
+                m_nom = (btn.property("modulo_nombre") or "").lower()
+                is_active = (m_nom == self._active_mod_name.lower())
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        text-align: left;
+                        background-color: {'rgba(99, 102, 241, 0.15)' if is_active else 'transparent'};
+                        color: {acento if is_active else fg_pri};
+                        border: none;
+                        border-radius: 4px;
+                        padding-left: 6px;
+                        font-weight: 600;
+                        font-size: 11px;
+                    }}
+                    QPushButton:hover {{
+                        background-color: {bg_ter};
+                        color: white;
+                    }}
+                """)
+            elif btn.property("is_nav_submodulo"):
+                s_nom = (btn.property("submodulo_nombre") or "").lower()
+                m_padre = (btn.property("modulo_padre") or "").lower()
+                is_active_sub = (m_padre == self._active_mod_name.lower()) and (s_nom == self._active_sub_name.lower())
+                btn.setStyleSheet(f"""
+                    QPushButton {{
+                        text-align: left;
+                        background-color: {acento if is_active_sub else 'transparent'};
+                        color: {'#FFFFFF' if is_active_sub else fg_sec};
+                        border: none;
+                        border-radius: 4px;
+                        padding-left: 6px;
+                        font-size: 10px;
+                        font-weight: {'bold' if is_active_sub else 'normal'};
+                    }}
+                    QPushButton:hover {{
+                        background-color: {acento if is_active_sub else 'rgba(255,255,255,0.06)'};
+                        color: white;
+                    }}
+                """)
 
     def _on_sub_double_click(self, mod_name, sub_name, mod_idx, sub_idx, event):
         self._active_mod_name = mod_name
@@ -1879,6 +1933,88 @@ class DashboardEmptyView(QWidget):
         lay.addWidget(box_shortcuts)
 
 
+class FloatingModuleWindow(QDialog):
+    """Ventana flotante independiente para trabajar con un módulo o submódulo en monitores secundarios."""
+    def __init__(self, parent_main, mod_name, sub_name, display_title, colores=None):
+        super().__init__(None) # Ventana nativa de nivel superior
+        self.parent_main = parent_main
+        self.mod_name = mod_name
+        self.sub_name = sub_name
+        self.colores = colores or {}
+        self.widget_hosted = None
+        self.original_parent = None
+        self.original_layout = None
+        
+        self.setWindowTitle(f"{display_title} - MultiTool [Flotante]")
+        self.resize(920, 620)
+        self.init_ui(display_title)
+
+    def init_ui(self, display_title):
+        bg = self.colores.get("bg_principal", "#121218")
+        bg_s = self.colores.get("bg_secundario", "#1E1E2E")
+        acento = self.colores.get("acento", "#6366F1")
+        
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # Header con botón de reacoplamiento
+        header = QFrame(self)
+        header.setFixedHeight(34)
+        header.setStyleSheet(f"background-color: {bg_s}; border-bottom: 1px solid rgba(255,255,255,0.08);")
+        h_lay = QHBoxLayout(header)
+        h_lay.setContentsMargins(12, 0, 12, 0)
+        
+        lbl = QLabel(f"🖥️ {display_title}")
+        lbl.setStyleSheet("color: white; font-weight: bold; font-size: 11px;")
+        h_lay.addWidget(lbl)
+        h_lay.addStretch()
+        
+        btn_dock = QPushButton("⬇️ Reacoplar a MultiTool")
+        btn_dock.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_dock.setStyleSheet(f"""
+            QPushButton {{
+                background-color: rgba(99, 102, 241, 0.15);
+                color: {acento};
+                border: 1px solid rgba(99, 102, 241, 0.4);
+                border-radius: 4px;
+                padding: 3px 10px;
+                font-size: 10px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: {acento};
+                color: white;
+            }}
+        """)
+        btn_dock.clicked.connect(self.reacoplar)
+        h_lay.addWidget(btn_dock)
+        layout.addWidget(header)
+        
+        self.content_container = QWidget(self)
+        self.content_container.setStyleSheet(f"background-color: {bg};")
+        self.c_layout = QVBoxLayout(self.content_container)
+        self.c_layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.content_container, 1)
+
+    def set_content_widget(self, widget):
+        self.widget_hosted = widget
+        self.original_parent = widget.parent()
+        self.c_layout.addWidget(widget)
+
+    def reacoplar(self):
+        if hasattr(self, "widget_hosted") and self.widget_hosted:
+            if self.original_parent and hasattr(self.original_parent, "layout") and self.original_parent.layout():
+                self.original_parent.layout().addWidget(self.widget_hosted)
+        if self.parent_main and hasattr(self.parent_main, "abrir_en_modulo"):
+            self.parent_main.abrir_en_modulo(self.mod_name, self.sub_name)
+        self.close()
+
+    def closeEvent(self, event):
+        self.reacoplar()
+        super().closeEvent(event)
+
+
 class DashboardTabBar(QFrame):
     """
     Barra superior de pestañas activas estilo VS Code / Antigravity IDE.
@@ -1898,6 +2034,7 @@ class DashboardTabBar(QFrame):
         self.tabs = [] # Lista de dicts con metadata de pestañas
         self.current_index = -1
         self.setFixedHeight(24) # Tamaño compacto al 50%
+        self.setAcceptDrops(True)
         
         self.init_ui()
 
@@ -1962,6 +2099,48 @@ class DashboardTabBar(QFrame):
             event.accept()
         else:
             super().wheelEvent(event)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                f_path = urls[0].toLocalFile()
+                pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+                target_tab = None
+                child = self.childAt(pos)
+                while child and child != self:
+                    for t in self.tabs:
+                        if t.get("frame") == child or t.get("btn_tab") == child:
+                            target_tab = t
+                            break
+                    if target_tab:
+                        break
+                    child = child.parent()
+
+                if not target_tab and 0 <= self.current_index < len(self.tabs):
+                    target_tab = self.tabs[self.current_index]
+
+                if target_tab:
+                    mw = getattr(self, "parent", None)
+                    if not mw or not hasattr(mw, "abrir_en_modulo"):
+                        mw = self.window()
+                    if mw and hasattr(mw, "abrir_en_modulo"):
+                        mw.abrir_en_modulo(target_tab["mod_name"], target_tab["sub_name"], ruta_archivo=f_path)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
     def add_tab(self, mod_name, sub_name, display_title, make_active=True):
         key = (mod_name.lower(), sub_name.lower() if sub_name else "")
@@ -2104,6 +2283,7 @@ class DashboardTabBar(QFrame):
 
         is_pinned = tab_info.get("pinned", False)
         act_pin = menu.addAction("📌 Desfijar Pestaña" if is_pinned else "📌 Fijar Pestaña")
+        act_popout = menu.addAction("🖥️ Desacoplar a ventana flotante")
         menu.addSeparator()
         act_close = menu.addAction("✕ Cerrar Pestaña")
         act_close.setEnabled(not is_pinned)
@@ -2113,12 +2293,40 @@ class DashboardTabBar(QFrame):
         chosen = menu.exec(QCursor.pos())
         if chosen == act_pin:
             self.toggle_pin_tab(curr_i)
+        elif chosen == act_popout:
+            self.desacoplar_pestana(curr_i)
         elif chosen == act_close:
             self.close_tab(curr_i)
         elif chosen == act_close_others:
             self.close_other_tabs(curr_i)
         elif chosen == act_close_right:
             self.close_tabs_to_right(curr_i)
+
+    def desacoplar_pestana(self, idx):
+        """Desacopla la pestaña a una ventana flotante independiente."""
+        if idx < 0 or idx >= len(self.tabs):
+            return
+        tab_info = self.tabs[idx]
+        mod_name = tab_info["mod_name"]
+        sub_name = tab_info["sub_name"]
+        display_title = tab_info.get("title", f"{mod_name} › {sub_name}")
+        
+        mw = getattr(self, "main_win", None) or self.window()
+        cont = getattr(mw, "clases_modulos", {}).get(mod_name) if mw else None
+        target_widget = None
+        if cont and hasattr(cont, "tabs") and isinstance(cont.tabs, QWidget):
+            for i in range(cont.tabs.count()):
+                if cont.tabs.tabText(i).strip().lower() == sub_name.strip().lower():
+                    target_widget = cont.tabs.widget(i)
+                    break
+        elif cont:
+            target_widget = cont
+
+        if target_widget and mw:
+            float_win = FloatingModuleWindow(mw, mod_name, sub_name, display_title, self.colores)
+            float_win.set_content_widget(target_widget)
+            float_win.show()
+            self.close_tab(idx)
 
     def toggle_pin_tab(self, idx):
         if 0 <= idx < len(self.tabs):

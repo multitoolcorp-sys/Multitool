@@ -149,12 +149,39 @@ class DependencyManager:
         """
         Inyecta la carpeta .libs/ del módulo al inicio de sys.path si existe.
         Garantiza que el módulo pueda importar sus dependencias locales prioritariamente.
+        Configura os.add_dll_directory en Windows para dependencias nativas C/C++ (cv2, numpy, sounddevice, etc.).
         """
+        import importlib
+
+        # 0. Asegurar compatibilidad para módulos podados en compilados (ej: optparse)
+        try:
+            from controlador.utils.paths import get_resource_path
+            compat_dir = get_resource_path() / "controlador" / "utils" / "compat"
+            if compat_dir.exists() and str(compat_dir) not in sys.path:
+                sys.path.append(str(compat_dir))
+        except Exception:
+            pass
+
         libs_dir = (Path(module_dir) / ".libs").resolve()
         if libs_dir.exists():
             str_path = str(libs_dir)
             if str_path not in sys.path:
                 sys.path.insert(0, str_path)
+
+            # En Windows (Python 3.8+), registrar directorios de DLLs nativas
+            if sys.platform == "win32" and hasattr(os, "add_dll_directory"):
+                try:
+                    os.add_dll_directory(str_path)
+                except Exception:
+                    pass
+                for sub in libs_dir.iterdir():
+                    if sub.is_dir() and (sub.name.endswith(".libs") or sub.name in ["bin", "libs", "cv2"]):
+                        try:
+                            os.add_dll_directory(str(sub))
+                        except Exception:
+                            pass
+
+            importlib.invalidate_caches()
             return libs_dir
         return None
 
@@ -167,10 +194,21 @@ class DependencyManager:
         "pyyaml": "yaml",
         "python_dateutil": "dateutil",
         "pypdf2": "PyPDF2",
+        "pymupdf": "fitz",
+        "fitz": "fitz",
+        "python_docx": "docx",
+        "docx": "docx",
+        "pywin32": "win32api",
         "pyqt6": "PyQt6",
         "pyqt5": "PyQt5",
         "pyside6": "PySide6",
         "pyside2": "PySide2",
+        "matplotlib": "matplotlib",
+        "sounddevice": "sounddevice",
+        "soundfile": "soundfile",
+        "pyautogui": "pyautogui",
+        "yt_dlp": "yt_dlp",
+        "ytdlp": "yt_dlp",
     }
 
     @classmethod
@@ -213,9 +251,12 @@ class DependencyManager:
         if module_dir:
             libs_dir = Path(module_dir) / ".libs"
             if libs_dir.exists():
+                cand_clean = [norm_name, norm_name.replace("_", "-")]
+                if norm_name in cls.PIP_TO_IMPORT_MAP:
+                    cand_clean.append(cls.PIP_TO_IMPORT_MAP[norm_name].lower())
                 for item in libs_dir.iterdir():
                     clean_item = item.name.lower().split("-")[0].split(".")[0].replace("-", "_")
-                    if clean_item in [norm_name, norm_name.replace("_", "-")]:
+                    if clean_item in cand_clean:
                         return True
 
         return False
@@ -468,10 +509,18 @@ class MissingDependenciesWidget(QFrame):
     def _on_instalacion_terminada(self, exito, mensaje):
         if exito:
             DependencyManager.activar_entorno_modulo(self.module_dir)
+            import importlib
+            importlib.invalidate_caches()
             self.lbl_status.setText("✅ " + mensaje)
             self.lbl_status.setStyleSheet("color: #10B981; border: none; background: transparent;")
             if callable(self.on_success_callback):
-                self.on_success_callback()
+                try:
+                    self.on_success_callback()
+                except Exception as e_cb:
+                    print(f"[DependencyManager] Error en reload callback: {e_cb}")
+                    self.lbl_status.setText(f"❌ Error al iniciar módulo: {e_cb}")
+                    self.lbl_status.setStyleSheet("color: #EF4444; border: none; background: transparent;")
+                    self.btn_install.setEnabled(True)
         else:
             self.btn_install.setEnabled(True)
             self.lbl_status.setText("❌ " + mensaje)

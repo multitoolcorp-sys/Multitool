@@ -188,6 +188,7 @@ class MultiTabBrowser(QWidget):
         self.tabs.setTabsClosable(True)
         self.tabs.setMovable(True)
         self.tabs.tabBar().setMovable(True)
+        self.tabs.tabBar().setVisible(True)
         self.tabs.installEventFilter(self)
 
         self.tabs.setStyleSheet(f"""

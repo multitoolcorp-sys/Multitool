@@ -114,6 +114,13 @@ def load_submodules_from_config(
                 cls = getattr(module, class_name, None)
             except (ModuleNotFoundError, ImportError, Exception) as e_imp:
                 print(f"[Loader] Fallo al importar {mod_name}: {e_imp}")
+                if not faltantes and isinstance(e_imp, ModuleNotFoundError):
+                    err_str = str(e_imp)
+                    import re
+                    m = re.search(r'''no module named ['"]([^'"]+)['"]''', err_str, re.IGNORECASE)
+                    if m:
+                        faltantes.append(m.group(1).split(".")[0])
+
                 if faltantes:
                     # Mostrar widget de dependencias faltantes en la pestaña correspondiente
                     def _crear_reload_callback(sub_name_str, target_cls_name):

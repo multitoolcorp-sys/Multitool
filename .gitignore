@@ -89,3 +89,11 @@ tiempo/alarmas.json
 /UPDATES/
 UPDATES/
 *.mtu
+
+# ------------------------------------------------------------------------------
+# 9. DEPENDENCIAS AISLADAS POR MÓDULO (.libs)
+# Instaladas localmente con pip --target; no deben subirse al repositorio
+# porque son pesadas y se regeneran con el botón "Instalar dependencias".
+# ------------------------------------------------------------------------------
+**/.libs/
+*.pyd
