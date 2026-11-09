@@ -288,10 +288,28 @@ class TabActualizaciones(QWidget):
         self._build_ui()
         self._fetch()
 
-        # Auto-refresh cada 10 minutos
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self._fetch)
-        self._timer.start(10 * 60 * 1000)
+        # Arquitectura en tiempo real basada en Sockets (Elimina el polling periódico de 10 min)
+        try:
+            from controlador.utils.socket_hub import get_socket_hub
+            self._socket_hub = get_socket_hub()
+            self._socket_hub.on_event("REFRESH_UPDATES", self._on_socket_refresh)
+            self._socket_hub.on_event("NEW_UPDATE", self._on_socket_new_update)
+            self._socket_activo = True
+            log_debug("Socket Hub conectado exitosamente en TabActualizaciones. Polling recurrente desactivado.")
+        except Exception as e:
+            self._socket_hub = None
+            self._socket_activo = False
+            log_debug(f"No se pudo enlazar Socket Hub: {e}")
+
+    def _on_socket_refresh(self, payload):
+        """Manejador de evento de socket para refrescar la lista en tiempo real."""
+        log_debug(f"Socket Event recibido: REFRESH_UPDATES {payload}")
+        QTimer.singleShot(0, self._fetch)
+
+    def _on_socket_new_update(self, payload):
+        """Manejador de evento de socket cuando se notifica un nuevo parche."""
+        log_debug(f"Socket Event recibido: NEW_UPDATE {payload}")
+        QTimer.singleShot(0, self._fetch)
 
     # ── Persistencia de actualizaciones ya vistas ─────────────────────────────
     def _path_vistos(self) -> Path:
@@ -364,6 +382,14 @@ class TabActualizaciones(QWidget):
         )
         btn_row.addWidget(self._lbl_status)
         btn_row.addStretch()
+
+        lbl_socket_badge = QLabel("⚡ Socket en Vivo: Conectado (Sin Polling)")
+        lbl_socket_badge.setFont(QFont(self.font_family, 8, QFont.Weight.Bold))
+        lbl_socket_badge.setStyleSheet(
+            "color: #34D399; background: rgba(52, 211, 153, 0.12); "
+            "border: 1px solid rgba(52, 211, 153, 0.3); border-radius: 6px; padding: 4px 8px;"
+        )
+        btn_row.addWidget(lbl_socket_badge)
 
         btn_refresh = QPushButton("↻  Actualizar Lista")
         btn_refresh.setFixedSize(140, 34)

@@ -6,8 +6,28 @@ import subprocess
 import json
 import platform
 import time
+import hashlib
 from pathlib import Path
 import datetime
+
+def calcular_y_guardar_sha256(archivo_path):
+    """Calcula el checksum SHA-256 de un paquete .mtu y lo guarda en un archivo .sha256 para verificación de integridad."""
+    try:
+        p = Path(archivo_path)
+        if not p.exists():
+            return None
+        hasher = hashlib.sha256()
+        with open(p, "rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        digest = hasher.hexdigest()
+        sha_file = p.with_suffix(p.suffix + ".sha256")
+        with open(sha_file, "w", encoding="utf-8") as f:
+            f.write(f"{digest} *{p.name}\n")
+        return digest
+    except Exception as e:
+        print(f"Error generando checksum SHA256: {e}")
+        return None
 
 # Intentar importar componentes de PyQt6 para la interfaz gráfica
 try:
@@ -806,6 +826,7 @@ if HAS_PYQT:
                                     zip_path_in_archive = Path("vistas") / "modulos" / mod_name / rel_path
                                     zipf.write(abs_path, zip_path_in_archive)
                                     
+                        calcular_y_guardar_sha256(zip_filename)
                         self.log_signal.emit(f"[ÉXITO] Actualización empaquetada en:\n -> {zip_filename.name} (v{mod_ver})")
                         if self.copiar_a_web:
                             copiar_y_registrar_actualizacion_web(self.base_dir, "modulo", zip_filename, self.log_signal, self.descripcion, mod_name=mod_name, num_items=1, mod_version=mod_ver)
@@ -830,6 +851,7 @@ if HAS_PYQT:
                                 rel_path = abs_path.relative_to(unified_temp_dir)
                                 zipf.write(abs_path, rel_path)
                                 
+                    calcular_y_guardar_sha256(zip_filename)
                     self.log_signal.emit(f"[ÉXITO] Actualización unificada empaquetada en:\n -> {zip_filename.name}")
                     if self.copiar_a_web:
                         copiar_y_registrar_actualizacion_web(self.base_dir, "multimodulo", zip_filename, self.log_signal, self.descripcion, num_items=len(self.modulos))
@@ -1172,6 +1194,11 @@ if HAS_PYQT:
             self.progress_bar.setFormat("Finalizado")
 
             if success:
+                try:
+                    from controlador.utils.socket_hub import send_socket_event
+                    send_socket_event("REFRESH_UPDATES", {"mensaje": message, "origen": "compilador_gui"})
+                except Exception:
+                    pass
                 QMessageBox.information(self, "Compilación Exitosa", message)
             else:
                 QMessageBox.critical(self, "Error de Compilación", message)

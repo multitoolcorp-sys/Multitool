@@ -258,6 +258,19 @@ class BaseAppGUI(QMainWindow):
         self.shortcut_ctrl_t = QShortcut(QKeySequence("Ctrl+T"), self)
         self.shortcut_ctrl_t.activated.connect(self.abrir_buscador_general_rapido)
 
+        # Paleta de Comandos Global (Ctrl+Shift+P y F1)
+        self.shortcut_palette = QShortcut(QKeySequence("Ctrl+Shift+P"), self)
+        self.shortcut_palette.activated.connect(self.abrir_paleta_comandos)
+        self.shortcut_f1 = QShortcut(QKeySequence("F1"), self)
+        self.shortcut_f1.activated.connect(self.abrir_paleta_comandos)
+
+        # Iniciar Socket Hub para eventos y actualizaciones en tiempo real (sin polling recurrente)
+        try:
+            from controlador.utils.socket_hub import get_socket_hub
+            self._socket_hub = get_socket_hub()
+        except Exception as e:
+            self._socket_hub = None
+
         # Buffer para captura de números con Ctrl (Ctrl+1, Ctrl+10...)
         self._ctrl_digit_buffer = ""
         self._ctrl_digit_timer = QTimer(self)
@@ -1069,6 +1082,11 @@ class BaseAppGUI(QMainWindow):
 
     def salir_aplicacion_forzado(self):
         self._guardar_todo_el_estado()
+        if hasattr(self, "_socket_hub") and self._socket_hub:
+            try:
+                self._socket_hub.stop()
+            except Exception:
+                pass
         self._force_close = True
         QApplication.quit()
 
@@ -1151,6 +1169,37 @@ class BaseAppGUI(QMainWindow):
                         "El archivo seleccionado no parece ser una actualización válida (.mtu) para Multitool."
                     )
                     return
+
+                # Verificación de integridad SHA-256 si existe archivo de firma .sha256
+                sha_file = mtu_path.with_suffix(mtu_path.suffix + ".sha256")
+                if sha_file.exists():
+                    try:
+                        import hashlib
+                        with open(sha_file, "r", encoding="utf-8") as sf:
+                            expected_hash = sf.read().split()[0].strip().lower()
+                        hasher = hashlib.sha256()
+                        with open(mtu_path, "rb") as f:
+                            while chunk := f.read(65536):
+                                hasher.update(chunk)
+                        actual_hash = hasher.hexdigest().lower()
+                        if expected_hash != actual_hash:
+                            QMessageBox.critical(
+                                self, "Firma de Integridad Inválida",
+                                f"El paquete .mtu está dañado o alterado.\n\n"
+                                f"SHA-256 Esperado: {expected_hash}\n"
+                                f"SHA-256 Calculado: {actual_hash}\n\n"
+                                "Instalación abortada por seguridad."
+                            )
+                            return
+                    except Exception as e_sha:
+                        print(f"[Aviso] No se pudo verificar SHA-256: {e_sha}")
+
+                # Notificar a los observadores locales vía Socket Hub
+                try:
+                    from controlador.utils.socket_hub import send_socket_event
+                    send_socket_event("REFRESH_UPDATES", {"origen": "instalador_mtu", "archivo": mtu_path.name})
+                except Exception:
+                    pass
         except Exception as e:
             QMessageBox.critical(self, "Error de Archivo", f"No se pudo leer el archivo .mtu:\n{e}")
             return
@@ -1509,6 +1558,50 @@ class BaseAppGUI(QMainWindow):
         """Abre la búsqueda rápida / selector de módulos (Ctrl+T)."""
         if hasattr(self, "abrir_gestor_modulos"):
             self.abrir_gestor_modulos()
+
+    def abrir_paleta_comandos(self):
+        """Abre la paleta de comandos flotante global (Ctrl+Shift+P / F1)."""
+        try:
+            from vistas.command_palette import CommandPaletteDialog
+            dlg = CommandPaletteDialog(parent=self, colores=self.COLORES, on_action=self._ejecutar_accion_paleta)
+            geo = self.geometry()
+            x = geo.x() + (geo.width() - dlg.width()) // 2
+            y = geo.y() + 60
+            dlg.move(x, y)
+            dlg.exec()
+        except Exception as e:
+            print(f"Error abriendo paleta de comandos: {e}")
+
+    def _ejecutar_accion_paleta(self, action: str):
+        """Despacha la acción elegida desde la paleta de comandos."""
+        if not action:
+            return
+        if action.startswith("goto_"):
+            parts = action[5:].split("_", 1)
+            mod_name = parts[0]
+            sub_name = parts[1] if len(parts) > 1 else None
+            self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name)
+        elif action == "conectar_red":
+            self.abrir_en_modulo("archivos")
+            mod_arch = self.clases_modulos.get("Archivos") or self.clases_modulos.get("archivos")
+            if mod_arch and hasattr(mod_arch, "abrir_dialogo_conectar_red"):
+                mod_arch.abrir_dialogo_conectar_red()
+        elif action == "set_vista_mms":
+            self._set_modo_vista("clasico")
+        elif action == "set_vista_ide":
+            self._set_modo_vista("dashboard")
+        elif action == "instalar_mtu":
+            self.instalar_actualizacion_mtu()
+        elif action == "abrir_compilador":
+            self.abrir_compilador_actualizaciones()
+        elif action == "ver_actualizaciones":
+            self.mostrar_log_actualizaciones()
+        elif action == "toggle_consola":
+            self._toggle_console()
+        elif action == "reiniciar_zip":
+            self.reiniciar_configuracion_modulos_zip()
+        elif action == "salir_app":
+            self.salir_aplicacion()
 
     def keyPressEvent(self, event):
         """Gestiona combinaciones de teclas globales como Ctrl + Números (1 a 99) con Enter."""
