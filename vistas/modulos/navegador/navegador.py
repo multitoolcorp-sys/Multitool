@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QMessageBox, QInputDialog, 
+    QWidget, QVBoxLayout, QHBoxLayout, QMessageBox, QInputDialog, 
     QTabWidget, QDialog, QGridLayout, QLabel, QLineEdit, 
     QComboBox, QDialogButtonBox, QPushButton, QTreeWidgetItem
 )
@@ -140,6 +140,36 @@ class TabNavegador(QWidget):
         self.tabs.addTab(self.sub_email, "📧 CLIENTE GMAIL")
         self.tabs.addTab(self.sub_descargas, "⚡ DESCARGAS")
         
+        # Contenedor de botones en la esquina superior derecha
+        corner_widget = QWidget()
+        corner_layout = QHBoxLayout(corner_widget)
+        corner_layout.setContentsMargins(0, 0, 8, 0)
+        corner_layout.setSpacing(6)
+
+        # Botón Predeterminado
+        self.btn_default_browser = QPushButton("🌐 Predeterminado")
+        self.btn_default_browser.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_default_browser.setToolTip("Establecer MultiTool como navegador web predeterminado del sistema")
+        self.btn_default_browser.setStyleSheet(f"""
+            QPushButton {{
+                background: {self.colores['bg_secundario']};
+                color: {self.colores['fg_principal']};
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-family: 'Inter';
+                font-weight: 600;
+                font-size: 11px;
+            }}
+            QPushButton:hover {{
+                background: rgba(99, 102, 241, 0.15);
+                border-color: {self.colores['acento']};
+                color: {self.colores['acento']};
+            }}
+        """)
+        self.btn_default_browser.clicked.connect(self._establecer_como_predeterminado)
+        corner_layout.addWidget(self.btn_default_browser)
+
         # Botón Extender
         self.btn_extender = QPushButton("🚀 Extender")
         self.btn_extender.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -149,17 +179,19 @@ class TabNavegador(QWidget):
                 color: white;
                 border: none;
                 border-radius: 6px;
-                padding: 4px 15px;
+                padding: 4px 14px;
                 font-family: 'Inter';
                 font-weight: bold;
-                margin: 2px 8px;
+                font-size: 11px;
             }}
             QPushButton:hover {{
                 background: {self.colores['acento_hover']};
             }}
         """)
         self.btn_extender.clicked.connect(self.abrir_navegador_extendido)
-        self.tabs.setCornerWidget(self.btn_extender, Qt.Corner.TopRightCorner)
+        corner_layout.addWidget(self.btn_extender)
+
+        self.tabs.setCornerWidget(corner_widget, Qt.Corner.TopRightCorner)
         
         self.main_layout.addWidget(self.tabs)
 
@@ -225,6 +257,28 @@ class TabNavegador(QWidget):
             url_actual = self.sub_integrado.txt_url.text() or url_actual
         from .utils.webview2_runner import lanzar_ventana_webview2
         lanzar_ventana_webview2(url_actual)
+
+    def _establecer_como_predeterminado(self):
+        """Registra MultiTool como navegador web en Windows y abre la configuración del sistema."""
+        try:
+            from controlador.utils.protocol_handler import registrar_navegador_predeterminado
+            ok = registrar_navegador_predeterminado()
+            if ok:
+                QMessageBox.information(
+                    self,
+                    "Navegador Predeterminado",
+                    "✅ MultiTool ha sido registrado en Windows como navegador web.\n\n"
+                    "Se ha abierto la ventana de 'Aplicaciones predeterminadas' de Windows.\n"
+                    "Por favor selecciona 'MultiTool' en la sección de Navegador web para confirmar."
+                )
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Navegador Predeterminado",
+                    "No se pudo completar el registro automático en este sistema operativo."
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Error al registrar navegador predeterminado: {e}")
 
     def actualizar_tema(self, colores):
         """Actualiza la paleta de colores del módulo Navegador y de todos sus submódulos."""

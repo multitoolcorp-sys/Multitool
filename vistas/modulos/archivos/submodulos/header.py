@@ -181,6 +181,28 @@ class FileHeader(QFrame):
         self.btn_vista.setMenu(menu_vista)
         row1.addWidget(self.btn_vista)
 
+        # Botón Conectar a Red
+        self.btn_net = QPushButton("🌐 Conectar a Red")
+        self.btn_net.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_net.setStyleSheet(f"""
+            QPushButton {{
+                background: {self.colores['bg_terciario']};
+                color: {self.colores['fg_principal']};
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 6px;
+                padding: 4px 12px;
+                font-weight: bold;
+                font-size: 11px;
+                font-family: '{self.font_family}';
+            }}
+            QPushButton:hover {{
+                background: {self.colores['acento']};
+                color: white;
+            }}
+        """)
+        self.btn_net.clicked.connect(lambda: self.callbacks.get("conectar_unidad_red")())
+        row1.addWidget(self.btn_net)
+
         row1.addStretch()
 
         # Campo de búsqueda rápida
@@ -338,10 +360,15 @@ class FileHeader(QFrame):
             self.callbacks["filtrar_por_texto"](text)
 
     def set_ruta(self, ruta_texto):
-        self.ruta_actual = ruta_texto
-        self.ent_ruta.setText(ruta_texto)
-        self.ent_ruta.setCursorPosition(len(ruta_texto))
-        self._actualizar_breadcrumbs(ruta_texto)
+        ruta_str = str(ruta_texto)
+        if ruta_str in ("//Red", "\\\\Red", "network"):
+            display_text = "Red"
+        else:
+            display_text = ruta_str
+        self.ruta_actual = display_text
+        self.ent_ruta.setText(display_text)
+        self.ent_ruta.setCursorPosition(len(display_text))
+        self._actualizar_breadcrumbs(display_text)
 
     def _mostrar_subcarpetas_menu(self, ruta_padre, btn_sender):
         """Muestra un menú desplegable con scrollbar vertical con las carpetas y archivos del segmento de ruta"""
@@ -508,8 +535,14 @@ class FileHeader(QFrame):
             if item.widget():
                 item.widget().deleteLater()
 
-        if not ruta_texto or ruta_texto == "trash":
-            lbl = QLabel("🗑️ Papelera de Reciclaje" if ruta_texto == "trash" else "Inicio")
+        if not ruta_texto or ruta_texto in ("trash", "network", "Red", "//Red", "\\\\Red"):
+            if ruta_texto == "trash":
+                lbl_text = "🗑️ Papelera de Reciclaje"
+            elif ruta_texto in ("network", "Red", "//Red", "\\\\Red"):
+                lbl_text = "🌐 Entorno de Red"
+            else:
+                lbl_text = "Inicio"
+            lbl = QLabel(lbl_text)
             lbl.setStyleSheet("color: white; font-weight: bold; font-size: 11px;")
             self.breadcrumbs_lay.addWidget(lbl)
             return

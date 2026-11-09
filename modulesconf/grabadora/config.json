@@ -1,0 +1,54 @@
+{
+    "name": "Grabadora",
+    "position": 8,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Grabadora Audio",
+            "file_name": "submodulos/grabadora_audio.py",
+            "class_name": "GrabadoraAudioSubmodule",
+            "visible": true,
+            "icon": "🎙",
+            "alias": "grabadora_audio",
+            "position": 1
+        },
+        {
+            "name": "Grabadora Pantalla",
+            "file_name": "submodulos/grabadora_pantalla.py",
+            "class_name": "GrabadoraPantallaSubmodule",
+            "visible": true,
+            "icon": "🎬",
+            "alias": "grabadora_pantalla",
+            "position": 2
+        },
+        {
+            "name": "Grabadora Cámara",
+            "file_name": "submodulos/grabadora_webcam.py",
+            "class_name": "GrabadoraWebcamSubmodule",
+            "visible": true,
+            "icon": "🎥",
+            "alias": "grabadora_cámara",
+            "position": 3
+        },
+        {
+            "name": "Historial Grabaciones",
+            "file_name": "submodulos/historial_grabaciones.py",
+            "class_name": "HistorialGrabacionesSubmodule",
+            "visible": true,
+            "icon": "📁",
+            "alias": "historial_grabaciones",
+            "position": 4
+        },
+        {
+            "name": "Captura de Pantalla",
+            "file_name": "submodulos/capturador_pantalla.py",
+            "class_name": "CapturadorPantallaSubmodule",
+            "visible": true,
+            "icon": "📸",
+            "alias": "captura_de",
+            "position": 5
+        }
+    ],
+    "alias": "grabadora",
+    "icon": "🎙️"
+}

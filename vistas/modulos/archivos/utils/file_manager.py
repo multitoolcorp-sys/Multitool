@@ -1,6 +1,8 @@
 import os
 import shutil
 import datetime
+import platform
+import subprocess
 from pathlib import Path
 from .trash_manager import TrashManager
 
@@ -15,8 +17,9 @@ class FileManager:
         # Inicializar papelera propia en la carpeta de usuario
         self.trash_manager = TrashManager(self.ruta_usuario)
 
-        # Estado de archivos comprimidos
+        # Estado de archivos comprimidos y entorno de red
         self.is_inside_archive = False
+        self.is_network_view = False
         self.archive_path = None
         self.archive_internal_dir = ""
         self.archive_type = None
@@ -35,6 +38,15 @@ class FileManager:
     def obtener_elementos(self):
         if self.is_inside_archive:
             return self._obtener_elementos_archivo()
+
+        if getattr(self, "is_network_view", False) or str(self.ruta_actual) in ("//Red", "\\\\Red", "network"):
+            return self._obtener_elementos_red()
+
+        ruta_str = str(self.ruta_actual).strip()
+        if ruta_str.startswith("\\\\"):
+            partes_unc = [p for p in ruta_str[2:].split("\\") if p]
+            if len(partes_unc) == 1:
+                return self._obtener_recursos_servidor_unc(partes_unc[0])
 
         try:
             elementos = list(self.ruta_actual.iterdir())
@@ -66,6 +78,82 @@ class FileManager:
             archivos_data.sort(key=lambda x: x["name"].lower())
             return carpetas_data, archivos_data
         except: return [], []
+
+    def _obtener_recursos_servidor_unc(self, server_name):
+        """Lista los recursos compartidos en un servidor SMB de red (net view \\servidor)."""
+        carpetas_data = []
+        try:
+            res = subprocess.run(
+                ["net", "view", f"\\\\{server_name}"],
+                capture_output=True,
+                errors="replace",
+                timeout=3,
+                creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+            )
+            dash_found = False
+            for line in res.stdout.splitlines():
+                line_s = line.strip()
+                if line_s.startswith("---"):
+                    dash_found = True
+                    continue
+                if dash_found:
+                    if not line_s or "completado" in line_s.lower():
+                        break
+                    parts = line_s.split()
+                    if parts:
+                        share_name = parts[0]
+                        full_unc = f"\\\\{server_name}\\{share_name}"
+                        carpetas_data.append({
+                            "name": share_name,
+                            "path": full_unc,
+                            "date": "--",
+                            "type": "Recurso de red compartido",
+                            "size_raw": -1,
+                            "size": "--",
+                        })
+        except Exception:
+            pass
+        return carpetas_data, []
+
+    def _obtener_elementos_red(self):
+        """Genera la vista del entorno de Red (unidades mapeadas, recursos SMB y equipos detectados)."""
+        carpetas_data = []
+        try:
+            from .drive_detector import obtener_conexiones_red, escanear_dispositivos_red_arp
+            conns = obtener_conexiones_red()
+            agregados = set()
+            for c in conns:
+                unc = c.get("unc", "")
+                letter = c.get("letter", "")
+                status = c.get("status", "")
+                if unc:
+                    nombre = f"{letter} ({unc})" if letter else unc
+                    target = f"{letter}\\" if letter else unc
+                    carpetas_data.append({
+                        "name": f"🌐 {nombre}",
+                        "path": target,
+                        "date": status,
+                        "type": "Unidad de Red Mapeada" if letter else "Recurso UNC",
+                        "size_raw": -1,
+                        "size": "--",
+                    })
+                    agregados.add(unc.lower())
+
+            ips = escanear_dispositivos_red_arp()
+            for ip in ips:
+                unc_ip = f"\\\\{ip}"
+                if unc_ip.lower() not in agregados:
+                    carpetas_data.append({
+                        "name": f"💻 Servidor ({ip})",
+                        "path": unc_ip,
+                        "date": "--",
+                        "type": "Equipo de Red",
+                        "size_raw": -1,
+                        "size": "--",
+                    })
+        except Exception:
+            pass
+        return carpetas_data, []
 
     def _obtener_elementos_archivo(self):
         carpetas_data, archivos_data = [], []
@@ -162,7 +250,22 @@ class FileManager:
                     self.archive_internal_dir = "/".join(parts[:-1]) + "/"
                 return True
         else:
-            if self.ruta_actual.parent != self.ruta_actual:
+            if getattr(self, "is_network_view", False):
+                self.is_network_view = False
+                self.ruta_actual = self.ruta_usuario
+                return True
+            ruta_str = str(self.ruta_actual).strip()
+            if ruta_str.startswith("\\\\") or ruta_str.startswith("//"):
+                p_clean = ruta_str.replace("/", "\\")
+                partes = [p for p in p_clean[2:].split("\\") if p]
+                if len(partes) <= 1:
+                    self.is_network_view = True
+                    self.ruta_actual = Path("//Red")
+                    return True
+                else:
+                    self.ruta_actual = Path("\\\\" + "\\".join(partes[:-1]))
+                    return True
+            if hasattr(self.ruta_actual, "parent") and self.ruta_actual.parent != self.ruta_actual:
                 self.ruta_actual = self.ruta_actual.parent
                 return True
             return False
@@ -170,13 +273,39 @@ class FileManager:
     def ir_a_ruta(self, ruta):
         if self.is_inside_archive:
             return False # No se permite cambiar de ruta física directamente mientras se está dentro del archivo
-        path = Path(ruta)
+        ruta_str = str(ruta).strip().strip('"').strip("'")
+        if ruta_str.lower() in ("network", "red", "entorno de red", "//red", "\\\\red"):
+            self.is_network_view = True
+            self.ruta_actual = Path("//Red")
+            return True
+
+        self.is_network_view = False
+        if ruta_str.startswith("//") or ruta_str.startswith("\\\\"):
+            p_clean = "\\\\" + ruta_str.lstrip("/\\").replace("/", "\\")
+            partes_unc = [p for p in p_clean[2:].split("\\") if p]
+            if len(partes_unc) == 1:
+                self.ruta_actual = Path(f"\\\\{partes_unc[0]}")
+                return True
+            path = Path(p_clean)
+            if path.exists():
+                self.ruta_actual = path
+                return True
+            try:
+                if any(path.iterdir()):
+                    self.ruta_actual = path
+                    return True
+            except Exception:
+                pass
+            return False
+
+        path = Path(ruta_str)
         if path.exists():
             self.ruta_actual = path
             return True
         return False
 
     def ir_inicio(self):
+        self.is_network_view = False
         if self.is_inside_archive:
             # Salir de la navegación de archivo comprimido e ir al inicio
             self.is_inside_archive = False

@@ -211,6 +211,9 @@ class BaseAppGUI(QMainWindow):
 
         self.main_layout.addWidget(self.barra_estado_frame)
 
+        # Módulos y submódulos registrados
+        self.clases_modulos = {}
+
         # Modo de vista actual: 'clasico' o 'dashboard'
         self.modo_vista = "clasico"
         self.sidebar.hide()
@@ -966,6 +969,11 @@ class BaseAppGUI(QMainWindow):
         self.nav_bar.select_tab(index)
         self.actualizar_reloj_status()
 
+        # Sincronizar visibilidad de subpestañas de submódulos según el modo de vista (MMS vs IDE)
+        modo = getattr(self, "modo_vista", "clasico")
+        if hasattr(self, "_sincronizar_visibilidad_subtabs_dashboard"):
+            self._sincronizar_visibilidad_subtabs_dashboard(ocultar=(modo == "dashboard"))
+
         modulo_nombre = self.notebook.tabText(index)
 
         # Registrar tiempo de actividad en module_log.json
@@ -1294,39 +1302,101 @@ class BaseAppGUI(QMainWindow):
                         self.notebook.setCurrentIndex(i)
                         if hasattr(self, "nav_bar"):
                             self.nav_bar.select_tab(i)
-                        container = getattr(self, "clases_modulos", {}).get(mod_name)
-                        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-                            for si in range(container.tabs.count()):
-                                if container.tabs.tabText(si).strip().lower() == sub_name.strip().lower():
-                                    container.tabs.setCurrentIndex(si)
+                        target_tw = self._resolver_tab_widget_submodulos(mod_name)
+                        if target_tw and sub_name:
+                            for si in range(target_tw.count()):
+                                t_txt = target_tw.tabText(si).strip().lower()
+                                s_clean = sub_name.strip().lower()
+                                if s_clean == t_txt or s_clean in t_txt or t_txt in s_clean:
+                                    target_tw.setCurrentIndex(si)
                                     break
                         break
 
-            # Restaurar visibilidad de pestañas internas de submódulos
+            # Restaurar visibilidad completa de barras de submódulos estáticos
             self._sincronizar_visibilidad_subtabs_dashboard(ocultar=False)
 
-    def _sincronizar_visibilidad_subtabs_dashboard(self, ocultar=True):
-        """Oculta o muestra la barra de pestañas interna de los submódulos (DynamicModuleContainer) según el modo de vista, sin afectar pestañas web del navegador."""
-        try:
-            from vistas.configurations import DynamicModuleContainer
-            # 1. Recorrer instancias conocidas en clases_modulos que sean contenedores de submódulos
-            for k, cont in getattr(self, "clases_modulos", {}).items():
-                if cont and (isinstance(cont, DynamicModuleContainer) or cont.__class__.__name__ == "DynamicModuleContainer"):
-                    if hasattr(cont, "tabs") and hasattr(cont.tabs, "tabBar") and cont.tabs.tabBar():
-                        cont.tabs.tabBar().setVisible(not ocultar)
+    def _resolver_tab_widget_submodulos(self, mod_name):
+        """Devuelve el QTabWidget de submódulos de un módulo, examinando el contenedor y sus instancias."""
+        if not mod_name:
+            return None
 
-            # 2. Recorrer widgets del notebook y filtrar exclusivamente contenedores DynamicModuleContainer
+        # 1. Buscar en clases_modulos
+        container = (
+            getattr(self, "clases_modulos", {}).get(mod_name) or
+            getattr(self, "clases_modulos", {}).get(mod_name.lower()) or
+            getattr(self, "clases_modulos", {}).get(mod_name.capitalize())
+        )
+
+        clases_excluidas = {"NavegadorWidget", "BrowserTabWidget", "Navegador", "NavegadorSubmodulo"}
+
+        if container:
+            if hasattr(container, "tabs") and isinstance(container.tabs, QTabWidget):
+                if container.__class__.__name__ not in clases_excluidas:
+                    return container.tabs
+            if hasattr(container, "submodules_instances") and isinstance(container.submodules_instances, dict):
+                for s_inst in container.submodules_instances.values():
+                    if s_inst and hasattr(s_inst, "tabs") and isinstance(s_inst.tabs, QTabWidget):
+                        if s_inst.__class__.__name__ not in clases_excluidas:
+                            return s_inst.tabs
+
+        # 2. Buscar en la página actual del notebook
+        visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
+        for i, m in enumerate(visibles):
+            if m.get("name", "").lower() == mod_name.lower():
+                if hasattr(self, "notebook") and 0 <= i < self.notebook.count():
+                    page = self.notebook.widget(i)
+                    if page:
+                        for tw in page.findChildren(QTabWidget):
+                            parent_cls = tw.parent().__class__.__name__ if tw.parent() else ""
+                            if parent_cls not in clases_excluidas and tw.__class__.__name__ not in clases_excluidas:
+                                if not hasattr(tw, "_is_web_browser_tabs") and "browser" not in parent_cls.lower():
+                                    return tw
+                break
+
+        return None
+
+    def _sincronizar_visibilidad_subtabs_dashboard(self, ocultar=True):
+        """Oculta o muestra la barra de pestañas interna de los submódulos según el modo de vista (MMS vs IDE), sin afectar pestañas web del navegador."""
+        try:
+            clases_excluidas = {"NavegadorWidget", "BrowserTabWidget", "Navegador", "NavegadorSubmodulo"}
+
+            def _ajustar_tab_widget(tw):
+                if tw and hasattr(tw, "tabBar") and tw.tabBar():
+                    parent_cls = tw.parent().__class__.__name__ if tw.parent() else ""
+                    if parent_cls in clases_excluidas or tw.__class__.__name__ in clases_excluidas:
+                        return
+                    if hasattr(tw, "_is_web_browser_tabs") or "browser" in parent_cls.lower():
+                        return
+                    tw.tabBar().setVisible(not ocultar)
+                    if not ocultar:
+                        tw.tabBar().show()
+                    tw.updateGeometry()
+
+            # 1. Recorrer instancias conocidas en clases_modulos (contenedores y módulos reales)
+            for k, cont in getattr(self, "clases_modulos", {}).items():
+                if not cont:
+                    continue
+                cls_name = cont.__class__.__name__
+                if cls_name in clases_excluidas or "navegador" in str(k).lower():
+                    continue
+
+                if hasattr(cont, "tabs") and isinstance(cont.tabs, QTabWidget):
+                    _ajustar_tab_widget(cont.tabs)
+
+                if hasattr(cont, "submodules_instances") and isinstance(cont.submodules_instances, dict):
+                    for sub_inst in cont.submodules_instances.values():
+                        if sub_inst and hasattr(sub_inst, "tabs") and isinstance(sub_inst.tabs, QTabWidget):
+                            _ajustar_tab_widget(sub_inst.tabs)
+
+            # 2. Recorrer directamente los widgets del notebook principal
             if hasattr(self, "notebook"):
                 for i in range(self.notebook.count()):
                     w = self.notebook.widget(i)
-                    if w:
-                        if isinstance(w, DynamicModuleContainer) or w.__class__.__name__ == "DynamicModuleContainer":
-                            if hasattr(w, "tabs") and hasattr(w.tabs, "tabBar") and w.tabs.tabBar():
-                                w.tabs.tabBar().setVisible(not ocultar)
-                        else:
-                            for dmc in w.findChildren(DynamicModuleContainer):
-                                if hasattr(dmc, "tabs") and hasattr(dmc.tabs, "tabBar") and dmc.tabs.tabBar():
-                                    dmc.tabs.tabBar().setVisible(not ocultar)
+                    if not w:
+                        continue
+                    for tw in w.findChildren(QTabWidget):
+                        _ajustar_tab_widget(tw)
+
         except Exception as e:
             print(f"[BaseAppGUI] Error sincronizando visibilidad de subtabs: {e}")
 
@@ -1360,12 +1430,18 @@ class BaseAppGUI(QMainWindow):
                 break
 
         # Sincronizar el submódulo interno
-        container = getattr(self, "clases_modulos", {}).get(mod_name)
-        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-            if hasattr(container.tabs, "tabBar") and container.tabs.tabBar():
-                container.tabs.tabBar().hide()
-            if 0 <= sub_idx < container.tabs.count():
-                container.tabs.setCurrentIndex(sub_idx)
+        target_tw = self._resolver_tab_widget_submodulos(mod_name)
+        if target_tw:
+            if hasattr(target_tw, "tabBar") and target_tw.tabBar():
+                target_tw.tabBar().hide()
+            if 0 <= sub_idx < target_tw.count():
+                target_tw.setCurrentIndex(sub_idx)
+            elif sub_name:
+                for si in range(target_tw.count()):
+                    t_txt = target_tw.tabText(si).lower()
+                    if sub_name.lower() in t_txt or t_txt in sub_name.lower():
+                        target_tw.setCurrentIndex(si)
+                        break
 
         # Mostrar el notebook y ocultar la pantalla de bienvenida
         self.notebook.show()
@@ -1403,15 +1479,15 @@ class BaseAppGUI(QMainWindow):
                 self.notebook.setCurrentIndex(i)
                 break
 
-        container = getattr(self, "clases_modulos", {}).get(mod_name)
-        if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-            if hasattr(container.tabs, "tabBar") and container.tabs.tabBar():
-                container.tabs.tabBar().hide()
+        target_tw = self._resolver_tab_widget_submodulos(mod_name)
+        if target_tw:
+            if hasattr(target_tw, "tabBar") and target_tw.tabBar():
+                target_tw.tabBar().hide()
             if sub_name:
-                for s_i in range(container.tabs.count()):
-                    txt = container.tabs.tabText(s_i).lower()
+                for s_i in range(target_tw.count()):
+                    txt = target_tw.tabText(s_i).lower()
                     if sub_name.lower() in txt or txt in sub_name.lower():
-                        container.tabs.setCurrentIndex(s_i)
+                        target_tw.setCurrentIndex(s_i)
                         break
 
         # Sincronizar selección en sidebar

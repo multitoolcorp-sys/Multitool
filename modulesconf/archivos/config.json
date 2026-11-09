@@ -1,0 +1,47 @@
+{
+    "name": "Archivos",
+    "position": 6,
+    "visible": true,
+    "file_name": "archivos.py",
+    "class_name": "TabArchivos",
+    "alias": "archivos",
+    "icon": "📁",
+    "submodulos": [
+        {
+            "name": "EXPLORADOR",
+            "file_name": "submodulos/gui_archivos.py",
+            "class_name": "ArchivosGUI",
+            "position": 1,
+            "visible": true,
+            "icon": "📁",
+            "alias": "explorador"
+        },
+        {
+            "name": "COMMANDER",
+            "file_name": "submodulos/commander.py",
+            "class_name": "TabCommander",
+            "position": 2,
+            "visible": true,
+            "icon": "⚔️",
+            "alias": "commander"
+        },
+        {
+            "name": "COMPARADOR DIFF",
+            "file_name": "submodulos/diff_viewer.py",
+            "class_name": "TabDiffViewer",
+            "position": 3,
+            "visible": true,
+            "icon": "🔍",
+            "alias": "diff"
+        },
+        {
+            "name": "COMPRESOR ZIP",
+            "file_name": "submodulos/zip_manager.py",
+            "class_name": "TabZipManager",
+            "position": 4,
+            "visible": true,
+            "icon": "📦",
+            "alias": "zip"
+        }
+    ]
+}

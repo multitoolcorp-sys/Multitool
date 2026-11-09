@@ -72,15 +72,70 @@ def setup_platform_specific():
     # Permitir Ctrl+C en terminal para todos los sistemas
     signal.signal(signal.SIGINT, signal.SIG_DFL)
 
+def extraer_url_de_argumentos(args):
+    """Extrae una URL si la aplicación fue invocada como navegador predeterminado."""
+    for i, arg in enumerate(args[1:], start=1):
+        clean = arg.strip('"\'')
+        if clean.startswith("http://") or clean.startswith("https://"):
+            return clean
+        if clean.startswith("--url="):
+            return clean.split("=", 1)[1].strip('"\'')
+        if clean == "--url" and i < len(args) - 1:
+            return args[i + 1].strip('"\'')
+    return None
+
 def main():
     setup_logging()
     setup_error_handler()
     setup_platform_specific()
 
+    # Detección de Instancia Única y Protocolo URL (IPC)
+    from PyQt6.QtNetwork import QLocalServer, QLocalSocket
+    ipc_server_name = "MultiTool_SingleInstance_IPC"
+    target_url = extraer_url_de_argumentos(sys.argv)
+
+    test_socket = QLocalSocket()
+    test_socket.connectToServer(ipc_server_name)
+    if test_socket.waitForConnected(400):
+        # Hay otra instancia activa de MultiTool: enviar la URL y cerrar este proceso de inmediato
+        msg = f"OPEN_URL:{target_url}" if target_url else "BRING_TO_FRONT"
+        test_socket.write(msg.encode("utf-8"))
+        test_socket.flush()
+        test_socket.waitForBytesWritten(1000)
+        test_socket.disconnectFromServer()
+        sys.exit(0)
+
     # 1. Crear la Aplicación
     app = QApplication(sys.argv)
     app.setApplicationName("Multitool")
     app.setOrganizationName("Antigravity")
+    app.initial_url_to_open = target_url
+
+    # Iniciar servidor IPC en la instancia principal
+    QLocalServer.removeServer(ipc_server_name)
+    ipc_server = QLocalServer(app)
+
+    def on_ipc_connection():
+        client = ipc_server.nextPendingConnection()
+        if not client:
+            return
+        if client.waitForReadyRead(800):
+            data = client.readAll().data().decode("utf-8", errors="ignore").strip()
+            client.disconnectFromServer()
+            main_win = getattr(app, "multitool_main_window", None)
+            if data.startswith("OPEN_URL:"):
+                url = data.split("OPEN_URL:", 1)[1].strip()
+                if main_win and hasattr(main_win, "abrir_url_en_navegador"):
+                    main_win.abrir_url_en_navegador(url)
+                else:
+                    app.initial_url_to_open = url
+            elif data == "BRING_TO_FRONT":
+                if main_win and hasattr(main_win, "traer_al_frente"):
+                    main_win.traer_al_frente()
+
+    ipc_server.newConnection.connect(on_ipc_connection)
+    ipc_server.listen(ipc_server_name)
+    app.aboutToQuit.connect(lambda: QLocalServer.removeServer(ipc_server_name))
     
     # Estilo base global para diálogos, mensajes emergentes (QMessageBox) y tooltips
     app.setStyleSheet("""

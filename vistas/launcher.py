@@ -173,5 +173,14 @@ class Launcher:
             self.app_main.raise_()
             self.app_main.activateWindow()
 
+            # Registrar la ventana principal para IPC de URLs externas
+            app_inst = QApplication.instance()
+            if app_inst:
+                app_inst.multitool_main_window = self.app_main
+                init_url = getattr(app_inst, "initial_url_to_open", None)
+                if init_url:
+                    app_inst.initial_url_to_open = None
+                    QTimer.singleShot(400, lambda: self.app_main.abrir_url_en_navegador(init_url))
+
         else:
             QTimer.singleShot(100, self._verificar_carga)

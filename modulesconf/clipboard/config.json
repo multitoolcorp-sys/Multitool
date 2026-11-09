@@ -1,0 +1,36 @@
+{
+    "name": "Clipboard",
+    "position": 14,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Historial",
+            "file_name": "submodulos/historial_clip.py",
+            "class_name": "TabHistorialClipboard",
+            "visible": true,
+            "icon": "🗃",
+            "alias": "historial",
+            "position": 1
+        },
+        {
+            "name": "Snippets & Plantillas",
+            "file_name": "submodulos/snippets_clip.py",
+            "class_name": "TabSnippetsClipboard",
+            "visible": true,
+            "icon": "📌",
+            "alias": "snippets_plantillas",
+            "position": 2
+        },
+        {
+            "name": "Herramientas de Texto",
+            "file_name": "submodulos/herramientas_texto.py",
+            "class_name": "TabHerramientasTextoClipboard",
+            "visible": true,
+            "icon": "⚙",
+            "alias": "herramientas_de",
+            "position": 3
+        }
+    ],
+    "alias": "clipboard",
+    "icon": "📋"
+}

@@ -122,7 +122,8 @@ class TabArchivos(QWidget):
             "toggle_columna": self.toggle_columna,
             "elegir_columnas_dialog": self.elegir_columnas_dialog,
             "cambiar_modo_vista": self.cambiar_modo_vista,
-            "is_inside_archive": lambda: self.manager.is_inside_archive
+            "is_inside_archive": lambda: self.manager.is_inside_archive,
+            "conectar_unidad_red": self.abrir_dialogo_conectar_red
         }
         
         # Iniciar Worker de búsqueda
@@ -326,9 +327,28 @@ class TabArchivos(QWidget):
         self.manager.ir_inicio()
         self.refrescar()
 
+    def abrir_dialogo_conectar_red(self):
+        """Abre el diálogo para mapear unidades de red o conectar a carpetas compartidas UNC."""
+        try:
+            from .submodulos.network_dialog import NetworkConnectionDialog
+            def on_connected(target_path):
+                self.ir_a_ruta_manual(target_path)
+                if hasattr(self, "gui") and hasattr(self.gui, "sidebar"):
+                    self.gui.sidebar.refrescar_unidades()
+            dlg = NetworkConnectionDialog(parent=self, colores=self.colores, on_connected=on_connected)
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, "Error de Red", f"No se pudo abrir el diálogo de conexión de red: {e}")
+
     def ir_a_ruta_manual(self, ruta_texto):
         if not ruta_texto: return
         
+        # 🔥 SOPORTE PARA ENTORNO DE RED
+        if str(ruta_texto).strip().lower() in ("network", "red", "entorno de red"):
+            if self.manager.ir_a_ruta("network"):
+                self.refrescar()
+            return
+
         # 🔥 SOPORTE PARA DISPOSITIVOS ADB (Móviles Android)
         if str(ruta_texto).startswith("adb://"):
             dev_id = str(ruta_texto).replace("adb://", "").strip()
@@ -386,6 +406,20 @@ class TabArchivos(QWidget):
             self.gui.limpiar_vista_previa()
             self.archivo_editando = None
             return
+
+        # Vista de red o servidor UNC: no procesar como archivo de disco local
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            self.archivo_editando = None
+            self.gui.mostrar_info_general(nombre, "Recurso o equipo de red")
+            return
+
+        ruta_str_actual = str(self.manager.ruta_actual).replace("/", "\\")
+        if ruta_str_actual.startswith("\\\\"):
+            partes = [p for p in ruta_str_actual[2:].split("\\") if p]
+            if len(partes) <= 1:
+                self.archivo_editando = None
+                self.gui.mostrar_info_general(nombre, "Carpeta compartida de red")
+                return
             
         if self.manager.is_inside_archive:
             if self.manager.es_directorio_interno(nombre):
@@ -463,6 +497,9 @@ class TabArchivos(QWidget):
             QMessageBox.critical(self.gui, "Error al Guardar", f"No se pudo guardar el archivo:\n{e}")
 
     def renombrar_item(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden renombrar recursos del entorno de red.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden renombrar elementos dentro de un archivo comprimido.")
             return
@@ -481,6 +518,13 @@ class TabArchivos(QWidget):
         """Abre un archivo con la aplicación predeterminada del sistema"""
         nombre = self.gui.get_selected_name()
         
+        # En la vista de red, abrir el recurso o servidor seleccionado
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            ruta_str = self.gui.explorer.get_selected_full_path()
+            if ruta_str:
+                self.ir_a_ruta_manual(ruta_str)
+            return
+
         # Lógica especial si estamos dentro de un archivo comprimido
         if self.manager.is_inside_archive and nombre:
             if self.manager.es_directorio_interno(nombre):
@@ -556,6 +600,8 @@ class TabArchivos(QWidget):
 
     def abrir_en_modulo_mt(self, modulo_nombre):
         """Abre el archivo seleccionado en el módulo interno especificado."""
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            return
         nombre = self.gui.get_selected_name()
         if not nombre:
             return
@@ -570,6 +616,8 @@ class TabArchivos(QWidget):
 
     def abrir_con_seleccionado(self):
         """Abre el diálogo 'Abrir con...' del sistema operativo"""
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            return
         nombre = self.gui.get_selected_name()
         if not nombre: return
         ruta = self.manager.ruta_actual / nombre
@@ -590,6 +638,9 @@ class TabArchivos(QWidget):
             QMessageBox.warning(self.gui, "Error", f"No se pudo abrir el menú 'Abrir con...': {e}")
 
     def nuevo_archivo(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden crear archivos en la vista general de red. Abre una carpeta compartida de destino primero.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden crear archivos dentro de un archivo comprimido.")
             return
@@ -598,6 +649,9 @@ class TabArchivos(QWidget):
             if self.manager.crear_archivo(nombre): self.refrescar()
 
     def nueva_carpeta(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden crear carpetas en la vista general de red. Abre una carpeta compartida de destino primero.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden crear carpetas dentro de un archivo comprimido.")
             return
@@ -606,6 +660,9 @@ class TabArchivos(QWidget):
             if self.manager.crear_carpeta(nombre): self.refrescar()
 
     def operacion_archivo(self, accion):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden mover ni cortar elementos desde la vista general de red.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se permite cortar ni copiar elementos desde dentro de un archivo comprimido.")
             return
@@ -617,6 +674,9 @@ class TabArchivos(QWidget):
         self.gui.barra_estado.showMessage(f"{txt} listo(s) para {accion}", 3000)
 
     def pegar(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden pegar archivos en la vista general de red. Abre una carpeta compartida de destino primero.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden pegar archivos dentro de un archivo comprimido.")
             return
@@ -649,6 +709,9 @@ class TabArchivos(QWidget):
             QMessageBox.critical(self.gui, "Error al pegar", f"No se pudo completar la operación:\n{msg}")
 
     def eliminar(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            QMessageBox.warning(self.gui, "Acción no permitida", "Para desconectar unidades o recursos de red usa el botón '🌐 Conectar a Red'.")
+            return
         if self.manager.is_inside_archive:
             QMessageBox.warning(self.gui, "Acción no permitida", "No se pueden eliminar elementos dentro de un archivo comprimido.")
             return
@@ -884,6 +947,12 @@ class TabArchivos(QWidget):
             self.manager.limpiar_temporales()
 
     def mostrar_en_explorador(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            ruta_str = self.gui.explorer.get_selected_full_path()
+            if ruta_str:
+                self._abrir_ruta_sistema(ruta_str)
+            return
+
         nombre = self.gui.get_selected_name()
         destacar = False
         
@@ -918,6 +987,13 @@ class TabArchivos(QWidget):
             self.gui.barra_estado.showMessage(f"Error al mostrar en explorador: {e}", 3000)
 
     def mostrar_propiedades(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            ruta_str = self.gui.explorer.get_selected_full_path()
+            nombre = self.gui.get_selected_name() or "Red"
+            if ruta_str:
+                self.gui.mostrar_info_general(nombre, f"Recurso de red: {ruta_str}")
+            return
+
         nombre = self.gui.get_selected_name()
         
         if self.manager.is_inside_archive:
@@ -935,6 +1011,14 @@ class TabArchivos(QWidget):
             self.gui.barra_estado.showMessage("Propiedades de Windows solo disponibles en Windows", 3000)
 
     def copiar_ruta_acceso(self):
+        if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
+            ruta_str = self.gui.explorer.get_selected_full_path() or "Red"
+            from PyQt6.QtGui import QGuiApplication
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(ruta_str)
+            self.gui.barra_estado.showMessage("Ruta de red copiada al portapapeles", 3000)
+            return
+
         nombre = self.gui.get_selected_name()
         
         if self.manager.is_inside_archive:
@@ -990,6 +1074,21 @@ class TabArchivos(QWidget):
             self.sub_diff.actualizar_tema(colores)
         if hasattr(self.sub_zip, 'actualizar_tema'):
             self.sub_zip.actualizar_tema(colores)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, "gui") and hasattr(self.gui, "sidebar") and hasattr(self.gui.sidebar, "reanudar_temporizador"):
+            self.gui.sidebar.reanudar_temporizador()
+        if hasattr(self, "sub_commander") and hasattr(self.sub_commander, "reanudar_temporizador"):
+            self.sub_commander.reanudar_temporizador()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if hasattr(self, "gui") and hasattr(self.gui, "sidebar") and hasattr(self.gui.sidebar, "pausar_temporizador"):
+            self.gui.sidebar.pausar_temporizador()
+        if hasattr(self, "sub_commander") and hasattr(self.sub_commander, "pausar_temporizador"):
+            self.sub_commander.pausar_temporizador()
+
 
 
 

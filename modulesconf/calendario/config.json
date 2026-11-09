@@ -1,0 +1,47 @@
+{
+    "name": "Calendario",
+    "position": 7,
+    "visible": true,
+    "file_name": "calendario.py",
+    "class_name": "TabCalendario",
+    "alias": "calendario",
+    "icon": "📅",
+    "submodulos": [
+        {
+            "name": "Vista Mensual & Agenda",
+            "file_name": "submodulos/vista_mensual.py",
+            "class_name": "TabVistaMensual",
+            "position": 1,
+            "visible": true,
+            "icon": "📅",
+            "alias": "mensual"
+        },
+        {
+            "name": "Vista Semanal",
+            "file_name": "submodulos/vista_semanal.py",
+            "class_name": "TabVistaSemanal",
+            "position": 2,
+            "visible": true,
+            "icon": "📆",
+            "alias": "semanal"
+        },
+        {
+            "name": "Planificador Anual & Objetivos",
+            "file_name": "submodulos/vista_anual.py",
+            "class_name": "TabVistaAnual",
+            "position": 3,
+            "visible": true,
+            "icon": "🗓️",
+            "alias": "anual"
+        },
+        {
+            "name": "Análisis & Estadísticas",
+            "file_name": "submodulos/vista_analytics.py",
+            "class_name": "TabVistaAnalytics",
+            "position": 4,
+            "visible": true,
+            "icon": "📊",
+            "alias": "analytics"
+        }
+    ]
+}

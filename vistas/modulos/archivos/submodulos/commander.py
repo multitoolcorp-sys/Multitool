@@ -29,7 +29,18 @@ class TabCommander(QWidget):
         # Timer para detección en caliente de unidades sin lag
         self.timer_unidades = QTimer(self)
         self.timer_unidades.timeout.connect(self.refrescar_unidades)
-        self.timer_unidades.start(10000)
+        self.timer_unidades.start(30000)
+
+    def pausar_temporizador(self):
+        """Pausa el timer cuando no está visible para ahorrar recursos"""
+        if hasattr(self, "timer_unidades") and self.timer_unidades.isActive():
+            self.timer_unidades.stop()
+
+    def reanudar_temporizador(self):
+        """Reanuda el timer al mostrarse"""
+        if hasattr(self, "timer_unidades") and not self.timer_unidades.isActive():
+            self.refrescar_unidades()
+            self.timer_unidades.start(30000)
         
     def inicializar_ui(self):
         self.setStyleSheet(f"""

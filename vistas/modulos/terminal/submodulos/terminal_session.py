@@ -561,7 +561,7 @@ class SingleTerminalSession(QWidget):
         QTimer.singleShot(500, self.actualizar_info_git)
 
     def auto_completar_tab(self):
-        """Autocompleta rutas de archivos y carpetas directamente en la terminal interactiva"""
+        """Autocompleta comandos, rutas de archivos y carpetas directamente en la terminal interactiva"""
         current_input = self.terminal.get_current_input()
         if not current_input:
             return
@@ -575,21 +575,44 @@ class SingleTerminalSession(QWidget):
         base_dir = os.path.join(self.cwd, dirname) if dirname else self.cwd
         prefix = os.path.basename(last_part).lower()
 
+        # Si es el primer token (comando), autocompletar comandos conocidos si no hay coincidencia de archivo
+        COMANDOS_COMUNES = [
+            "git", "python", "pip", "npm", "node", "cd", "dir", "ls", "clear", "cls",
+            "cat", "type", "mkdir", "rmdir", "echo", "code", "curl", "ssh", "explorer"
+        ]
+
         try:
+            candidates = []
             if os.path.exists(base_dir):
                 candidates = [
                     entry.name for entry in os.scandir(base_dir)
                     if entry.name.lower().startswith(prefix)
                 ]
+
+            if not candidates and len(parts) == 1 and not dirname:
+                candidates = [cmd for cmd in COMANDOS_COMUNES if cmd.startswith(prefix)]
+
+            if candidates:
                 if len(candidates) == 1:
                     matched = candidates[0]
-                    completed = os.path.join(dirname, matched) if dirname else matched
-                    if os.path.isdir(os.path.join(base_dir, matched)):
-                        completed += os.sep
-                    if " " in completed:
-                        completed = f'"{completed}"'
-                    parts[-1] = completed
-                    self.terminal.set_current_input(" ".join(parts))
+                else:
+                    if not hasattr(self, "_tab_cycle_info") or self._tab_cycle_info.get("prefix") != prefix:
+                        self._tab_cycle_info = {"prefix": prefix, "candidates": candidates, "idx": 0}
+                    else:
+                        self._tab_cycle_info["idx"] = (self._tab_cycle_info["idx"] + 1) % len(candidates)
+                    matched = candidates[self._tab_cycle_info["idx"]]
+
+                completed = os.path.join(dirname, matched) if dirname else matched
+                full_cand_path = os.path.join(base_dir, matched)
+                if os.path.isdir(full_cand_path):
+                    completed += os.sep
+                else:
+                    completed += " "
+
+                if " " in completed.strip():
+                    completed = f'"{completed.strip()}" '
+                parts[-1] = completed
+                self.terminal.set_current_input(" ".join(parts))
         except Exception:
             pass
 

@@ -1,0 +1,72 @@
+{
+    "name": "Notas",
+    "position": 2,
+    "visible": true,
+    "submodulos": [
+        {
+            "name": "Mis Notas & Editor",
+            "file_name": "submodulos/gui_notas.py",
+            "class_name": "NotasGUI",
+            "visible": true,
+            "icon": "📝",
+            "alias": "mis_notas",
+            "position": 1
+        },
+        {
+            "name": "Tablero Mosaico",
+            "file_name": "submodulos/tab_tablero_notas.py",
+            "class_name": "TableroNotasGUI",
+            "visible": true,
+            "icon": "📌",
+            "alias": "tablero_mosaico",
+            "position": 2
+        },
+        {
+            "name": "Analíticas & Hábitos",
+            "file_name": "submodulos/tab_analytics_notas.py",
+            "class_name": "AnalyticsNotasGUI",
+            "visible": true,
+            "icon": "📊",
+            "alias": "analíticas_hábitos",
+            "position": 3
+        },
+        {
+            "name": "Editor Markdown",
+            "file_name": "submodulos/tab_markdown.py",
+            "class_name": "TabMarkdownGUI",
+            "visible": true,
+            "icon": "📑",
+            "alias": "editor_markdown",
+            "position": 4
+        },
+        {
+            "name": "Plantillas de Notas",
+            "file_name": "submodulos/plantillas_notas.py",
+            "class_name": "TabPlantillasNotas",
+            "visible": true,
+            "icon": "📋",
+            "alias": "plantillas_de",
+            "position": 5
+        },
+        {
+            "name": "Papelera de Reciclaje",
+            "file_name": "submodulos/papelera.py",
+            "class_name": "TabPapelera",
+            "visible": true,
+            "icon": "🗑",
+            "alias": "papelera_de",
+            "position": 6
+        },
+        {
+            "name": "Red & Backlinks",
+            "file_name": "submodulos/tab_backlinks.py",
+            "class_name": "TabBacklinksGUI",
+            "visible": true,
+            "icon": "🔗",
+            "alias": "red_backlinks",
+            "position": 7
+        }
+    ],
+    "alias": "notas",
+    "icon": "📝"
+}

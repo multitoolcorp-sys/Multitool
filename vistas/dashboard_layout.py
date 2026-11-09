@@ -855,6 +855,8 @@ class DashboardSidebar(QFrame):
         self.ruta_usuario = None
         self.modulos = []
         self._secciones_expandidas = set()
+        self._mod_sub_frames = {} # mod_key -> QWidget (sub_frame)
+        self._mod_header_buttons = {} # mod_key -> QPushButton (header_btn)
         self._active_mod_name = ""
         self._active_sub_name = ""
         self.is_collapsed = False
@@ -870,6 +872,10 @@ class DashboardSidebar(QFrame):
         # Estado plegable de secciones
         self._seccion_modules_visible = True
         self._seccion_toolbar_visible = True
+
+        self._mod_sub_frames = {}
+        self._mod_header_buttons = {}
+        self._mod_sub_items = {}
 
         self.setMouseTracking(True)
         self.init_ui()
@@ -1090,12 +1096,21 @@ class DashboardSidebar(QFrame):
             self.scroll_area.show()
 
     def set_modulos(self, modulos_cargados, active_mod_name="", active_sub_name=""):
-        self.modulos = [m for m in modulos_cargados if m.get("visible", True)]
+        nuevos_modulos = [m for m in modulos_cargados if m.get("visible", True)]
+        nombres_actuales = [m.get("name") for m in getattr(self, "modulos", [])]
+        nombres_nuevos = [m.get("name") for m in nuevos_modulos]
+
+        self.modulos = nuevos_modulos
         if active_mod_name:
             self._active_mod_name = active_mod_name
         if active_sub_name:
             self._active_sub_name = active_sub_name
-        self.renderizar_arbol()
+
+        if nombres_actuales == nombres_nuevos and getattr(self, "_mod_sub_frames", None):
+            self._actualizar_seleccion_visual()
+            self._actualizar_badges()
+        else:
+            self.renderizar_arbol()
 
     def renderizar_arbol(self):
         # Limpiar widgets actuales
@@ -1104,6 +1119,10 @@ class DashboardSidebar(QFrame):
             w = item.widget()
             if w:
                 w.deleteLater()
+
+        self._mod_sub_frames.clear()
+        self._mod_header_buttons.clear()
+        self._mod_sub_items.clear()
 
         acento = self.colores.get('acento', '#6366F1')
         bg_sec = self.colores.get('bg_secundario', '#1E1E2E')
@@ -1238,9 +1257,12 @@ class DashboardSidebar(QFrame):
             header_btn.customContextMenuRequested.connect(lambda pos, m=mod: self._mostrar_context_menu_modulo(m, pos))
 
             lay_modules.addWidget(header_btn)
+            key_name = mod_name.lower()
+            self._mod_header_buttons[key_name] = (header_btn, (tipo_ico, val_ico, *extra_ico), mod_name)
+            self._mod_sub_items[key_name] = sub_items
 
-            # Submódulos (si está expandido)
-            if is_expanded and sub_items:
+            # Submódulos: siempre construimos el contenedor si existen sub_items para transiciones instantáneas sin parpadeo
+            if sub_items:
                 sub_frame = QWidget()
                 sub_frame.setStyleSheet("background: transparent;")
                 sub_layout = QVBoxLayout(sub_frame)
@@ -1300,6 +1322,8 @@ class DashboardSidebar(QFrame):
 
                     sub_layout.addWidget(btn_sub)
 
+                sub_frame.setVisible(is_expanded)
+                self._mod_sub_frames[key_name] = sub_frame
                 lay_modules.addWidget(sub_frame)
 
         self.container_modules.setVisible(self._seccion_modules_visible)
@@ -1474,21 +1498,75 @@ class DashboardSidebar(QFrame):
         key = mod_name.lower()
         if key in self._secciones_expandidas:
             self._secciones_expandidas.remove(key)
+            expanded = False
         else:
             self._secciones_expandidas.add(key)
-        self.renderizar_arbol()
+            expanded = True
+
+        if key in self._mod_sub_frames:
+            self._mod_sub_frames[key].setVisible(expanded)
+        if key in self._mod_header_buttons:
+            btn = self._mod_header_buttons[key][0]
+            txt = btn.text()
+            arrow = "▼" if expanded else "▶"
+            if "▼" in txt:
+                btn.setText(txt.replace("▼", arrow, 1))
+            elif "▶" in txt:
+                btn.setText(txt.replace("▶", arrow, 1))
 
     def _on_mod_double_click(self, mod_name, mod_idx, subs, event):
         first_sub = subs[0] if subs else ""
         self._active_mod_name = mod_name
         self._active_sub_name = first_sub
+        key = mod_name.lower()
+        self._secciones_expandidas.add(key)
+        if key in self._mod_sub_frames:
+            self._mod_sub_frames[key].setVisible(True)
+        if key in self._mod_header_buttons:
+            btn = self._mod_header_buttons[key][0]
+            txt = btn.text()
+            if "▶" in txt:
+                btn.setText(txt.replace("▶", "▼", 1))
+        self._actualizar_seleccion_visual()
         self.submoduleSelected.emit(mod_name, first_sub, mod_idx, 0)
-        self.renderizar_arbol()
 
     def _on_sub_single_click(self, mod_name, sub_name):
         self._active_mod_name = mod_name
         self._active_sub_name = sub_name
         self._actualizar_seleccion_visual()
+
+    def _actualizar_badges(self):
+        """Actualiza los badges de estado y conteo de submódulos en los botones sin redibujar."""
+        mw = self._get_main_window()
+        for mod in self.modulos:
+            mod_name = mod.get("name", "")
+            key = mod_name.lower()
+            if key not in self._mod_header_buttons:
+                continue
+            btn, icon_data, name_raw = self._mod_header_buttons[key]
+            is_loaded = mod.get("loaded", False)
+            status_circle = "🟢" if is_loaded else "🔴"
+            total_subs = max(1, len(self._mod_sub_items.get(key, [])))
+            abiertos = 0
+            if is_loaded:
+                if mw and hasattr(mw, "editor_tab_bar") and getattr(mw, "modo_vista", "") == "dashboard":
+                    abiertos = sum(1 for t in mw.editor_tab_bar.tabs if t.get("mod_name", "").lower() == key)
+                else:
+                    cont = getattr(mw, "clases_modulos", {}).get(mod_name) if mw else None
+                    if cont and hasattr(cont, "tabs") and hasattr(cont.tabs, "count"):
+                        abiertos = cont.tabs.count()
+                    elif cont:
+                        abiertos = 1
+                if abiertos > total_subs:
+                    total_subs = abiertos
+
+            status_badge = f"{status_circle} {abiertos}/{total_subs}"
+            arrow = "▼" if key in self._secciones_expandidas else "▶"
+            tipo_ico, val_ico, *extra_ico = icon_data
+            if tipo_ico == "ico" and extra_ico:
+                btn.setText(f" {arrow}   {name_raw.capitalize()}  {status_badge}")
+            else:
+                btn.setText(f" {arrow}  {val_ico}  {name_raw.capitalize()}  {status_badge}")
 
     def _actualizar_seleccion_visual(self):
         """Actualiza el estilo visual de selección sin recrear todo el árbol de widgets."""
@@ -1541,8 +1619,8 @@ class DashboardSidebar(QFrame):
     def _on_sub_double_click(self, mod_name, sub_name, mod_idx, sub_idx, event):
         self._active_mod_name = mod_name
         self._active_sub_name = sub_name
+        self._actualizar_seleccion_visual()
         self.submoduleSelected.emit(mod_name, sub_name, mod_idx, sub_idx)
-        self.renderizar_arbol()
 
     def _mostrar_context_menu_modulo(self, mod_data, pos):
         menu = QMenu(self)

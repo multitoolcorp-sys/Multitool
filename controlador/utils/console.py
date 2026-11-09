@@ -82,7 +82,7 @@ try:
         QDialog, QFrame, QVBoxLayout, QHBoxLayout, QTextEdit, 
         QLineEdit, QLabel, QPushButton, QApplication, QListWidget, QListWidgetItem
     )
-    from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+    from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QEvent
     from PyQt6.QtGui import QFont, QTextCursor
 
     # Paleta de colores para formato de texto (§ codes)
@@ -336,6 +336,7 @@ try:
             """)
             self.input_edit.returnPressed.connect(self._on_enter_pressed)
             self.input_edit.textChanged.connect(self._on_input_text_changed)
+            self.input_edit.installEventFilter(self)
             input_box.addWidget(self.input_edit, 1)
 
             # Panel flotante de autocompletado de comandos estilo videojuego
@@ -587,21 +588,76 @@ try:
         def _on_suggestion_clicked(self, item):
             insert_val = item.data(Qt.ItemDataRole.UserRole)
             if insert_val:
-                self.input_edit.setText(insert_val + " ")
+                new_text = insert_val.rstrip() + " "
+                self.input_edit.setText(new_text)
                 self.input_edit.setFocus()
-                self.suggestions_list.hide()
+                self.input_edit.setCursorPosition(len(new_text))
+                self._on_input_text_changed(new_text)
 
         def _autocompletar_seleccion(self):
-            if self.suggestions_list.isVisible() and self.suggestions_list.count() > 0:
+            if (self.suggestions_list.isVisible() or not self.suggestions_list.isHidden()) and self.suggestions_list.count() > 0:
                 current_item = self.suggestions_list.currentItem() or self.suggestions_list.item(0)
                 if current_item:
                     insert_val = current_item.data(Qt.ItemDataRole.UserRole)
                     if insert_val:
-                        self.input_edit.setText(insert_val + " ")
+                        new_text = insert_val.rstrip() + " "
+                        self.input_edit.setText(new_text)
                         self.input_edit.setFocus()
-                        self.suggestions_list.hide()
+                        self.input_edit.setCursorPosition(len(new_text))
+                        self._on_input_text_changed(new_text)
                         return True
             return False
+
+        def eventFilter(self, obj, event):
+            if obj == self.input_edit and event.type() == QEvent.Type.KeyPress:
+                key = event.key()
+
+                # 1. Autocompletado con TAB (selecciona la sugerencia y permite seguir con el siguiente parámetro)
+                if key == Qt.Key.Key_Tab:
+                    if self._autocompletar_seleccion():
+                        return True
+                    txt = self.input_edit.text()
+                    if txt:
+                        self._on_input_text_changed(txt)
+                        if self._autocompletar_seleccion():
+                            return True
+                    return True # Prevenir cambio de foco fuera del editor
+
+                # 2. Navegar sugerencias con Flecha Abajo
+                elif key == Qt.Key.Key_Down:
+                    if self.suggestions_list.isVisible() and self.suggestions_list.count() > 0:
+                        cur_row = self.suggestions_list.currentRow()
+                        next_row = cur_row + 1 if cur_row < self.suggestions_list.count() - 1 else 0
+                        self.suggestions_list.setCurrentRow(next_row)
+                        return True
+                    if self.historial_comandos:
+                        if self.hist_idx < len(self.historial_comandos) - 1:
+                            self.hist_idx += 1
+                            self.input_edit.setText(self.historial_comandos[self.hist_idx])
+                        else:
+                            self.hist_idx = len(self.historial_comandos)
+                            self.input_edit.clear()
+                        return True
+
+                # 3. Navegar sugerencias con Flecha Arriba
+                elif key == Qt.Key.Key_Up:
+                    if self.suggestions_list.isVisible() and self.suggestions_list.count() > 0:
+                        cur_row = self.suggestions_list.currentRow()
+                        prev_row = cur_row - 1 if cur_row > 0 else self.suggestions_list.count() - 1
+                        self.suggestions_list.setCurrentRow(prev_row)
+                        return True
+                    if self.historial_comandos and self.hist_idx > 0:
+                        self.hist_idx -= 1
+                        self.input_edit.setText(self.historial_comandos[self.hist_idx])
+                        return True
+
+                # 4. Cerrar panel flotante con Escape
+                elif key == Qt.Key.Key_Escape:
+                    if self.suggestions_list.isVisible():
+                        self.suggestions_list.hide()
+                        return True
+
+            return super().eventFilter(obj, event)
 
         def accept(self):
             pass

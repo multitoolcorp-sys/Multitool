@@ -24,7 +24,18 @@ class FileSidebar(QFrame):
         # Timer para detección de unidades (USB, etc) en segundo plano sin lag
         self.timer_drives = QTimer(self)
         self.timer_drives.timeout.connect(self.refrescar_unidades)
-        self.timer_drives.start(10000)
+        self.timer_drives.start(30000) # Chequeo tranquilo cada 30 segundos
+
+    def pausar_temporizador(self):
+        """Pausa el timer cuando el módulo archivos no está visible para ahorrar recursos"""
+        if hasattr(self, "timer_drives") and self.timer_drives.isActive():
+            self.timer_drives.stop()
+
+    def reanudar_temporizador(self):
+        """Reanuda el timer y actualiza si el módulo vuelve a mostrarse"""
+        if hasattr(self, "timer_drives") and not self.timer_drives.isActive():
+            self.refrescar_unidades()
+            self.timer_drives.start(30000)
 
     def inicializar_ui(self):
         self.setFixedWidth(200)
@@ -71,11 +82,12 @@ class FileSidebar(QFrame):
             ("📂 Documentos", str(Path.home() / "Documents")),
             ("⬇️ Descargas", str(Path.home() / "Downloads")),
             ("🖼️ Imágenes", str(Path.home() / "Pictures")),
+            ("🌐 Red", "network"),
             ("🗑️ Papelera", "trash"),
         ]
         
         for text, path in accesos:
-            if path in ("trash", "shell:MyComputerFolder") or os.path.exists(path):
+            if path in ("trash", "network", "shell:MyComputerFolder") or os.path.exists(path):
                 btn = QPushButton(text)
                 btn.setFont(QFont(self.font_family, 9))
                 btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -131,6 +143,7 @@ class FileSidebar(QFrame):
         """
         
         acciones = [
+            ("🌐 CONECTAR A RED", self.callbacks.get("conectar_unidad_red")),
             ("🌳 EXPLORAR ÁRBOL", self.callbacks.get("mostrar_arbol_carpetas")),
             ("📄 NUEVO ARCHIVO", self.callbacks.get("nuevo_archivo")),
             ("📁 NUEVA CARPETA", self.callbacks.get("nueva_carpeta")),
@@ -199,20 +212,30 @@ class FileSidebar(QFrame):
         return btn
 
     def _on_mtp_actualizado(self):
-        QTimer.singleShot(0, self.refrescar_unidades)
+        """Actualiza la lista de unidades con la caché MTP recién obtenida SIN re-disparar escaneo"""
+        try:
+            from ..utils.drive_detector import obtener_todas_las_unidades
+            unidades = obtener_todas_las_unidades(incluir_mtp_cache=True)
+            actuales = [(texto, ruta) for texto, ruta, _ in unidades]
+            self._aplicar_unidades(actuales)
+        except Exception:
+            pass
 
-    def refrescar_unidades(self):
-        """Detecta unidades montadas (USB, Celulares, Discos) y dispositivos móviles MTP sin bloquear la UI"""
+    def refrescar_unidades(self, forzar_escaneo_mtp=False):
+        """Detecta unidades montadas de forma instantánea y no bloqueante"""
         try:
             from ..utils.drive_detector import obtener_todas_las_unidades, iniciar_escaneo_mtp_asincrono
             unidades = obtener_todas_las_unidades(incluir_mtp_cache=True)
             actuales = [(texto, ruta) for texto, ruta, _ in unidades]
-            # Lanzar escaneo MTP en segundo plano sin congelar la app
-            iniciar_escaneo_mtp_asincrono(on_finished=self._on_mtp_actualizado)
+            if forzar_escaneo_mtp:
+                iniciar_escaneo_mtp_asincrono(on_finished=self._on_mtp_actualizado)
         except Exception as e:
             print(f"Error al obtener unidades en sidebar: {e}")
             actuales = []
             
+        self._aplicar_unidades(actuales)
+
+    def _aplicar_unidades(self, actuales):
         if actuales != getattr(self, "_ultimas_unidades", None):
             self._ultimas_unidades = actuales
             while self.lay_unidades.count():

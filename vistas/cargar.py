@@ -350,12 +350,21 @@ class AppMultitareasGUI(BaseAppGUI):
                 self.clases_modulos[sub_name.lower()] = sub_inst
                 self.clases_modulos[sub_name.capitalize()] = sub_inst
 
+            # Sincronizar visibilidad de subpestañas según el modo actual
+            modo = getattr(self, "modo_vista", "clasico")
+            if hasattr(self, "_sincronizar_visibilidad_subtabs_dashboard"):
+                self._sincronizar_visibilidad_subtabs_dashboard(ocultar=(modo == "dashboard"))
+
             import datetime, time
             mod["loaded"] = True
             if hasattr(self, "actualizar_menu_ver"):
                 self.actualizar_menu_ver(self.modulos_cargados)
             if hasattr(self, "sidebar") and self.sidebar:
-                self.sidebar.renderizar_arbol()
+                if hasattr(self.sidebar, "_actualizar_badges"):
+                    self.sidebar._actualizar_badges()
+                    self.sidebar._actualizar_seleccion_visual()
+                else:
+                    self.sidebar.renderizar_arbol()
             mod["last_opened"] = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
             mod["last_opened_timestamp"] = time.time()
             self.logger.log("INFO", f"'{mod['name']}' instanciado OK.", modulo="Cargador")
@@ -443,6 +452,60 @@ class AppMultitareasGUI(BaseAppGUI):
 
     # ── Resto de métodos ─────────────────────────────────────────────────
 
+
+    def abrir_url_en_navegador(self, url: str):
+        """Abre una URL en el módulo Navegador cambiando automáticamente a su pestaña y trayendo la app al frente."""
+        if not url:
+            return
+
+        self.traer_al_frente()
+
+        # 1. Localizar el módulo navegador en la barra de navegación
+        nav_idx = -1
+        target_mod = None
+        visibles = [m for m in self.modulos_cargados if m.get("visible", True)]
+        for idx, m in enumerate(visibles):
+            if m.get("name", "").lower() == "navegador":
+                nav_idx = idx
+                target_mod = m
+                break
+
+        if nav_idx >= 0 and target_mod:
+            # Si el módulo no está instanciado, instanciarlo de inmediato
+            if not target_mod.get("loaded", False):
+                self._instanciar_modulo(target_mod)
+
+            # Cambiar a la pestaña del navegador
+            self.notebook.setCurrentIndex(nav_idx)
+
+            # 2. Localizar la instancia de TabNavegador
+            container = self.clases_modulos.get("navegador")
+            nav_instance = None
+            if container:
+                if hasattr(container, "submodules_instances"):
+                    nav_instance = container.submodules_instances.get("navegador")
+                    if not nav_instance and container.submodules_instances:
+                        nav_instance = list(container.submodules_instances.values())[0]
+                else:
+                    nav_instance = container
+
+            if not nav_instance:
+                nav_instance = getattr(self, "tab_navegador", None)
+
+            if nav_instance:
+                if hasattr(nav_instance, "abrir_nueva_pestana_integrada"):
+                    nav_instance.abrir_nueva_pestana_integrada(url)
+                elif hasattr(nav_instance, "abrir_url_integrada"):
+                    nav_instance.abrir_url_integrada(url)
+
+    def traer_al_frente(self):
+        """Restaura la ventana y la coloca visible en primer plano."""
+        if self.isMinimized():
+            self.showNormal()
+        elif not self.isVisible():
+            self.show()
+        self.raise_()
+        self.activateWindow()
 
     def abrir_gestor_modulos(self):
         """Abre el gestor de módulos (PyQt6)."""

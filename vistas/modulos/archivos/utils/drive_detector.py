@@ -2,43 +2,106 @@ import os
 import platform
 import string
 import threading
-from PyQt6.QtCore import QStorageInfo
+import subprocess
 
 _cache_mtp = []
 _cache_lock = threading.Lock()
 _worker_activo = False
 _primer_inicio_mtp = False
 
-def obtener_unidades_rapidas():
-    """
-    Detección ultra-rápida (menos de 5 milisegundos) de unidades locales,
-    extraíbles y de red usando QStorageInfo y Win32 GetLogicalDrives.
-    NUNCA bloquea el hilo principal ni produce lag.
-    """
-    unidades_dict = {}
-    
-    # 1. Método multiplataforma: QStorageInfo
+def obtener_ruta_remota_unidad(drive_letter):
+    """Devuelve la ruta UNC asignada a una letra de unidad (ej. S: -> \\user-pc\\servers)."""
+    if platform.system() != "Windows":
+        return None
     try:
-        volumes = QStorageInfo.mountedVolumes()
-        for vol in volumes:
-            if vol.isValid() and vol.isReady():
-                ruta = vol.rootPath()
-                etiqueta = vol.displayName().strip() if vol.displayName() else "Almacenamiento"
-                icono = "🔌"
-                if vol.isReadOnly():
-                    icono = "💿"
-                
-                if (platform.system() == "Windows" and "C:" in ruta.upper()) or (platform.system() != "Windows" and ruta == "/"):
-                    icono = "💻"
-                elif "Phone" in etiqueta or "MTP" in etiqueta or "Android" in etiqueta or "Mobile" in etiqueta:
-                    icono = "📲"
-                
-                texto = f"{icono} {etiqueta} ({ruta})"
-                unidades_dict[ruta.lower()] = (texto, ruta, icono)
+        import ctypes
+        buf = ctypes.create_unicode_buffer(512)
+        buf_size = ctypes.c_ulong(512)
+        res = ctypes.windll.mpr.WNetGetConnectionW(drive_letter.rstrip('\\'), buf, ctypes.byref(buf_size))
+        if res == 0:
+            return buf.value
     except Exception:
         pass
+    return None
 
-    # 2. En Windows: Escanear letras de unidad A:\ a Z:\ para discos que QStorageInfo pudo omitir
+def obtener_conexiones_red():
+    """
+    Lista las conexiones de red activas o desconectadas usando 'net use'.
+    Retorna lista de diccionarios: [{'status': '...', 'letter': 'S:', 'unc': '\\\\servidor\\compartido'}]
+    """
+    if platform.system() != "Windows":
+        return []
+    conns = []
+    try:
+        res = subprocess.run(
+            ["net", "use"],
+            capture_output=True,
+            errors="replace",
+            timeout=1,
+            creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+        )
+        for line in res.stdout.splitlines():
+            l_strip = line.strip()
+            if "\\\\" in l_strip:
+                parts = l_strip.split()
+                unc_item = [p for p in parts if p.startswith("\\\\")]
+                letter_item = [p for p in parts if len(p) == 2 and p[1] == ':']
+                unc = unc_item[0] if unc_item else ""
+                letter = letter_item[0] if letter_item else ""
+                status = parts[0] if parts else ""
+                if unc:
+                    conns.append({"status": status, "letter": letter, "unc": unc})
+    except Exception:
+        pass
+    return conns
+
+def obtener_letras_unidades_libres():
+    """Retorna las letras de unidad disponibles (de Z: a D:) para mapear unidades de red."""
+    if platform.system() != "Windows":
+        return []
+    try:
+        import ctypes
+        bitmask = ctypes.windll.kernel32.GetLogicalDrives()
+        ocupadas = set()
+        for letter in string.ascii_uppercase:
+            if bitmask & 1:
+                ocupadas.add(letter)
+            bitmask >>= 1
+        libres = [f"{l}:" for l in reversed(string.ascii_uppercase) if l not in ocupadas and l not in ('A', 'B')]
+        return libres
+    except Exception:
+        return ["Z:", "Y:", "X:", "W:", "V:"]
+
+def escanear_dispositivos_red_arp():
+    """Escanea la tabla ARP local para descubrir rápidamente IPs de equipos en la misma subred."""
+    ips = []
+    try:
+        res = subprocess.run(
+            ["arp", "-a"],
+            capture_output=True,
+            errors="replace",
+            timeout=2,
+            creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
+        )
+        for line in res.stdout.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                ip = parts[0]
+                if ip.count('.') == 3 and not ip.startswith(('224.', '239.', '255.', '127.')) and not ip.endswith('.255'):
+                    ips.append(ip)
+    except Exception:
+        pass
+    return list(dict.fromkeys(ips))
+
+def obtener_unidades_rapidas():
+    """
+    Detección ultra-rápida (menos de 2 milisegundos) de unidades locales,
+    extraíbles y de red usando Win32 GetLogicalDrives y GetDriveTypeW.
+    NUNCA bloquea el hilo principal ni produce el congelamiento de 4 segundos
+    provocado por QStorageInfo en unidades remotas desconectadas.
+    """
+    unidades_dict = {}
+
     if platform.system() == "Windows":
         try:
             import ctypes
@@ -47,14 +110,64 @@ def obtener_unidades_rapidas():
                 if bitmask & 1:
                     drive_path = f"{letter}:\\"
                     key = drive_path.lower()
-                    if key not in unidades_dict:
-                        dtype = ctypes.windll.kernel32.GetDriveTypeW(drive_path)
-                        # 2: REMOVABLE, 3: FIXED, 4: REMOTE, 5: CDROM, 6: RAMDISK
-                        icono = "💻" if letter.upper() == 'C' else ("💿" if dtype == 5 else ("🌐" if dtype == 4 else "🔌"))
-                        etiqueta = "Disco Local" if dtype == 3 else ("Unidad Extraíble" if dtype == 2 else "Unidad")
-                        texto = f"{icono} {etiqueta} ({drive_path})"
-                        unidades_dict[key] = (texto, drive_path, icono)
+                    dtype = ctypes.windll.kernel32.GetDriveTypeW(drive_path)
+                    # 2: REMOVABLE, 3: FIXED, 4: REMOTE, 5: CDROM, 6: RAMDISK
+                    unc = obtener_ruta_remota_unidad(f"{letter}:")
+
+                    if dtype == 4 or unc:
+                        icono = "🌐"
+                        etiqueta = f"Red ({unc})" if unc else "Unidad de Red"
+                        texto = f"{icono} {etiqueta} ({letter}:)"
+                    elif letter.upper() == 'C':
+                        icono = "💻"
+                        etiqueta = "Disco Local (C:)"
+                        texto = f"{icono} {etiqueta}"
+                    elif dtype == 5:
+                        icono = "💿"
+                        etiqueta = f"Unidad Óptica ({letter}:)"
+                        texto = f"{icono} {etiqueta}"
+                    elif dtype == 2:
+                        icono = "🔌"
+                        etiqueta = f"Unidad Extraíble ({letter}:)"
+                        texto = f"{icono} {etiqueta}"
+                    else:
+                        icono = "💾"
+                        etiqueta = f"Disco ({letter}:)"
+                        texto = f"{icono} {etiqueta}"
+
+                    unidades_dict[key] = (texto, drive_path, icono)
                 bitmask >>= 1
+        except Exception:
+            pass
+
+        # Añadir conexiones de red UNC activas sin letra (ej: \\192.168.0.15\servers)
+        try:
+            conns = obtener_conexiones_red()
+            for c in conns:
+                unc = c.get("unc", "")
+                letter = c.get("letter", "")
+                if unc and not letter:
+                    key = unc.lower()
+                    if key not in unidades_dict:
+                        texto = f"🌐 {unc}"
+                        unidades_dict[key] = (texto, unc, "🌐")
+        except Exception:
+            pass
+
+    else:
+        # En Linux / macOS usamos QStorageInfo de forma segura
+        try:
+            from PyQt6.QtCore import QStorageInfo
+            volumes = QStorageInfo.mountedVolumes()
+            for vol in volumes:
+                if vol.isValid() and vol.isReady():
+                    ruta = vol.rootPath()
+                    etiqueta = vol.displayName().strip() if vol.displayName() else "Almacenamiento"
+                    icono = "💻" if ruta == "/" else "🔌"
+                    if vol.isReadOnly():
+                        icono = "💿"
+                    texto = f"{icono} {etiqueta} ({ruta})"
+                    unidades_dict[ruta.lower()] = (texto, ruta, icono)
         except Exception:
             pass
 

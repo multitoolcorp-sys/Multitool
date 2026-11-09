@@ -32,15 +32,21 @@ class TabActividad(QWidget):
 
         self.init_ui()
 
-        # Temporizador para actualización en tiempo real cada 3 segundos
+        # Temporizador para actualización en tiempo real (solo activo cuando la pestaña está visible)
         self.timer_refresh = QTimer(self)
         self.timer_refresh.timeout.connect(self.actualizar_datos_realtime)
-        self.timer_refresh.start(3000)
 
     def showEvent(self, event):
         super().showEvent(event)
         if hasattr(self, "lbl_val_logins") and self.lbl_val_logins is not None:
             self.actualizar_datos_realtime()
+        if hasattr(self, "timer_refresh") and not self.timer_refresh.isActive():
+            self.timer_refresh.start(5000)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if hasattr(self, "timer_refresh") and self.timer_refresh.isActive():
+            self.timer_refresh.stop()
 
     def cargar_config(self):
         cfg_path = self.ruta_usuario / "config.json"

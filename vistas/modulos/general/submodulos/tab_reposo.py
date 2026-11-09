@@ -57,11 +57,21 @@ class TabModoReposoGUI(QWidget):
         self.ram_liberada_mb = 0
         self.init_ui()
 
-        # Temporizador para refrescar el estado de los módulos periódicamente
+        # Temporizador para refrescar el estado de los módulos periódicamente (solo cuando está visible)
         self.timer_refresh = QTimer(self)
-        self.timer_refresh.setInterval(3000)
+        self.timer_refresh.setInterval(4000)
         self.timer_refresh.timeout.connect(self.actualizar_vista)
-        self.timer_refresh.start()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.actualizar_vista()
+        if hasattr(self, "timer_refresh") and not self.timer_refresh.isActive():
+            self.timer_refresh.start(4000)
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if hasattr(self, "timer_refresh") and self.timer_refresh.isActive():
+            self.timer_refresh.stop()
 
     def _get_app(self):
         if self.context and hasattr(self.context, "app") and self.context.app:

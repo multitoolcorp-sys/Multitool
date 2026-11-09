@@ -1,0 +1,74 @@
+{
+    "name": "Navegador",
+    "position": 4,
+    "visible": true,
+    "file_name": "navegador.py",
+    "class_name": "TabNavegador",
+    "alias": "navegador",
+    "icon": "🌐",
+    "submodulos": [
+        {
+            "name": "EXTERNO",
+            "file_name": "submodulos/externo.py",
+            "class_name": "TabNavegadorExterno",
+            "visible": true,
+            "icon": "🌎",
+            "alias": "externo",
+            "position": 1
+        },
+        {
+            "name": "INTEGRADO",
+            "file_name": "submodulos/integrado.py",
+            "class_name": "TabNavegadorIntegrado",
+            "visible": true,
+            "icon": "🧩",
+            "alias": "integrado",
+            "position": 2
+        },
+        {
+            "name": "FAVORITOS",
+            "file_name": "submodulos/favoritos.py",
+            "class_name": "TabNavegadorFavoritos",
+            "visible": true,
+            "icon": "⭐",
+            "alias": "favoritos",
+            "position": 3
+        },
+        {
+            "name": "EXPLORAR",
+            "file_name": "submodulos/explorar.py",
+            "class_name": "TabNavegadorExplorar",
+            "visible": true,
+            "icon": "🧭",
+            "alias": "explorar",
+            "position": 4
+        },
+        {
+            "name": "HISTORIAL",
+            "file_name": "submodulos/historial_view.py",
+            "class_name": "TabNavegadorHistorial",
+            "visible": true,
+            "icon": "📜",
+            "alias": "historial",
+            "position": 5
+        },
+        {
+            "name": "CLIENTE GMAIL",
+            "file_name": "submodulos/gui_email.py",
+            "class_name": "EmailGUI",
+            "visible": true,
+            "icon": "📧",
+            "alias": "cliente_gmail",
+            "position": 6
+        },
+        {
+            "name": "DESCARGAS",
+            "file_name": "submodulos/descargas.py",
+            "class_name": "TabNavegadorDescargas",
+            "visible": true,
+            "icon": "⚡",
+            "alias": "descargas",
+            "position": 7
+        }
+    ]
+}
