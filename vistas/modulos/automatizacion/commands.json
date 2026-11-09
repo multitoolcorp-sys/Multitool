@@ -1,0 +1,58 @@
+{
+  "module": "automatizacion",
+  "name": "Automatización y Macros",
+  "description": "Comandos para Auto Clicker, Auto Teclado y Grabador de Macros",
+  "commands": [
+    {
+      "name": "auto clicker",
+      "command": "/autoclicker",
+      "command_sudo": "/autoclicker",
+      "aliases": ["/clicker", "/autoclick", "/speedclicker"],
+      "description": "Abre el submódulo de Auto Clicker de alta velocidad (Speed & OP)",
+      "syntax": "/autoclicker",
+      "actions": [
+        "goto: automatizacion",
+        "tab: 0",
+        "message: §a[Automatización] Auto Clicker Pro desplegado."
+      ]
+    },
+    {
+      "name": "auto teclado",
+      "command": "/autokey",
+      "command_sudo": "/autokey",
+      "aliases": ["/autoteclado", "/keyspam", "/spammer"],
+      "description": "Abre el submódulo de automatización de pulsaciones y tipeo de teclado",
+      "syntax": "/autokey",
+      "actions": [
+        "goto: automatizacion",
+        "tab: 1",
+        "message: §b[Automatización] Auto Teclado & Spammer desplegado."
+      ]
+    },
+    {
+      "name": "grabador de macros",
+      "command": "/macros",
+      "command_sudo": "/macros",
+      "aliases": ["/macro", "/grabador", "/macrorecorder"],
+      "description": "Abre el grabador y reproductor de macros para teclado y ratón",
+      "syntax": "/macros",
+      "actions": [
+        "goto: automatizacion",
+        "tab: 2",
+        "message: §d[Automatización] Grabador de Macros desplegado."
+      ]
+    },
+    {
+      "name": "modulo automatizacion",
+      "command": "/automatizacion",
+      "command_sudo": "/automatizacion",
+      "aliases": ["/auto", "/automation"],
+      "description": "Abre la suite de Automatización de MultiTool",
+      "syntax": "/automatizacion",
+      "actions": [
+        "goto: automatizacion",
+        "message: §e[Automatización] Panel principal cargado."
+      ]
+    }
+  ]
+}

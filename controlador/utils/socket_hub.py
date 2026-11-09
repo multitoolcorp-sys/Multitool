@@ -170,3 +170,4 @@ def send_socket_event(event_name: str, payload: Dict[str, Any] = None, port: int
         return True
     except Exception:
         return False
+

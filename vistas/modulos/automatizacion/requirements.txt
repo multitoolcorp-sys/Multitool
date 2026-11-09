@@ -1,0 +1,2 @@
+# Dependencias de Automatizacion
+PyQt6>=6.4.0

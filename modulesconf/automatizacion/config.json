@@ -1,0 +1,36 @@
+{
+    "name": "Automatizacion",
+    "position": 25,
+    "visible": true,
+    "alias": "automatizacion",
+    "icon": "⚡",
+    "submodulos": [
+        {
+            "name": "Auto Clicker",
+            "file_name": "submodulos/auto_clicker.py",
+            "class_name": "TabAutoClicker",
+            "visible": true,
+            "icon": "🖱️",
+            "alias": "autoclicker",
+            "position": 1
+        },
+        {
+            "name": "Auto Teclado",
+            "file_name": "submodulos/auto_keyboard.py",
+            "class_name": "TabAutoKeyboard",
+            "visible": true,
+            "icon": "⌨️",
+            "alias": "autoteclado",
+            "position": 2
+        },
+        {
+            "name": "Grabador de Macros",
+            "file_name": "submodulos/macro_recorder.py",
+            "class_name": "TabMacroRecorder",
+            "visible": true,
+            "icon": "🎬",
+            "alias": "macros",
+            "position": 3
+        }
+    ]
+}

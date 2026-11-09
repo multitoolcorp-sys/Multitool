@@ -140,6 +140,10 @@ class CommandPaletteDialog(QDialog):
             {"cat": "Módulo", "text": "🧮 Calculadora: Calculadora y Conversor", "action": "goto_calculadora"},
             {"cat": "Módulo", "text": "🌍 Traductor: Traductor Multilingüe", "action": "goto_traductor"},
             {"cat": "Módulo", "text": "⏱️ Tiempo: Clima, Reloj Mundial y Cronómetro", "action": "goto_tiempo"},
+            {"cat": "Módulo", "text": "⚡ Automatización: Panel Principal de Automatizaciones", "action": "goto_automatizacion"},
+            {"cat": "Módulo", "text": "🖱️ Automatización: Auto Clicker Pro (Speed & OP)", "action": "goto_automatizacion_autoclicker"},
+            {"cat": "Módulo", "text": "⌨️ Automatización: Auto Teclado & Spammer", "action": "goto_automatizacion_autoteclado"},
+            {"cat": "Módulo", "text": "🎬 Automatización: Grabador y Reproductor de Macros", "action": "goto_automatizacion_macros"},
             {"cat": "Módulo", "text": "💡 General: Dashboard y Resumen de Estado", "action": "goto_general"},
 
             # Acciones Rápidas del Sistema
@@ -202,3 +206,4 @@ class CommandPaletteDialog(QDialog):
         self.accept()
         if self.on_action:
             self.on_action(action)
+
