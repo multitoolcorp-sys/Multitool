@@ -288,32 +288,7 @@ Categories=Utility;
 
 
 class DownloaderGUI(QWidget):
-    # Catálogo de los 22 módulos reales de MultiTool (vistas/modulos/)
-    CATALOGO_MODULOS = [
-        ("general", "General (Dashboard, Productividad, Clima & Hábitos)", True, True),
-        ("cuenta", "Cuenta (Perfil, Auditoría, Bóveda & 2FA)", True, True),
-        ("archivos", "Archivos (Explorador de Archivos)", True, False),
-        ("basedatos", "Base de Datos (Gestor SQL & SQLite estilo DBeaver)", True, False),
-        ("calculadora", "Calculadora (Científica, Gráficas, Finanzas)", True, False),
-        ("calendario", "Calendario (Agenda & Eventos)", True, False),
-        ("chat", "Chat (Sala LAN & Asistente IA Privado)", True, False),
-        ("clipboard", "Clipboard (Historial de Portapapeles & Snippets)", True, False),
-        ("cuaderno", "Cuaderno (Editor Markdown, Grid & Notas)", True, False),
-        ("emulador", "Emulador (Consola Arcade & ROMs)", True, False),
-        ("extras", "Extras (Espejo Celular, Recortes & OCR, Ruleta)", True, False),
-        ("grabadora", "Grabadora (Audio, Pantalla & Cámara)", True, False),
-        ("minigames", "MiniGames (Juegos Arcade & Roguelike)", True, False),
-        ("navegador", "Navegador (Navegador Web, Gmail, Descargas)", True, False),
-        ("notas", "Notas (Mis Notas, Editor & Post-its)", True, False),
-        ("proyectos", "Proyectos (Tablero Kanban & Estadísticas)", True, False),
-        ("reproductor", "Reproductor (Multimedia ARK & Radio Online)", True, False),
-        ("seguridad", "Seguridad (Bóveda de Seguridad & Protección)", True, False),
-        ("sistema", "Sistema (Monitoreo, Procesos & Inicio Windows)", True, False),
-        ("terminal", "Terminal (Terminal PowerShell & Consola)", True, False),
-        ("tiempo", "Tiempo (Reloj Mundial, Alarmas, Temporizador, Pomodoro)", True, False),
-        ("traductor", "Traductor (Texto, Voz & Documentos)", True, False),
-        ("widgets", "Widgets (Widgets Flotantes de Escritorio)", True, False),
-    ]
+    MODULOS_OBLIGATORIOS = {"general", "cuenta", "cuentas"}
 
     def __init__(self):
         super().__init__()
@@ -338,7 +313,84 @@ class DownloaderGUI(QWidget):
 
         self.checkboxes_modulos = {}
         self.drag_position = QPoint()
+        self.modulos_detectados = self._detectar_modulos_dinamicos()
         self.init_ui()
+
+    def _resolver_ruta_zip(self) -> Path:
+        """Localiza el archivo data.zip en las rutas posibles de ejecución o distribución."""
+        candidatos = []
+        if hasattr(sys, "_MEIPASS"):
+            candidatos.append(Path(sys._MEIPASS).resolve() / "data.zip")
+
+        exe_dir = (
+            Path(sys.executable).resolve().parent
+            if getattr(sys, "frozen", False)
+            else Path(__file__).resolve().parent
+        )
+        script_dir = Path(__file__).resolve().parent
+        candidatos.extend([
+            exe_dir / "data.zip",
+            Path.cwd() / "data.zip",
+            script_dir / "data.zip",
+            script_dir / "DISTRIBUCION" / "data.zip",
+            exe_dir / "DISTRIBUCION" / "data.zip",
+        ])
+
+        for cand in candidatos:
+            if cand.exists() and cand.is_file():
+                return cand
+        return script_dir / "data.zip"
+
+    def _detectar_modulos_dinamicos(self) -> list[tuple[str, str, bool, bool]]:
+        """
+        Detecta dinámicamente las carpetas de módulos dentro de 'vistas/modulos/'
+        leyendo directamente el archivo data.zip (o el directorio local 'vistas/modulos/'
+        como respaldo en desarrollo), tomando únicamente el nombre de la carpeta raíz
+        de cada módulo sin entrar en sus subcarpetas.
+        """
+        carpetas_modulos = set()
+        zip_path = self._resolver_ruta_zip()
+
+        # 1. Leer exclusivamente las carpetas de primer nivel en vistas/modulos/ dentro de data.zip
+        if zip_path.exists() and zipfile.is_zipfile(zip_path):
+            try:
+                with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                    for entry in zip_ref.namelist():
+                        norm = entry.replace("\\", "/")
+                        if "vistas/modulos/" in norm:
+                            resto = norm.split("vistas/modulos/", 1)[1]
+                            partes = [p for p in resto.split("/") if p]
+                            # Verificar que sea una carpeta dentro de vistas/modulos/ (y no un archivo suelto)
+                            if len(partes) >= 2 or (len(partes) == 1 and norm.endswith("/")):
+                                nombre_carpeta = partes[0].strip()
+                                if nombre_carpeta and not nombre_carpeta.startswith((".", "_")):
+                                    carpetas_modulos.add(nombre_carpeta)
+            except Exception as e:
+                print(f"[Downloader] Aviso al inspeccionar data.zip: {e}")
+
+        # 2. Respaldo: si no existe data.zip aún (modo desarrollo), leer vistas/modulos/ en disco
+        if not carpetas_modulos:
+            modulos_dir = Path(__file__).resolve().parent / "vistas" / "modulos"
+            if modulos_dir.exists() and modulos_dir.is_dir():
+                for item in modulos_dir.iterdir():
+                    if item.is_dir() and not item.name.startswith((".", "_")):
+                        carpetas_modulos.add(item.name)
+
+        # Ordenar colocando primero los módulos obligatorios (general, cuenta) y luego el resto alfabéticamente
+        obligatorios = sorted(
+            [m for m in carpetas_modulos if m.lower() in self.MODULOS_OBLIGATORIOS],
+            key=lambda x: (0 if x.lower() == "general" else 1, x.lower())
+        )
+        opcionales = sorted(
+            [m for m in carpetas_modulos if m.lower() not in self.MODULOS_OBLIGATORIOS],
+            key=lambda x: x.lower()
+        )
+
+        resultado = []
+        for mod_folder in obligatorios + opcionales:
+            is_locked = mod_folder.lower() in self.MODULOS_OBLIGATORIOS
+            resultado.append((mod_folder, mod_folder, True, is_locked))
+        return resultado
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -495,7 +547,7 @@ class DownloaderGUI(QWidget):
         grid_mod.setHorizontalSpacing(14)
         grid_mod.setVerticalSpacing(6)
 
-        for idx, (mod_id, display_name, def_checked, is_locked) in enumerate(self.CATALOGO_MODULOS):
+        for idx, (mod_id, display_name, def_checked, is_locked) in enumerate(self.modulos_detectados):
             row = idx // 2
             col = idx % 2
 
@@ -624,22 +676,7 @@ class DownloaderGUI(QWidget):
                 seleccionados.append(mod_id)
 
         mode = "installer" if self.rad_installer.isChecked() else "updater"
-
-        # Buscar paquete data.zip o directorio origen
-        zip_path = None
-        if hasattr(sys, '_MEIPASS'):
-            candidate = Path(sys._MEIPASS).resolve() / "data.zip"
-            if candidate.exists():
-                zip_path = candidate
-
-        if not zip_path or not zip_path.exists():
-            exe_dir = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
-            if (exe_dir / "data.zip").exists():
-                zip_path = exe_dir / "data.zip"
-            elif (Path.cwd() / "data.zip").exists():
-                zip_path = Path.cwd() / "data.zip"
-            else:
-                zip_path = Path(__file__).resolve().parent / "data.zip"
+        zip_path = self._resolver_ruta_zip()
 
         self.worker = InstallWorker(zip_path, self.custom_dest_root, mode=mode, modulos_seleccionados=seleccionados)
         self.worker.progress.connect(self.update_progress)
