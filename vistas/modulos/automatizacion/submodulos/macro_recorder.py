@@ -70,13 +70,15 @@ class TabMacroRecorder(QWidget):
 
         # ── 1. HEADER CARD ───────────────────────────────────────────────────
         header_card = QFrame()
+        header_card.setObjectName("MacroHeader")
         header_card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#MacroHeader {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
                 padding: 10px;
             }}
+            QLabel {{ border: none; background: transparent; padding: 0px; }}
         """)
         h_lay = QHBoxLayout(header_card)
         h_lay.setContentsMargins(10, 6, 10, 6)
@@ -102,13 +104,15 @@ class TabMacroRecorder(QWidget):
 
         # ── 2. BARRA PRINCIPAL DE CONTROLES ──────────────────────────────────
         ctrl_bar = QFrame()
+        ctrl_bar.setObjectName("MacroCtrlBar")
         ctrl_bar.setStyleSheet(f"""
-            QFrame {{
+            QFrame#MacroCtrlBar {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.05);
                 border-radius: 8px;
                 padding: 8px;
             }}
+            QLabel {{ border: none; background: transparent; padding: 0px; }}
         """)
         cb_lay = QHBoxLayout(ctrl_bar)
         cb_lay.setSpacing(8)
@@ -185,13 +189,15 @@ class TabMacroRecorder(QWidget):
 
         # ── 3. AJUSTES DE REPRODUCCIÓN (VELOCIDAD & BUCLES) ────────────────────
         play_cfg_frame = QFrame()
+        play_cfg_frame.setObjectName("MacroPlayCfg")
         play_cfg_frame.setStyleSheet(f"""
-            QFrame {{
+            QFrame#MacroPlayCfg {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.05);
                 border-radius: 8px;
                 padding: 6px 12px;
             }}
+            QLabel {{ border: none; background: transparent; padding: 0px; }}
         """)
         pc_lay = QHBoxLayout(play_cfg_frame)
         pc_lay.setSpacing(12)

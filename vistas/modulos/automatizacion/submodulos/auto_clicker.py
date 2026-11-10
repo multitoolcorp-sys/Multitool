@@ -11,17 +11,18 @@ import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QRadioButton, QSpinBox, QSlider, QComboBox,
-    QFrame, QCheckBox, QScrollArea, QSizePolicy, QToolTip
+    QFrame, QCheckBox, QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont
 
 from ..utils.input_simulator import (
     mouse_click, get_cursor_pos, set_cursor_pos,
     lock_cursor_to_point, unlock_cursor, play_sound_feedback,
-    GlobalHotkeyListener, VK_MAP
+    GlobalHotkeyListener
 )
 from ..utils.hotkey_widget import HotkeySettingDialog
+
 
 class ClickerSignals(QObject):
     clicked = pyqtSignal(int, float)  # total_clicks, actual_cps
@@ -68,11 +69,9 @@ class AutoClickerWorker:
         last_stat_time = start_time
         clicks_in_window = 0
 
-        # Bloquear cursor si está habilitado en modo coordenadas fijas
         if self.lock_cursor and self.location_mode == "fixed":
             lock_cursor_to_point(self.fixed_x, self.fixed_y)
 
-        # Manejo de Modo Mantener Presionado (Hold Mouse Button)
         if self.click_type == "hold_down":
             if self.location_mode == "fixed":
                 set_cursor_pos(self.fixed_x, self.fixed_y)
@@ -89,15 +88,12 @@ class AutoClickerWorker:
             while self.running:
                 t0 = time.perf_counter()
 
-                # Coordenadas
                 cx, cy = (self.fixed_x, self.fixed_y) if self.location_mode == "fixed" else (None, None)
 
-                # Ejecutar Clic
                 mouse_click(self.button, self.click_type, cx, cy)
                 total_clicks += 1
                 clicks_in_window += 1
 
-                # Actualización de estadísticas cada 250ms
                 now = time.perf_counter()
                 if now - last_stat_time >= 0.25:
                     curr_cps = clicks_in_window / (now - last_stat_time)
@@ -105,22 +101,18 @@ class AutoClickerWorker:
                     clicks_in_window = 0
                     last_stat_time = now
 
-                # Comprobar límite de repeticiones (Click repeat: Repeat N times)
                 if self.repeat_mode == "count" and total_clicks >= self.target_count:
                     break
 
-                # Calcular intervalo objetivo
                 if self.mode == "cps":
                     target_delay = 1.0 / max(1.0, float(self.target_cps))
                 else:
                     target_delay = self.base_interval_sec
 
-                # Aplicar Random offset ±ms estilo OP Auto Clicker 4.0
                 if self.random_offset_enabled and self.random_offset_ms > 0:
                     offset_sec = random.uniform(-self.random_offset_ms, self.random_offset_ms) / 1000.0
                     target_delay = max(0.001, target_delay + offset_sec)
 
-                # Dormir el tiempo necesario
                 elapsed = time.perf_counter() - t0
                 sleep_needed = target_delay - elapsed
                 if sleep_needed > 0.002:
@@ -155,7 +147,6 @@ class TabAutoClicker(QWidget):
         self.signals.started.connect(self._on_worker_started)
         self.signals.stopped.connect(self._on_worker_stopped)
 
-        # Hotkey global interactivo (F6 por defecto)
         self.hotkey_listener = GlobalHotkeyListener()
         self.current_hotkey = "F6"
 
@@ -171,7 +162,6 @@ class TabAutoClicker(QWidget):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # ScrollArea responsivo
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -196,20 +186,21 @@ class TabAutoClicker(QWidget):
 
         # ── HEADER CON PERFILES & ESTADO ─────────────────────────────────────
         header_card = QFrame()
+        header_card.setObjectName("HeaderCard")
         header_card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#HeaderCard {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 8px 12px;
             }}
+            QLabel {{ border: none; background: transparent; }}
         """)
         h_lay = QHBoxLayout(header_card)
-        h_lay.setContentsMargins(8, 4, 8, 4)
+        h_lay.setContentsMargins(14, 10, 14, 10)
 
         lbl_title = QLabel("🖱️ Auto Clicker (OP & Speed Edition)")
         lbl_title.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
-        lbl_title.setStyleSheet("color: white; border: none;")
+        lbl_title.setStyleSheet("color: white;")
         h_lay.addWidget(lbl_title)
 
         h_lay.addStretch()
@@ -246,26 +237,25 @@ class TabAutoClicker(QWidget):
         main_layout.addWidget(header_card)
 
         # ── SECCIÓN 1: CLICK INTERVAL (Idéntico a OP Auto Clicker 4.0) ────────
-        card_interval = self._crear_card("Click interval")
-        ci_lay = QVBoxLayout(card_interval)
-        ci_lay.setSpacing(8)
+        card_interval, ci_lay = self._crear_card("Click interval")
 
         # Fila 1: Horas, Mins, Secs, Milliseconds
         f_row1 = QHBoxLayout()
-        self.spin_hours = self._crear_subspin(0, 23, "", val=0)
-        self.spin_mins = self._crear_subspin(0, 59, "", val=0)
-        self.spin_secs = self._crear_subspin(0, 59, "", val=0)
-        self.spin_ms = self._crear_subspin(0, 9999, "", val=100)
+        f_row1.setSpacing(8)
+        self.spin_hours = self._crear_subspin(0, 23, "", val=0, width=70)
+        self.spin_mins = self._crear_subspin(0, 59, "", val=0, width=70)
+        self.spin_secs = self._crear_subspin(0, 59, "", val=0, width=70)
+        self.spin_ms = self._crear_subspin(0, 9999, "", val=100, width=85)
 
         f_row1.addWidget(self.spin_hours)
         f_row1.addWidget(self._crear_label("hours"))
-        f_row1.addSpacing(6)
+        f_row1.addSpacing(8)
         f_row1.addWidget(self.spin_mins)
         f_row1.addWidget(self._crear_label("mins"))
-        f_row1.addSpacing(6)
+        f_row1.addSpacing(8)
         f_row1.addWidget(self.spin_secs)
         f_row1.addWidget(self._crear_label("secs"))
-        f_row1.addSpacing(6)
+        f_row1.addSpacing(8)
         f_row1.addWidget(self.spin_ms)
         f_row1.addWidget(self._crear_label("milliseconds"))
         f_row1.addStretch()
@@ -283,8 +273,8 @@ class TabAutoClicker(QWidget):
         self.frame_cps_slider = QFrame()
         self.frame_cps_slider.setVisible(False)
         cps_lay = QHBoxLayout(self.frame_cps_slider)
-        cps_lay.setContentsMargins(0, 2, 0, 2)
-        cps_lay.addWidget(QLabel("Velocidad CPS:"))
+        cps_lay.setContentsMargins(0, 4, 0, 4)
+        cps_lay.addWidget(self._crear_label("Velocidad CPS:"))
         self.slider_cps = QSlider(Qt.Orientation.Horizontal)
         self.slider_cps.setRange(1, 500)
         self.slider_cps.setValue(50)
@@ -301,11 +291,12 @@ class TabAutoClicker(QWidget):
         cps_lay.addWidget(self.spin_cps)
         ci_lay.addWidget(self.frame_cps_slider)
 
-        # Fila 2: [ ? ] [ ] Random offset ± [ 40 ] milliseconds (Idéntico a OP Auto Clicker 4.0)
+        # Fila 2: [ ? ] [ ] Random offset ± [ 40 ] milliseconds
         f_row2 = QHBoxLayout()
+        f_row2.setSpacing(8)
         btn_help = QPushButton("?")
-        btn_help.setFixedSize(22, 22)
-        btn_help.setToolTip("Añade una variación aleatoria en milisegundos a cada clic\npara simular pulsaciones humanas y evitar la detección por bots.")
+        btn_help.setFixedSize(24, 24)
+        btn_help.setToolTip("Añade una variación aleatoria en milisegundos a cada clic\npara simular pulsaciones humanas y evitar detección anti-cheat.")
         btn_help.setStyleSheet(f"""
             QPushButton {{
                 background-color: {self.colores['bg_principal']};
@@ -322,7 +313,7 @@ class TabAutoClicker(QWidget):
         self.chk_random_offset.setStyleSheet(f"color: {self.colores['fg_principal']}; font-size: 11px;")
         f_row2.addWidget(self.chk_random_offset)
 
-        self.spin_random_offset = self._crear_subspin(1, 5000, "", val=40)
+        self.spin_random_offset = self._crear_subspin(1, 5000, "", val=40, width=80)
         f_row2.addWidget(self.spin_random_offset)
         f_row2.addWidget(self._crear_label("milliseconds"))
         f_row2.addStretch()
@@ -335,9 +326,9 @@ class TabAutoClicker(QWidget):
         mid_grid.setSpacing(12)
 
         # CARD B: Click options
-        card_options = self._crear_card("Click options")
-        o_lay = QGridLayout(card_options)
-        o_lay.setSpacing(8)
+        card_options, opt_vbox = self._crear_card("Click options")
+        o_lay = QGridLayout()
+        o_lay.setSpacing(10)
 
         o_lay.addWidget(self._crear_label("Mouse button:"), 0, 0)
         self.combo_btn = QComboBox()
@@ -351,26 +342,24 @@ class TabAutoClicker(QWidget):
         self.combo_type.setStyleSheet(self._estilo_input())
         o_lay.addWidget(self.combo_type, 1, 1)
 
+        opt_vbox.addLayout(o_lay)
         mid_grid.addWidget(card_options, 0, 0)
 
         # CARD C: Click repeat
-        card_repeat = self._crear_card("Click repeat")
-        rep_lay = QVBoxLayout(card_repeat)
-        rep_lay.setSpacing(8)
+        card_repeat, rep_lay = self._crear_card("Click repeat")
 
-        # Fila Repeat N times
         r_row1 = QHBoxLayout()
+        r_row1.setSpacing(8)
         self.rb_rep_count = QRadioButton("Repeat")
         self.rb_rep_count.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
         r_row1.addWidget(self.rb_rep_count)
 
-        self.spin_target_count = self._crear_subspin(1, 1000000, "", val=1)
+        self.spin_target_count = self._crear_subspin(1, 1000000, "", val=1, width=90)
         r_row1.addWidget(self.spin_target_count)
         r_row1.addWidget(self._crear_label("times"))
         r_row1.addStretch()
         rep_lay.addLayout(r_row1)
 
-        # Fila Repeat until stopped (por defecto activo como en OP)
         self.rb_rep_inf = QRadioButton("Repeat until stopped")
         self.rb_rep_inf.setChecked(True)
         self.rb_rep_inf.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
@@ -380,33 +369,36 @@ class TabAutoClicker(QWidget):
         main_layout.addLayout(mid_grid)
 
         # ── SECCIÓN 4: CURSOR POSITION ───────────────────────────────────────
-        card_pos = self._crear_card("Cursor position")
-        p_lay = QHBoxLayout(card_pos)
-        p_lay.setSpacing(14)
+        card_pos, pos_vbox = self._crear_card("Cursor position")
+        p_lay = QHBoxLayout()
+        p_lay.setSpacing(12)
 
         self.rb_pos_curr = QRadioButton("Current location")
         self.rb_pos_curr.setChecked(True)
         self.rb_pos_curr.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
         p_lay.addWidget(self.rb_pos_curr)
 
+        p_lay.addSpacing(16)
+
         self.rb_pos_fixed = QRadioButton("")
         self.rb_pos_fixed.setStyleSheet("color: white;")
         p_lay.addWidget(self.rb_pos_fixed)
 
-        self.btn_pick_pos = QPushButton("Pick location")
+        self.btn_pick_pos = QPushButton("🎯 Pick location")
         self.btn_pick_pos.setStyleSheet(self._estilo_boton_secundario())
         self.btn_pick_pos.clicked.connect(self._iniciar_captura_posicion)
         p_lay.addWidget(self.btn_pick_pos)
 
         p_lay.addWidget(self._crear_label("X"))
-        self.spin_x = self._crear_subspin(0, 9999, "", val=0)
+        self.spin_x = self._crear_subspin(0, 9999, "", val=0, width=75)
         p_lay.addWidget(self.spin_x)
 
         p_lay.addWidget(self._crear_label("Y"))
-        self.spin_y = self._crear_subspin(0, 9999, "", val=0)
+        self.spin_y = self._crear_subspin(0, 9999, "", val=0, width=75)
         p_lay.addWidget(self.spin_y)
 
-        # Opción extra de bloqueo
+        p_lay.addSpacing(10)
+
         self.chk_lock_cursor = QCheckBox("Lock cursor")
         self.chk_lock_cursor.setChecked(False)
         self.chk_lock_cursor.setToolTip("Congela el ratón en las coordenadas mientras cliquea.")
@@ -414,6 +406,7 @@ class TabAutoClicker(QWidget):
         p_lay.addWidget(self.chk_lock_cursor)
 
         p_lay.addStretch()
+        pos_vbox.addLayout(p_lay)
         main_layout.addWidget(card_pos)
 
         # ── SECCIÓN 5: CUADRÍCULA DE ACCIÓN 2x2 (Idéntica a OP Auto Clicker) ──
@@ -448,8 +441,8 @@ class TabAutoClicker(QWidget):
         self.btn_hotkey_setting.clicked.connect(self._abrir_dialogo_hotkey)
         grid_actions.addWidget(self.btn_hotkey_setting, 1, 0)
 
-        # [ Record & Playback ]
-        self.btn_record_playback = QPushButton("Record & Playback")
+        # [ Record & Playback ] (usar && para que Qt muestre el carácter & real)
+        self.btn_record_playback = QPushButton("Record && Playback")
         self.btn_record_playback.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
         self.btn_record_playback.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_record_playback.setFixedHeight(38)
@@ -482,7 +475,7 @@ class TabAutoClicker(QWidget):
 
         for lbl in (self.lbl_stats_clicks, self.lbl_stats_cps, self.lbl_stats_pos):
             lbl.setFont(QFont(self.font_family, 9))
-            lbl.setStyleSheet(f"color: {self.colores['fg_secundario']};")
+            lbl.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none;")
             footer_lay.addWidget(lbl)
 
         btn_reset_stats = QPushButton("🔄")
@@ -492,6 +485,7 @@ class TabAutoClicker(QWidget):
         footer_lay.addWidget(btn_reset_stats)
 
         main_layout.addWidget(footer)
+        main_layout.addStretch()
 
         scroll.setWidget(container)
         root_layout.addWidget(scroll)
@@ -501,35 +495,43 @@ class TabAutoClicker(QWidget):
         self.mouse_pos_timer.timeout.connect(self._actualizar_mouse_pos_label)
         self.mouse_pos_timer.start(100)
 
-    # ── ESTILOS ───────────────────────────────────────────────────────────────
-    def _crear_card(self, titulo: str) -> QFrame:
+    # ── ESTILOS Y CONSTRUCTORES DE TARJETAS ──────────────────────────────────
+    def _crear_card(self, titulo: str) -> tuple[QFrame, QVBoxLayout]:
         card = QFrame()
+        card.setObjectName("AutoCardFrame")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#AutoCardFrame {{
                 background-color: {self.colores['bg_secundario']};
-                border: 1px solid rgba(255, 255, 255, 0.06);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 8px;
-                padding: 10px;
+            }}
+            QLabel {{
+                border: none;
+                background: transparent;
             }}
         """)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(10)
+
         lbl = QLabel(titulo)
-        lbl.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
-        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 4px;")
-        card.layout = QVBoxLayout(card)
-        card.layout.addWidget(lbl)
-        return card
+        lbl.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; background: transparent;")
+        lay.addWidget(lbl)
+        return card, lay
 
     def _crear_label(self, texto: str) -> QLabel:
         lbl = QLabel(texto)
-        lbl.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none; font-size: 11px;")
+        lbl.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none; background: transparent; font-size: 11px;")
         return lbl
 
-    def _crear_subspin(self, minimo: int, maximo: int, suffix: str, val: int = 0) -> QSpinBox:
+    def _crear_subspin(self, minimo: int, maximo: int, suffix: str, val: int = 0, width: int = 75) -> QSpinBox:
         spin = QSpinBox()
         spin.setRange(minimo, maximo)
         spin.setValue(val)
         spin.setSuffix(suffix)
+        spin.setMinimumWidth(width)
         spin.setStyleSheet(self._estilo_input())
         return spin
 
@@ -540,7 +542,7 @@ class TabAutoClicker(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 5px 8px;
                 font-size: 11px;
             }}
             QSpinBox:focus, QComboBox:focus {{
@@ -617,8 +619,8 @@ class TabAutoClicker(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 6px;
-                padding: 4px 10px;
-                font-size: 10px;
+                padding: 5px 12px;
+                font-size: 11px;
             }}
             QPushButton:hover {{ background-color: rgba(255, 255, 255, 0.15); }}
         """
@@ -671,7 +673,7 @@ class TabAutoClicker(QWidget):
             self.spin_hours.setValue(0)
             self.spin_mins.setValue(0)
             self.spin_secs.setValue(0)
-            self.spin_ms.setValue(62)  # ~16 CPS
+            self.spin_ms.setValue(62)
             self.chk_random_offset.setChecked(True)
             self.spin_random_offset.setValue(10)
             self.combo_btn.setCurrentText("Left")
@@ -717,7 +719,7 @@ class TabAutoClicker(QWidget):
             self.spin_y.setValue(y)
             self.btn_pick_pos.setText("✓ Posición fijada")
             self.btn_pick_pos.setEnabled(True)
-            QTimer.singleShot(2000, lambda: self.btn_pick_pos.setText("Pick location"))
+            QTimer.singleShot(2000, lambda: self.btn_pick_pos.setText("🎯 Pick location"))
 
     def _abrir_dialogo_hotkey(self):
         dlg = HotkeySettingDialog(
@@ -734,7 +736,6 @@ class TabAutoClicker(QWidget):
         p = self.parentWidget()
         while p:
             if hasattr(p, "tabs"):
-                # Cambiar a la pestaña de Grabador de Macros (índice 2)
                 p.tabs.setCurrentIndex(2)
                 break
             p = p.parentWidget()
@@ -789,11 +790,9 @@ class TabAutoClicker(QWidget):
         self.worker.random_offset_enabled = self.chk_random_offset.isChecked()
         self.worker.random_offset_ms = self.spin_random_offset.value()
 
-        # Botón
         btn_txt = self.combo_btn.currentText().lower()
         self.worker.button = btn_txt if btn_txt in ("left", "right", "middle") else "left"
 
-        # Tipo
         type_txt = self.combo_type.currentText().lower()
         if "single" in type_txt:
             self.worker.click_type = "single"
@@ -804,7 +803,6 @@ class TabAutoClicker(QWidget):
         else:
             self.worker.click_type = "hold_down"
 
-        # Posición
         if self.rb_pos_fixed.isChecked():
             self.worker.location_mode = "fixed"
             self.worker.fixed_x = self.spin_x.value()
@@ -812,7 +810,6 @@ class TabAutoClicker(QWidget):
         else:
             self.worker.location_mode = "dynamic"
 
-        # Repetición
         if self.rb_rep_count.isChecked():
             self.worker.repeat_mode = "count"
             self.worker.target_count = self.spin_target_count.value()

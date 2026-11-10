@@ -10,16 +10,17 @@ import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QPushButton, QRadioButton, QSpinBox, QTextEdit, QScrollArea,
-    QLineEdit, QFrame, QCheckBox, QSizePolicy
+    QFrame, QCheckBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont
 
 from ..utils.input_simulator import (
     key_press, key_down, key_up, type_text, play_sound_feedback,
-    GlobalHotkeyListener, VK_MAP, VK_TO_NAME
+    GlobalHotkeyListener, VK_MAP
 )
 from ..utils.hotkey_widget import HotkeyCaptureButton
+
 
 class KeyboardSignals(QObject):
     pressed = pyqtSignal(int)  # total_presses
@@ -127,7 +128,6 @@ class TabAutoKeyboard(QWidget):
         self.signals.started.connect(self._on_worker_started)
         self.signals.stopped.connect(self._on_worker_stopped)
 
-        # Hotkey listener global
         self.hotkey_listener = GlobalHotkeyListener()
         self.current_hotkey = "F7"
         self.target_key_name = "ESPACIO"
@@ -160,25 +160,26 @@ class TabAutoKeyboard(QWidget):
 
         container = QWidget()
         main_layout = QVBoxLayout(container)
-        main_layout.setContentsMargins(18, 18, 18, 18)
+        main_layout.setContentsMargins(18, 16, 18, 16)
         main_layout.setSpacing(12)
 
         # ── 1. HEADER CARD ───────────────────────────────────────────────────
         header_card = QFrame()
+        header_card.setObjectName("HeaderCard")
         header_card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#HeaderCard {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 10px;
             }}
+            QLabel {{ border: none; background: transparent; }}
         """)
         h_lay = QHBoxLayout(header_card)
-        h_lay.setContentsMargins(10, 6, 10, 6)
+        h_lay.setContentsMargins(14, 10, 14, 10)
 
         lbl_title = QLabel("⌨️ Auto Teclado & Spammer Pro")
         lbl_title.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
-        lbl_title.setStyleSheet("color: white; border: none;")
+        lbl_title.setStyleSheet("color: white;")
         h_lay.addWidget(lbl_title)
 
         h_lay.addStretch()
@@ -196,8 +197,10 @@ class TabAutoKeyboard(QWidget):
         main_layout.addWidget(header_card)
 
         # ── 2. SELECCIÓN DE MODO ─────────────────────────────────────────────
-        card_mode = self._crear_card("⚙️ Modo de Operación")
-        m_lay = QHBoxLayout(card_mode)
+        card_mode, mode_vbox = self._crear_card("⚙️ Modo de Operación")
+        m_lay = QHBoxLayout()
+        m_lay.setSpacing(16)
+
         self.rb_mode_single = QRadioButton("Tecla Individual (Spammer)")
         self.rb_mode_text = QRadioButton("Secuencia de Texto / Frases")
         self.rb_mode_hold = QRadioButton("Mantener Tecla (Key Hold / AFK)")
@@ -207,6 +210,8 @@ class TabAutoKeyboard(QWidget):
             rb.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
             rb.toggled.connect(self._on_mode_changed)
             m_lay.addWidget(rb)
+        m_lay.addStretch()
+        mode_vbox.addLayout(m_lay)
         main_layout.addWidget(card_mode)
 
         # ── 3. PARÁMETROS EN GRID ─────────────────────────────────────────────
@@ -214,13 +219,13 @@ class TabAutoKeyboard(QWidget):
         grid.setSpacing(12)
 
         # CARD A: Tecla Objetivo con Capturador Interactivo
-        self.card_input = self._crear_card("🎯 Tecla Objetivo")
-        in_lay = QVBoxLayout(self.card_input)
+        self.card_input, in_lay = self._crear_card("🎯 Tecla Objetivo")
 
         self.frame_single_key = QFrame()
         sk_lay = QHBoxLayout(self.frame_single_key)
         sk_lay.setContentsMargins(0, 0, 0, 0)
-        sk_lay.addWidget(QLabel("Tecla a pulsar:"))
+        sk_lay.setSpacing(10)
+        sk_lay.addWidget(self._crear_label("Tecla a pulsar:"))
 
         self.btn_pick_key = HotkeyCaptureButton(
             default_key="ESPACIO",
@@ -237,8 +242,9 @@ class TabAutoKeyboard(QWidget):
         self.frame_text.setVisible(False)
         tx_lay = QVBoxLayout(self.frame_text)
         tx_lay.setContentsMargins(0, 0, 0, 0)
+        tx_lay.setSpacing(6)
         self.edit_text = QTextEdit()
-        self.edit_text.setPlaceholderText("Escribe el texto a enviar repetidamente...")
+        self.edit_text.setPlaceholderText("Escribe el texto o comando a enviar repetidamente...")
         self.edit_text.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {self.colores['bg_principal']};
@@ -259,11 +265,11 @@ class TabAutoKeyboard(QWidget):
         grid.addWidget(self.card_input, 0, 0)
 
         # CARD B: Intervalo y Velocidad
-        card_timing = self._crear_card("⏱️ Temporización y Retardo")
-        t_lay = QGridLayout(card_timing)
-        t_lay.setSpacing(8)
+        card_timing, timing_vbox = self._crear_card("⏱️ Temporización y Retardo")
+        t_lay = QGridLayout()
+        t_lay.setSpacing(10)
 
-        t_lay.addWidget(QLabel("Intervalo:"), 0, 0)
+        t_lay.addWidget(self._crear_label("Intervalo:"), 0, 0)
         self.spin_interval = QSpinBox()
         self.spin_interval.setRange(2, 60000)
         self.spin_interval.setValue(50)
@@ -271,7 +277,7 @@ class TabAutoKeyboard(QWidget):
         self.spin_interval.setStyleSheet(self._estilo_input())
         t_lay.addWidget(self.spin_interval, 0, 1)
 
-        t_lay.addWidget(QLabel("Sostenimiento (Hold):"), 1, 0)
+        t_lay.addWidget(self._crear_label("Sostenimiento (Hold):"), 1, 0)
         self.spin_hold = QSpinBox()
         self.spin_hold.setRange(1, 5000)
         self.spin_hold.setValue(10)
@@ -284,51 +290,53 @@ class TabAutoKeyboard(QWidget):
         self.chk_humanize.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         t_lay.addWidget(self.chk_humanize, 2, 0, 1, 2)
 
+        timing_vbox.addLayout(t_lay)
         grid.addWidget(card_timing, 0, 1)
 
         # CARD C: Repetición
-        card_rep = self._crear_card("🔁 Límite de Repetición")
-        rep_lay = QVBoxLayout(card_rep)
+        card_rep, rep_lay = self._crear_card("🔁 Límite de Repetición")
 
-        self.rb_rep_inf = QRadioButton("Repetir indefinidamente")
-        self.rb_rep_count = QRadioButton("Repetir cantidad fija")
+        rep_row = QHBoxLayout()
+        rep_row.setSpacing(16)
+        self.rb_rep_inf = QRadioButton("Repetir indefinidamente (hasta detener)")
+        self.rb_rep_count = QRadioButton("Repetir cantidad fija:")
         self.rb_rep_inf.setChecked(True)
         self.rb_rep_count.toggled.connect(self._on_repeat_mode_toggled)
 
         for rb in (self.rb_rep_inf, self.rb_rep_count):
             rb.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
-            rep_lay.addWidget(rb)
+            rep_row.addWidget(rb)
 
-        self.frame_rep_count = QFrame()
-        self.frame_rep_count.setVisible(False)
-        rc_lay = QHBoxLayout(self.frame_rep_count)
-        rc_lay.setContentsMargins(0, 4, 0, 4)
-        rc_lay.addWidget(QLabel("Cantidad:"))
         self.spin_target_count = QSpinBox()
         self.spin_target_count.setRange(1, 1000000)
         self.spin_target_count.setValue(50)
         self.spin_target_count.setSuffix(" veces")
+        self.spin_target_count.setEnabled(False)
         self.spin_target_count.setStyleSheet(self._estilo_input())
-        rc_lay.addWidget(self.spin_target_count)
-        rep_lay.addWidget(self.frame_rep_count)
+        rep_row.addWidget(self.spin_target_count)
+        rep_row.addStretch()
 
+        rep_lay.addLayout(rep_row)
         grid.addWidget(card_rep, 1, 0, 1, 2)
         main_layout.addLayout(grid)
 
         # ── 4. CONTROLES DE ACCIÓN CON 2 BOTONES INDEPENDIENTES ───────────────
         ctrl_card = QFrame()
+        ctrl_card.setObjectName("CtrlCard")
         ctrl_card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#CtrlCard {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 12px;
             }}
+            QLabel {{ border: none; background: transparent; }}
         """)
         c_lay = QHBoxLayout(ctrl_card)
-        c_lay.setSpacing(12)
+        c_lay.setContentsMargins(14, 12, 14, 12)
+        c_lay.setSpacing(14)
 
         hk_box = QVBoxLayout()
+        hk_box.setSpacing(4)
         lbl_hk = QLabel("Atajo Teclado:")
         lbl_hk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         hk_box.addWidget(lbl_hk)
@@ -345,7 +353,7 @@ class TabAutoKeyboard(QWidget):
 
         c_lay.addSpacing(6)
 
-        # BOTÓN 1: INICIAR (Habilitado inicialmente, se apaga al hacer clic)
+        # BOTÓN 1: INICIAR
         self.btn_start = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
         self.btn_start.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
         self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -354,7 +362,7 @@ class TabAutoKeyboard(QWidget):
         self.btn_start.clicked.connect(self.start_keyboard)
         c_lay.addWidget(self.btn_start, 1)
 
-        # BOTÓN 2: DETENER (Deshabilitado inicialmente, se enciende al iniciar)
+        # BOTÓN 2: DETENER
         self.btn_stop = QPushButton(f"⏹ DETENER ({self.current_hotkey})")
         self.btn_stop.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
         self.btn_stop.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -369,38 +377,54 @@ class TabAutoKeyboard(QWidget):
         # ── 5. ESTADÍSTICAS ───────────────────────────────────────────────────
         stats_frame = QFrame()
         stats_lay = QHBoxLayout(stats_frame)
+        stats_lay.setContentsMargins(6, 0, 6, 0)
         self.lbl_stats_count = QLabel("Pulsaciones enviadas: 0")
         self.lbl_stats_count.setFont(QFont(self.font_family, 9))
-        self.lbl_stats_count.setStyleSheet(f"color: {self.colores['fg_secundario']};")
+        self.lbl_stats_count.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none;")
         stats_lay.addWidget(self.lbl_stats_count)
+
+        stats_lay.addStretch()
 
         btn_reset = QPushButton("🔄 Reiniciar Contador")
         btn_reset.setStyleSheet(self._estilo_boton_secundario())
         btn_reset.clicked.connect(lambda: self.lbl_stats_count.setText("Pulsaciones enviadas: 0"))
         stats_lay.addWidget(btn_reset)
         main_layout.addWidget(stats_frame)
+        main_layout.addStretch()
 
         scroll.setWidget(container)
         root_layout.addWidget(scroll)
 
     # ── HELPERS ──────────────────────────────────────────────────────────────
-    def _crear_card(self, titulo: str) -> QFrame:
+    def _crear_card(self, titulo: str) -> tuple[QFrame, QVBoxLayout]:
         card = QFrame()
+        card.setObjectName("AutoCardFrame")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(f"""
-            QFrame {{
+            QFrame#AutoCardFrame {{
                 background-color: {self.colores['bg_secundario']};
-                border: 1px solid rgba(255, 255, 255, 0.05);
+                border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 8px;
-                padding: 10px;
+            }}
+            QLabel {{
+                border: none;
+                background: transparent;
             }}
         """)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(14, 12, 14, 12)
+        lay.setSpacing(10)
+
         lbl = QLabel(titulo)
-        lbl.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
-        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 4px;")
-        card.layout = QVBoxLayout(card)
-        card.layout.addWidget(lbl)
-        return card
+        lbl.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; background: transparent;")
+        lay.addWidget(lbl)
+        return card, lay
+
+    def _crear_label(self, texto: str) -> QLabel:
+        lbl = QLabel(texto)
+        lbl.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none; background: transparent; font-size: 11px;")
+        return lbl
 
     def _estilo_input(self) -> str:
         return f"""
@@ -409,7 +433,7 @@ class TabAutoKeyboard(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
                 border-radius: 6px;
-                padding: 4px 8px;
+                padding: 5px 8px;
                 font-size: 11px;
             }}
             QSpinBox:focus {{
@@ -470,7 +494,7 @@ class TabAutoKeyboard(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 6px;
-                padding: 4px 12px;
+                padding: 5px 12px;
                 font-size: 10px;
                 font-weight: 500;
             }}
@@ -483,7 +507,7 @@ class TabAutoKeyboard(QWidget):
         self.frame_text.setVisible(is_text)
 
     def _on_repeat_mode_toggled(self, checked: bool):
-        self.frame_rep_count.setVisible(self.rb_rep_count.isChecked())
+        self.spin_target_count.setEnabled(self.rb_rep_count.isChecked())
 
     def _on_target_key_changed(self, key_name: str, vk: int):
         self.target_key_name = key_name
@@ -507,14 +531,12 @@ class TabAutoKeyboard(QWidget):
             self.start_keyboard()
 
     def start_keyboard(self):
-        """Inicia el auto teclado: apaga el botón Iniciar y enciende Detener."""
         if self.worker.running:
             return
         self._aplicar_configuracion()
         self.worker.start()
 
     def stop_keyboard(self):
-        """Detiene el auto teclado: apaga el botón Detener y enciende Iniciar."""
         if not self.worker.running:
             return
         self.worker.stop()
@@ -550,7 +572,6 @@ class TabAutoKeyboard(QWidget):
             padding: 4px 12px;
         """)
 
-        # Separación clara de 2 botones: apagar Iniciar y encender Detener
         self.btn_start.setEnabled(False)
         self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=False))
 
@@ -569,7 +590,6 @@ class TabAutoKeyboard(QWidget):
             padding: 4px 12px;
         """)
 
-        # Separación clara de 2 botones: encender Iniciar y apagar Detener
         self.btn_start.setEnabled(True)
         self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=True))
 
