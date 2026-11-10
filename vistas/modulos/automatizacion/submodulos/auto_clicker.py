@@ -1,15 +1,16 @@
 """
 auto_clicker.py - Submódulo Pro de Auto Clicker de Alta Velocidad (Speed & OP AutoClicker).
-Soporta desde 1 hasta más de 1000 CPS, clic simple/doble/triple, posición fija o dinámica,
-y atajo global de teclado (F6) que funciona incluso con Multitool en segundo plano.
+Soporta desde 1 hasta más de 1000 CPS, atajos configurables interactivos por el usuario,
+opciones de jitter / dispersión anti-detección, modo mantener presionado y diseño responsivo.
 """
 
 import time
+import random
 import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QPushButton, QRadioButton, QButtonGroup, QSpinBox, QSlider,
-    QComboBox, QFrame, QGroupBox, QGraphicsDropShadowEffect
+    QPushButton, QRadioButton, QSpinBox, QSlider, QComboBox,
+    QFrame, QCheckBox, QScrollArea, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QObject
 from PyQt6.QtGui import QFont, QColor
@@ -18,6 +19,7 @@ from ..utils.input_simulator import (
     mouse_click, get_cursor_pos, set_cursor_pos,
     GlobalHotkeyListener, VK_MAP
 )
+from ..utils.hotkey_widget import HotkeyCaptureButton
 
 class ClickerSignals(QObject):
     clicked = pyqtSignal(int, float)  # total_clicks, actual_cps
@@ -37,12 +39,15 @@ class AutoClickerWorker:
         self.target_cps = 50.0
         self.interval_sec = 0.02
         self.button = "left"
-        self.click_type = "single"
-        self.repeat_mode = "infinite"  # "infinite" o "count"
+        self.click_type = "single"  # single, double, triple, hold_down
+        self.repeat_mode = "infinite"  # infinite o count
         self.target_count = 100
-        self.location_mode = "dynamic"  # "dynamic" o "fixed"
+        self.location_mode = "dynamic"  # dynamic o fixed
         self.fixed_x = 0
         self.fixed_y = 0
+        self.jitter_enabled = False
+        self.jitter_radius = 5  # pixels
+        self.jitter_time_pct = 15  # %
 
     def start(self):
         if self.running:
@@ -61,51 +66,77 @@ class AutoClickerWorker:
         last_stat_time = start_time
         clicks_in_window = 0
 
-        # Calcular delay inicial
-        if self.mode == "cps":
-            delay = 1.0 / max(1.0, float(self.target_cps))
-        else:
-            delay = max(0.001, self.interval_sec)
-
-        while self.running:
-            t0 = time.perf_counter()
-
-            # Posición del clic
+        # Manejo especial de Modo Mantener Presionado (Hold Mouse Button)
+        if self.click_type == "hold_down":
             if self.location_mode == "fixed":
-                mouse_click(self.button, self.click_type, self.fixed_x, self.fixed_y)
-            else:
-                mouse_click(self.button, self.click_type)
+                set_cursor_pos(self.fixed_x, self.fixed_y)
+            mouse_click(self.button, "hold_down")
+            while self.running:
+                time.sleep(0.05)
+            mouse_click(self.button, "release")
+            self.signals.stopped.emit()
+            return
 
-            total_clicks += 1
-            clicks_in_window += 1
+        # Calcular delay base
+        if self.mode == "cps":
+            base_delay = 1.0 / max(1.0, float(self.target_cps))
+        else:
+            base_delay = max(0.001, self.interval_sec)
 
-            # Medición de CPS real
-            now = time.perf_counter()
-            if now - last_stat_time >= 0.25:
-                curr_cps = clicks_in_window / (now - last_stat_time)
-                self.signals.clicked.emit(total_clicks, curr_cps)
-                clicks_in_window = 0
-                last_stat_time = now
+        try:
+            while self.running:
+                t0 = time.perf_counter()
 
-            # Comprobar límite de repeticiones
-            if self.repeat_mode == "count" and total_clicks >= self.target_count:
-                break
+                # Coordenadas con dispersión opcional
+                cx, cy = None, None
+                if self.location_mode == "fixed":
+                    cx, cy = self.fixed_x, self.fixed_y
+                    if self.jitter_enabled and self.jitter_radius > 0:
+                        cx += random.randint(-self.jitter_radius, self.jitter_radius)
+                        cy += random.randint(-self.jitter_radius, self.jitter_radius)
+                elif self.jitter_enabled and self.jitter_radius > 0:
+                    curr_x, curr_y = get_cursor_pos()
+                    cx = curr_x + random.randint(-self.jitter_radius, self.jitter_radius)
+                    cy = curr_y + random.randint(-self.jitter_radius, self.jitter_radius)
 
-            # Precisión milimétrica de timing
-            elapsed = time.perf_counter() - t0
-            sleep_needed = delay - elapsed
-            if sleep_needed > 0.002:
-                time.sleep(sleep_needed - 0.001)
-            # Micro-bucle para precisión sub-milisegundo en CPS alto
-            while (time.perf_counter() - t0) < delay:
-                pass
+                # Ejecutar Clic
+                mouse_click(self.button, self.click_type, cx, cy)
+                total_clicks += 1
+                clicks_in_window += 1
 
-        self.running = False
-        self.signals.stopped.emit()
+                # Actualización periódica de estadísticas (cada 250ms)
+                now = time.perf_counter()
+                if now - last_stat_time >= 0.25:
+                    curr_cps = clicks_in_window / (now - last_stat_time)
+                    self.signals.clicked.emit(total_clicks, curr_cps)
+                    clicks_in_window = 0
+                    last_stat_time = now
+
+                # Comprobar límite de repeticiones
+                if self.repeat_mode == "count" and total_clicks >= self.target_count:
+                    break
+
+                # Intervalo con factor de jitter aleatorio opcional
+                target_delay = base_delay
+                if self.jitter_enabled and self.jitter_time_pct > 0:
+                    var = self.jitter_time_pct / 100.0
+                    target_delay *= random.uniform(1.0 - var, 1.0 + var)
+
+                elapsed = time.perf_counter() - t0
+                sleep_needed = target_delay - elapsed
+                if sleep_needed > 0.002:
+                    time.sleep(sleep_needed - 0.001)
+                while (time.perf_counter() - t0) < target_delay:
+                    pass
+        finally:
+            if self.click_type == "hold_down":
+                mouse_click(self.button, "release")
+            self.running = False
+            self.signals.stopped.emit()
 
 
 class TabAutoClicker(QWidget):
-    """Interfaz gráfica de usuario para el Auto Clicker Pro."""
+    """Interfaz gráfica responsiva para el Auto Clicker Pro."""
     def __init__(self, parent=None, colores=None, context=None, **kwargs):
         super().__init__(parent)
         self.context = context
@@ -123,11 +154,10 @@ class TabAutoClicker(QWidget):
         self.signals.started.connect(self._on_worker_started)
         self.signals.stopped.connect(self._on_worker_stopped)
 
-        # Hotkey global (F6 por defecto)
+        # Hotkey global interactivo (F6 por defecto)
         self.hotkey_listener = GlobalHotkeyListener()
         self.current_hotkey = "F6"
 
-        # Timer para captura de posición
         self.picker_timer = QTimer(self)
         self.picker_countdown = 3
         self.picker_timer.timeout.connect(self._actualizar_cuenta_regresiva_picker)
@@ -136,32 +166,55 @@ class TabAutoClicker(QWidget):
         self._registrar_hotkey(self.current_hotkey)
 
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        # Área de Scroll Responsiva
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{ background-color: transparent; border: none; }}
+            QScrollBar:vertical {{
+                background: {self.colores['bg_principal']};
+                width: 8px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {self.colores['bg_terciario']};
+                border-radius: 4px;
+            }}
+        """)
+
+        container = QWidget()
+        main_layout = QVBoxLayout(container)
         main_layout.setContentsMargins(18, 18, 18, 18)
         main_layout.setSpacing(14)
 
-        # ── 1. HEADER CARD CON ESTADO ──────────────────────────────────────────
+        # ── 1. HEADER CARD ───────────────────────────────────────────────────
         header_card = QFrame()
         header_card.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 12px;
+                padding: 10px;
             }}
         """)
         h_lay = QHBoxLayout(header_card)
-        h_lay.setContentsMargins(10, 8, 10, 8)
+        h_lay.setContentsMargins(10, 6, 10, 6)
 
         lbl_title = QLabel("🖱️ Auto Clicker Pro (Speed & OP)")
-        lbl_title.setFont(QFont(self.font_family, 14, QFont.Weight.Bold))
+        lbl_title.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: white; border: none;")
         h_lay.addWidget(lbl_title)
 
         h_lay.addStretch()
 
         self.lbl_status = QLabel("● DETENIDO")
-        self.lbl_status.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        self.lbl_status.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.lbl_status.setStyleSheet(f"""
             background-color: rgba(248, 113, 113, 0.15);
             color: {self.colores['error']};
@@ -180,7 +233,6 @@ class TabAutoClicker(QWidget):
         card_freq = self._crear_card("⚡ Frecuencia y Velocidad de Clic")
         f_lay = QVBoxLayout(card_freq)
 
-        # Radio selector de modo
         r_box = QHBoxLayout()
         self.rb_mode_cps = QRadioButton("Modo CPS (Clicks por Segundo)")
         self.rb_mode_interval = QRadioButton("Modo Intervalo (Tiempo exacto)")
@@ -261,7 +313,7 @@ class TabAutoClicker(QWidget):
         # CARD B: Opciones de Clic
         card_options = self._crear_card("🖱️ Tipo y Botón de Clic")
         o_lay = QGridLayout(card_options)
-        o_lay.setSpacing(10)
+        o_lay.setSpacing(8)
 
         o_lay.addWidget(self._crear_label("Botón del Ratón:"), 0, 0)
         self.combo_btn = QComboBox()
@@ -271,7 +323,7 @@ class TabAutoClicker(QWidget):
 
         o_lay.addWidget(self._crear_label("Tipo de Clic:"), 1, 0)
         self.combo_type = QComboBox()
-        self.combo_type.addItems(["Simple (1x)", "Doble (2x)", "Triple (3x)"])
+        self.combo_type.addItems(["Simple (1x)", "Doble (2x)", "Triple (3x)", "Mantener Presionado (Hold)"])
         self.combo_type.setStyleSheet(self._estilo_input())
         o_lay.addWidget(self.combo_type, 1, 1)
 
@@ -318,7 +370,7 @@ class TabAutoClicker(QWidget):
         self.rb_rep_inf = QRadioButton("Repetir indefinidamente (hasta detener)")
         self.rb_rep_count = QRadioButton("Repetir cantidad fija de veces")
         self.rb_rep_inf.setChecked(True)
-        self.rb_rep_inf.toggled.connect(self._on_repeat_mode_toggled)
+        self.rb_rep_count.toggled.connect(self._on_repeat_mode_toggled)
 
         for rb in (self.rb_rep_inf, self.rb_rep_count):
             rb.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
@@ -335,41 +387,60 @@ class TabAutoClicker(QWidget):
 
         grid.addWidget(card_repeat, 1, 1)
 
+        # CARD E: Opciones Pro Anti-Detección (Jitter & Dispersión)
+        card_extra = self._crear_card("🛡️ Opciones Anti-Detección y Humanización")
+        ex_lay = QHBoxLayout(card_extra)
+        self.chk_jitter = QCheckBox("Dispersión aleatoria (Jitter)")
+        self.chk_jitter.setChecked(False)
+        self.chk_jitter.setStyleSheet(f"color: {self.colores['fg_principal']};")
+        ex_lay.addWidget(self.chk_jitter)
+
+        ex_lay.addWidget(QLabel("Radio:"))
+        self.spin_jitter_rad = self._crear_subspin(1, 50, " px", val=5)
+        ex_lay.addWidget(self.spin_jitter_rad)
+
+        ex_lay.addWidget(QLabel("Variación de tiempo:"))
+        self.spin_jitter_time = self._crear_subspin(5, 50, " %", val=15)
+        ex_lay.addWidget(self.spin_jitter_time)
+        ex_lay.addStretch()
+
+        grid.addWidget(card_extra, 2, 0, 1, 2)
         main_layout.addLayout(grid)
 
-        # ── 3. CONTROLES DE EJECUCIÓN Y BOTÓN GIGANTE ──────────────────────────
+        # ── 3. CONTROLES DE EJECUCIÓN CON CAPTURADOR DE ATAJO INTELIGENTE ─────
         ctrl_card = QFrame()
         ctrl_card.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 14px;
+                padding: 12px;
             }}
         """)
         c_lay = QHBoxLayout(ctrl_card)
+        c_lay.setSpacing(14)
 
-        # Selector de Hotkey
+        # Botón Interactivo de Captura de Hotkey (como OP AutoClicker)
         hk_box = QVBoxLayout()
-        lbl_hk = QLabel("Atajo Global de Inicio / Parada:")
+        lbl_hk = QLabel("Atajo Personalizado:")
         lbl_hk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         hk_box.addWidget(lbl_hk)
 
-        self.combo_hotkey = QComboBox()
-        self.combo_hotkey.addItems(["F6", "F7", "F8", "F9", "F10", "F11", "F12"])
-        self.combo_hotkey.setCurrentText("F6")
-        self.combo_hotkey.setStyleSheet(self._estilo_input())
-        self.combo_hotkey.currentTextChanged.connect(self._on_hotkey_changed)
-        hk_box.addWidget(self.combo_hotkey)
+        self.btn_hotkey = HotkeyCaptureButton(
+            default_key="F6",
+            listener=self.hotkey_listener,
+            colores=self.colores,
+            parent=self
+        )
+        self.btn_hotkey.hotkey_changed.connect(self._on_hotkey_captured)
+        hk_box.addWidget(self.btn_hotkey)
         c_lay.addLayout(hk_box)
 
-        c_lay.addSpacing(20)
-
         # Botón Principal de Inicio / Parada
-        self.btn_toggle = QPushButton("▶ INICIAR (F6)")
-        self.btn_toggle.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
+        self.btn_toggle = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
+        self.btn_toggle.setFont(QFont(self.font_family, 12, QFont.Weight.Bold))
         self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.setFixedHeight(50)
+        self.btn_toggle.setFixedHeight(48)
         self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
         self.btn_toggle.clicked.connect(self.toggle_clicker)
         c_lay.addWidget(self.btn_toggle, 1)
@@ -386,7 +457,7 @@ class TabAutoClicker(QWidget):
         self.lbl_stats_pos = QLabel("Ratón: X=0, Y=0")
 
         for lbl in (self.lbl_stats_clicks, self.lbl_stats_cps, self.lbl_stats_pos):
-            lbl.setFont(QFont(self.font_family, 10))
+            lbl.setFont(QFont(self.font_family, 9))
             lbl.setStyleSheet(f"color: {self.colores['fg_secundario']};")
             stats_lay.addWidget(lbl)
 
@@ -396,7 +467,10 @@ class TabAutoClicker(QWidget):
         stats_lay.addWidget(btn_reset_stats)
 
         main_layout.addWidget(stats_frame)
-        main_layout.addStretch()
+
+        # Añadir al contenedor
+        scroll.setWidget(container)
+        root_layout.addWidget(scroll)
 
         # Timer para actualizar posición del cursor en barra de estado
         self.mouse_pos_timer = QTimer(self)
@@ -406,6 +480,7 @@ class TabAutoClicker(QWidget):
     # ── HELPERS DE ESTILO Y UI ───────────────────────────────────────────────
     def _crear_card(self, titulo: str) -> QFrame:
         card = QFrame()
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.colores['bg_secundario']};
@@ -415,8 +490,8 @@ class TabAutoClicker(QWidget):
             }}
         """)
         lbl = QLabel(titulo)
-        lbl.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
-        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 6px;")
+        lbl.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 4px;")
         card.layout = QVBoxLayout(card)
         card.layout.addWidget(lbl)
         return card
@@ -547,7 +622,7 @@ class TabAutoClicker(QWidget):
         self.lbl_stats_clicks.setText("Clics: 0")
         self.lbl_stats_cps.setText("CPS Real: 0.0")
 
-    def _on_hotkey_changed(self, new_hk: str):
+    def _on_hotkey_captured(self, new_hk: str, vk: int):
         self._registrar_hotkey(new_hk)
 
     def _registrar_hotkey(self, hotkey_name: str):
@@ -558,7 +633,7 @@ class TabAutoClicker(QWidget):
         self.hotkey_listener.register_hotkey(hotkey_name, self.toggle_clicker)
 
     def toggle_clicker(self):
-        """Alterna el estado de ejecución (llamado desde botón o atajo de teclado)."""
+        """Alterna el estado de ejecución de forma segura en el hilo principal de Qt."""
         if self.worker.running:
             self.worker.stop()
         else:
@@ -586,7 +661,14 @@ class TabAutoClicker(QWidget):
 
         # Tipo
         type_idx = self.combo_type.currentIndex()
-        self.worker.click_type = "single" if type_idx == 0 else ("double" if type_idx == 1 else "triple")
+        if type_idx == 0:
+            self.worker.click_type = "single"
+        elif type_idx == 1:
+            self.worker.click_type = "double"
+        elif type_idx == 2:
+            self.worker.click_type = "triple"
+        else:
+            self.worker.click_type = "hold_down"
 
         # Posición
         if self.rb_pos_fixed.isChecked():
@@ -602,6 +684,11 @@ class TabAutoClicker(QWidget):
             self.worker.target_count = self.spin_target_count.value()
         else:
             self.worker.repeat_mode = "infinite"
+
+        # Jitter
+        self.worker.jitter_enabled = self.chk_jitter.isChecked()
+        self.worker.jitter_radius = self.spin_jitter_rad.value()
+        self.worker.jitter_time_pct = self.spin_jitter_time.value()
 
     def _on_worker_started(self):
         self.lbl_status.setText("● EN EJECUCIÓN")

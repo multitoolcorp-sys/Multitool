@@ -258,3 +258,4 @@ def load_macro_file(filepath: Path) -> tuple[str, list[MacroEvent]]:
     except Exception as e:
         print(f"Error cargando macro: {e}")
         return "Error", []
+

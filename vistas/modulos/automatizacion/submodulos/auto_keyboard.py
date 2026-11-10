@@ -1,7 +1,7 @@
 """
 auto_keyboard.py - Submódulo Pro de Automatización de Teclado (Auto Key Presser & Spammer).
 Permite automatizar pulsaciones de teclas individuales, secuencias de texto,
-modo mantener tecla (Hold Key para juegos/AFK) con intervalos humanizados y atajo global F7.
+modo mantener tecla (Hold Key para juegos/AFK) con intervalos humanizados y atajo configurable interactivo.
 """
 
 import time
@@ -9,16 +9,17 @@ import random
 import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QPushButton, QRadioButton, QComboBox, QSpinBox, QTextEdit,
-    QLineEdit, QFrame, QCheckBox
+    QPushButton, QRadioButton, QSpinBox, QTextEdit, QScrollArea,
+    QLineEdit, QFrame, QCheckBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont
 
 from ..utils.input_simulator import (
     key_press, key_down, key_up, type_text,
-    GlobalHotkeyListener, VK_MAP
+    GlobalHotkeyListener, VK_MAP, VK_TO_NAME
 )
+from ..utils.hotkey_widget import HotkeyCaptureButton
 
 class KeyboardSignals(QObject):
     pressed = pyqtSignal(int)  # total_presses
@@ -89,7 +90,6 @@ class AutoKeyboardWorker:
                 if self.repeat_mode == "count" and total >= self.target_count:
                     break
 
-                # Intervalo con factor de variación si humanize está activo
                 actual_delay = delay
                 if self.humanize:
                     actual_delay *= random.uniform(0.85, 1.25)
@@ -109,7 +109,7 @@ class AutoKeyboardWorker:
 
 
 class TabAutoKeyboard(QWidget):
-    """Interfaz gráfica de usuario para el Auto Teclado."""
+    """Interfaz gráfica responsiva para el Auto Teclado."""
     def __init__(self, parent=None, colores=None, context=None, **kwargs):
         super().__init__(parent)
         self.context = context
@@ -127,14 +127,39 @@ class TabAutoKeyboard(QWidget):
         self.signals.started.connect(self._on_worker_started)
         self.signals.stopped.connect(self._on_worker_stopped)
 
+        # Hotkey listener global
         self.hotkey_listener = GlobalHotkeyListener()
         self.current_hotkey = "F7"
+        self.target_key_name = "ESPACIO"
+        self.target_vk = 0x20
 
         self._init_ui()
         self._registrar_hotkey(self.current_hotkey)
 
     def _init_ui(self):
-        main_layout = QVBoxLayout(self)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setSpacing(0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{ background-color: transparent; border: none; }}
+            QScrollBar:vertical {{
+                background: {self.colores['bg_principal']};
+                width: 8px;
+                border-radius: 4px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {self.colores['bg_terciario']};
+                border-radius: 4px;
+            }}
+        """)
+
+        container = QWidget()
+        main_layout = QVBoxLayout(container)
         main_layout.setContentsMargins(18, 18, 18, 18)
         main_layout.setSpacing(14)
 
@@ -145,21 +170,21 @@ class TabAutoKeyboard(QWidget):
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 12px;
+                padding: 10px;
             }}
         """)
         h_lay = QHBoxLayout(header_card)
-        h_lay.setContentsMargins(10, 8, 10, 8)
+        h_lay.setContentsMargins(10, 6, 10, 6)
 
         lbl_title = QLabel("⌨️ Auto Teclado & Spammer Pro")
-        lbl_title.setFont(QFont(self.font_family, 14, QFont.Weight.Bold))
+        lbl_title.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: white; border: none;")
         h_lay.addWidget(lbl_title)
 
         h_lay.addStretch()
 
         self.lbl_status = QLabel("● DETENIDO")
-        self.lbl_status.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        self.lbl_status.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.lbl_status.setStyleSheet(f"""
             background-color: rgba(248, 113, 113, 0.15);
             color: {self.colores['error']};
@@ -188,23 +213,24 @@ class TabAutoKeyboard(QWidget):
         grid = QGridLayout()
         grid.setSpacing(12)
 
-        # CARD A: Tecla o Texto
+        # CARD A: Tecla Objetivo con Capturador Interactivo
         self.card_input = self._crear_card("🎯 Tecla Objetivo")
         in_lay = QVBoxLayout(self.card_input)
 
         self.frame_single_key = QFrame()
         sk_lay = QHBoxLayout(self.frame_single_key)
         sk_lay.setContentsMargins(0, 0, 0, 0)
-        sk_lay.addWidget(QLabel("Selecciona Tecla:"))
-        self.combo_keys = QComboBox()
-        # Agregar teclas estándar
-        teclas_comunes = [
-            "ESPACIO", "ENTER", "TAB", "SHIFT", "CTRL", "ALT", "ESCAPE",
-            "W", "A", "S", "D", "E", "Q", "R", "F", "C", "Z", "X", "1", "2", "3", "4", "5"
-        ]
-        self.combo_keys.addItems(teclas_comunes)
-        self.combo_keys.setStyleSheet(self._estilo_input())
-        sk_lay.addWidget(self.combo_keys, 1)
+        sk_lay.addWidget(QLabel("Tecla a pulsar:"))
+
+        # Botón para capturar cualquier tecla a presionar
+        self.btn_pick_key = HotkeyCaptureButton(
+            default_key="ESPACIO",
+            listener=self.hotkey_listener,
+            colores=self.colores,
+            parent=self
+        )
+        self.btn_pick_key.hotkey_changed.connect(self._on_target_key_changed)
+        sk_lay.addWidget(self.btn_pick_key, 1)
         in_lay.addWidget(self.frame_single_key)
 
         # Frame para Texto
@@ -223,11 +249,11 @@ class TabAutoKeyboard(QWidget):
                 padding: 6px;
             }}
         """)
-        self.edit_text.setFixedHeight(80)
+        self.edit_text.setFixedHeight(75)
         tx_lay.addWidget(self.edit_text)
         self.chk_enter_line = QCheckBox("Enviar 'Enter' al final de cada frase")
         self.chk_enter_line.setChecked(True)
-        self.chk_enter_line.setStyleSheet(f"color: {self.colores['fg_secundario']};")
+        self.chk_enter_line.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         tx_lay.addWidget(self.chk_enter_line)
         in_lay.addWidget(self.frame_text)
 
@@ -236,9 +262,9 @@ class TabAutoKeyboard(QWidget):
         # CARD B: Intervalo y Velocidad
         card_timing = self._crear_card("⏱️ Temporización y Retardo")
         t_lay = QGridLayout(card_timing)
-        t_lay.setSpacing(10)
+        t_lay.setSpacing(8)
 
-        t_lay.addWidget(QLabel("Intervalo entre pulsaciones:"), 0, 0)
+        t_lay.addWidget(QLabel("Intervalo:"), 0, 0)
         self.spin_interval = QSpinBox()
         self.spin_interval.setRange(2, 60000)
         self.spin_interval.setValue(50)
@@ -246,7 +272,7 @@ class TabAutoKeyboard(QWidget):
         self.spin_interval.setStyleSheet(self._estilo_input())
         t_lay.addWidget(self.spin_interval, 0, 1)
 
-        t_lay.addWidget(QLabel("Tiempo de sostenimiento (Hold):"), 1, 0)
+        t_lay.addWidget(QLabel("Sostenimiento (Hold):"), 1, 0)
         self.spin_hold = QSpinBox()
         self.spin_hold.setRange(1, 5000)
         self.spin_hold.setValue(10)
@@ -254,9 +280,9 @@ class TabAutoKeyboard(QWidget):
         self.spin_hold.setStyleSheet(self._estilo_input())
         t_lay.addWidget(self.spin_hold, 1, 1)
 
-        self.chk_humanize = QCheckBox("Simular factor humano (±15% jitter anti-bot)")
+        self.chk_humanize = QCheckBox("Factor humano (±15% jitter anti-bot)")
         self.chk_humanize.setChecked(False)
-        self.chk_humanize.setStyleSheet(f"color: {self.colores['fg_secundario']};")
+        self.chk_humanize.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         t_lay.addWidget(self.chk_humanize, 2, 0, 1, 2)
 
         grid.addWidget(card_timing, 0, 1)
@@ -268,7 +294,7 @@ class TabAutoKeyboard(QWidget):
         self.rb_rep_inf = QRadioButton("Repetir indefinidamente (hasta detener)")
         self.rb_rep_count = QRadioButton("Repetir cantidad fija")
         self.rb_rep_inf.setChecked(True)
-        self.rb_rep_inf.toggled.connect(self._on_repeat_mode_toggled)
+        self.rb_rep_count.toggled.connect(self._on_repeat_mode_toggled)
 
         for rb in (self.rb_rep_inf, self.rb_rep_count):
             rb.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
@@ -290,37 +316,38 @@ class TabAutoKeyboard(QWidget):
         grid.addWidget(card_rep, 1, 0, 1, 2)
         main_layout.addLayout(grid)
 
-        # ── 4. BOTÓN GIGANTE DE CONTROL ───────────────────────────────────────
+        # ── 4. BOTÓN DE CONTROL CON HOTKEY INTERACTIVO ────────────────────────
         ctrl_card = QFrame()
         ctrl_card.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 14px;
+                padding: 12px;
             }}
         """)
         c_lay = QHBoxLayout(ctrl_card)
+        c_lay.setSpacing(14)
 
         hk_box = QVBoxLayout()
-        lbl_hk = QLabel("Atajo Global de Inicio / Parada:")
+        lbl_hk = QLabel("Atajo de Inicio/Parada:")
         lbl_hk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         hk_box.addWidget(lbl_hk)
 
-        self.combo_hotkey = QComboBox()
-        self.combo_hotkey.addItems(["F7", "F6", "F8", "F9", "F10", "F11", "F12"])
-        self.combo_hotkey.setCurrentText("F7")
-        self.combo_hotkey.setStyleSheet(self._estilo_input())
-        self.combo_hotkey.currentTextChanged.connect(self._on_hotkey_changed)
-        hk_box.addWidget(self.combo_hotkey)
+        self.btn_hotkey = HotkeyCaptureButton(
+            default_key="F7",
+            listener=self.hotkey_listener,
+            colores=self.colores,
+            parent=self
+        )
+        self.btn_hotkey.hotkey_changed.connect(self._on_hotkey_captured)
+        hk_box.addWidget(self.btn_hotkey)
         c_lay.addLayout(hk_box)
 
-        c_lay.addSpacing(20)
-
-        self.btn_toggle = QPushButton("▶ INICIAR (F7)")
-        self.btn_toggle.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
+        self.btn_toggle = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
+        self.btn_toggle.setFont(QFont(self.font_family, 12, QFont.Weight.Bold))
         self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.setFixedHeight(50)
+        self.btn_toggle.setFixedHeight(48)
         self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
         self.btn_toggle.clicked.connect(self.toggle_keyboard)
         c_lay.addWidget(self.btn_toggle, 1)
@@ -331,7 +358,7 @@ class TabAutoKeyboard(QWidget):
         stats_frame = QFrame()
         stats_lay = QHBoxLayout(stats_frame)
         self.lbl_stats_count = QLabel("Pulsaciones enviadas: 0")
-        self.lbl_stats_count.setFont(QFont(self.font_family, 10))
+        self.lbl_stats_count.setFont(QFont(self.font_family, 9))
         self.lbl_stats_count.setStyleSheet(f"color: {self.colores['fg_secundario']};")
         stats_lay.addWidget(self.lbl_stats_count)
 
@@ -341,11 +368,13 @@ class TabAutoKeyboard(QWidget):
         stats_lay.addWidget(btn_reset)
         main_layout.addWidget(stats_frame)
 
-        main_layout.addStretch()
+        scroll.setWidget(container)
+        root_layout.addWidget(scroll)
 
     # ── HELPERS ──────────────────────────────────────────────────────────────
     def _crear_card(self, titulo: str) -> QFrame:
         card = QFrame()
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(f"""
             QFrame {{
                 background-color: {self.colores['bg_secundario']};
@@ -355,15 +384,15 @@ class TabAutoKeyboard(QWidget):
             }}
         """)
         lbl = QLabel(titulo)
-        lbl.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
-        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 6px;")
+        lbl.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
+        lbl.setStyleSheet(f"color: {self.colores['acento']}; border: none; margin-bottom: 4px;")
         card.layout = QVBoxLayout(card)
         card.layout.addWidget(lbl)
         return card
 
     def _estilo_input(self) -> str:
         return f"""
-            QSpinBox, QComboBox {{
+            QSpinBox {{
                 background-color: {self.colores['bg_principal']};
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
@@ -371,7 +400,7 @@ class TabAutoKeyboard(QWidget):
                 padding: 5px 8px;
                 font-size: 11px;
             }}
-            QSpinBox:focus, QComboBox:focus {{
+            QSpinBox:focus {{
                 border: 1px solid {self.colores['acento']};
             }}
         """
@@ -422,7 +451,11 @@ class TabAutoKeyboard(QWidget):
     def _on_repeat_mode_toggled(self, checked: bool):
         self.frame_rep_count.setVisible(self.rb_rep_count.isChecked())
 
-    def _on_hotkey_changed(self, new_hk: str):
+    def _on_target_key_changed(self, key_name: str, vk: int):
+        self.target_key_name = key_name
+        self.target_vk = vk if vk else VK_MAP.get(key_name.upper(), 0x20)
+
+    def _on_hotkey_captured(self, new_hk: str, vk: int):
         self._registrar_hotkey(new_hk)
 
     def _registrar_hotkey(self, hotkey_name: str):
@@ -447,8 +480,7 @@ class TabAutoKeyboard(QWidget):
         else:
             self.worker.mode = "hold"
 
-        key_str = self.combo_keys.currentText().upper()
-        self.worker.vk_code = VK_MAP.get(key_str, 0x20)
+        self.worker.vk_code = self.target_vk
         self.worker.text_to_type = self.edit_text.toPlainText()
         self.worker.press_enter_after_line = self.chk_enter_line.isChecked()
         self.worker.interval_ms = self.spin_interval.value()

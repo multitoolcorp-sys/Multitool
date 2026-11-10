@@ -195,3 +195,4 @@ class TabAutomatizacion(QWidget):
                     inst.cleanup()
                 except Exception:
                     pass
+

@@ -1,7 +1,8 @@
 """
 input_simulator.py
 Motor de simulación de periféricos de ultra-baja latencia y captura global
-para Windows usando la API Win32 nativa (user32.dll).
+para Windows usando la API Win32 nativa (user32.dll), con puente de señales
+100% seguro para PyQt6 para evitar congelamientos de la interfaz gráfica.
 """
 
 import sys
@@ -9,6 +10,7 @@ import time
 import ctypes
 from ctypes import wintypes, byref, Structure, c_long
 import threading
+from PyQt6.QtCore import QObject, pyqtSignal
 
 # Cargar User32
 try:
@@ -33,26 +35,46 @@ KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
 KEYEVENTF_SCANCODE = 0x0008
 
-# Mapeo de Códigos de Teclas Virtuales (VK)
-VK_MAP = {
-    "F1": 0x70, "F2": 0x71, "F3": 0x72, "F4": 0x73,
-    "F5": 0x74, "F6": 0x75, "F7": 0x76, "F8": 0x77,
-    "F9": 0x78, "F10": 0x79, "F11": 0x7A, "F12": 0x7B,
-    "ESPACIO": 0x20, "SPACE": 0x20,
-    "ENTER": 0x0D, "INTRO": 0x0D,
-    "ESCAPE": 0x1B, "ESC": 0x1B,
-    "TAB": 0x09, "BACKSPACE": 0x08,
-    "SHIFT": 0x10, "CONTROL": 0x11, "CTRL": 0x11, "ALT": 0x12,
-    "PAUSE": 0x13, "CAPSLOCK": 0x14,
-    "PAGEUP": 0x21, "PAGEDOWN": 0x22, "END": 0x23, "HOME": 0x24,
-    "LEFT": 0x25, "UP": 0x26, "RIGHT": 0x27, "DOWN": 0x28,
-    "INSERT": 0x2D, "DELETE": 0x2E,
+# Mapeo Completo de Códigos Virtuales (VK) a Nombres
+VK_TO_NAME = {
+    0x08: "BACKSPACE", 0x09: "TAB", 0x0D: "ENTER", 0x10: "SHIFT",
+    0x11: "CTRL", 0x12: "ALT", 0x13: "PAUSE", 0x14: "BLOQ MAYUS",
+    0x1B: "ESC", 0x20: "ESPACIO", 0x21: "AV PAG", 0x22: "RE PAG",
+    0x23: "FIN", 0x24: "INICIO", 0x25: "IZQUIERDA", 0x26: "ARRIBA",
+    0x27: "DERECHA", 0x28: "ABAJO", 0x2C: "IMPR PANT", 0x2D: "INSERT",
+    0x2E: "SUPR",
 }
-# Añadir letras A-Z (0x41 - 0x5A) y números 0-9 (0x30 - 0x39)
+
+# F1 - F12
+for i in range(1, 13):
+    VK_TO_NAME[0x6F + i] = f"F{i}"
+
+# Letras A-Z
 for i in range(ord('A'), ord('Z') + 1):
-    VK_MAP[chr(i)] = i
+    VK_TO_NAME[i] = chr(i)
+
+# Números 0-9
 for i in range(ord('0'), ord('9') + 1):
-    VK_MAP[chr(i)] = i
+    VK_TO_NAME[i] = chr(i)
+
+# Teclado Numérico (NumPad 0-9)
+for i in range(10):
+    VK_TO_NAME[0x60 + i] = f"NUMPAD {i}"
+VK_TO_NAME[0x6A] = "NUMPAD *"
+VK_TO_NAME[0x6B] = "NUMPAD +"
+VK_TO_NAME[0x6D] = "NUMPAD -"
+VK_TO_NAME[0x6E] = "NUMPAD ."
+VK_TO_NAME[0x6F] = "NUMPAD /"
+
+# Mapeo inverso de Nombres a VK
+VK_MAP = {v: k for k, v in VK_TO_NAME.items()}
+# Aliases comunes
+VK_MAP.update({
+    "SPACE": 0x20, "INTRO": 0x0D, "ESCAPE": 0x1B, "DELETE": 0x2E,
+    "CONTROL": 0x11, "MAYUS": 0x10, "CAPSLOCK": 0x14, "PGUP": 0x21,
+    "PGDN": 0x22, "LEFT": 0x25, "UP": 0x26, "RIGHT": 0x27, "DOWN": 0x28,
+})
+
 
 class POINT(Structure):
     _fields_ = [("x", c_long), ("y", c_long)]
@@ -77,7 +99,7 @@ def mouse_click(button: str = "left", click_type: str = "single", x: int = None,
     """
     Ejecuta un clic del ratón de forma instantánea.
     - button: 'left', 'right', 'middle'
-    - click_type: 'single', 'double', 'triple'
+    - click_type: 'single', 'double', 'triple', 'hold_down', 'release'
     - x, y: opcionales, si se especifican se mueve el cursor antes de hacer clic.
     """
     if not user32:
@@ -95,6 +117,13 @@ def mouse_click(button: str = "left", click_type: str = "single", x: int = None,
         down_flag, up_flag = MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP
     else:
         down_flag, up_flag = MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP
+
+    if click_type == "hold_down":
+        user32.mouse_event(down_flag, 0, 0, 0, 0)
+        return
+    elif click_type == "release":
+        user32.mouse_event(up_flag, 0, 0, 0, 0)
+        return
 
     clicks = 1
     if click_type == "double":
@@ -158,7 +187,6 @@ def send_char(char: str):
         if shift:
             key_up(VK_MAP["SHIFT"])
     else:
-        # Fallback a Unicode event
         user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE, 0)
         user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0)
 
@@ -176,19 +204,31 @@ def type_text(text: str, delay: float = 0.01):
             time.sleep(delay)
 
 
+class HotkeySignals(QObject):
+    """Puente de señales Qt seguro para cruzar desde el hilo daemon al hilo principal de la GUI."""
+    triggered = pyqtSignal(int, str)  # vk_code, key_name
+    key_captured = pyqtSignal(int, str)  # Para captura interactiva de atajos
+
+
 class GlobalHotkeyListener:
     """
-    Monitor de atajos de teclado globales en segundo plano para Windows.
-    Permite capturar teclas como F6, F7, F8, F9 en cualquier ventana del SO.
+    Monitor global de atajos de teclado en segundo plano para Windows.
+    Emite señales Qt para garantizar que la UI se actualice de forma 100%
+    segura en el hilo principal sin bloqueos ni errores de setParent.
     """
     def __init__(self):
+        self.signals = HotkeySignals()
         self._callbacks = {}  # {vk_code: callable}
         self._running = False
         self._thread = None
         self._pressed_states = {}
+        self._capturing_next_key = False
+
+        # Conectar la señal de disparo con el despachador
+        self.signals.triggered.connect(self._dispatch_callback)
 
     def register_hotkey(self, key_name_or_vk, callback):
-        """Registra un atajo de teclado por nombre ('F6') o por código VK."""
+        """Registra un atajo de teclado por nombre ('F6', 'X', etc.) o código VK."""
         if isinstance(key_name_or_vk, str):
             vk = VK_MAP.get(key_name_or_vk.upper(), None)
         else:
@@ -210,6 +250,20 @@ class GlobalHotkeyListener:
             del self._callbacks[vk]
             self._pressed_states.pop(vk, None)
 
+    def unregister_all(self):
+        """Elimina todos los atajos registrados."""
+        self._callbacks.clear()
+        self._pressed_states.clear()
+
+    def start_capturing(self):
+        """Pone al listener en modo captura para registrar la próxima tecla pulsada."""
+        self._capturing_next_key = True
+        self.start()
+
+    def cancel_capturing(self):
+        """Cancela el modo de captura interactiva."""
+        self._capturing_next_key = False
+
     def start(self):
         """Inicia el hilo de monitoreo si no está activo."""
         if self._running or not user32:
@@ -224,25 +278,48 @@ class GlobalHotkeyListener:
 
     def _loop(self):
         while self._running:
+            # 1. Modo Captura Interactiva de Tecla
+            if self._capturing_next_key:
+                captured = False
+                for vk in list(VK_TO_NAME.keys()):
+                    state = user32.GetAsyncKeyState(vk)
+                    if (state & 0x8000) != 0:
+                        self._capturing_next_key = False
+                        key_name = VK_TO_NAME.get(vk, f"VK_{vk}")
+                        self.signals.key_captured.emit(vk, key_name)
+                        captured = True
+                        time.sleep(0.2)  # Pausa para evitar rebote
+                        break
+                if captured:
+                    continue
+                time.sleep(0.015)
+                continue
+
+            # 2. Monitoreo Normal de Atajos Registrados
             if not self._callbacks:
                 time.sleep(0.05)
                 continue
 
-            for vk, callback in list(self._callbacks.items()):
-                # GetAsyncKeyState devuelve negativo si la tecla está presionada en este instante
+            for vk in list(self._callbacks.keys()):
                 state = user32.GetAsyncKeyState(vk)
                 is_pressed = (state & 0x8000) != 0
 
                 prev_state = self._pressed_states.get(vk, False)
                 if is_pressed and not prev_state:
-                    # Flanco ascendente (se acaba de presionar)
                     self._pressed_states[vk] = True
-                    try:
-                        threading.Thread(target=callback, daemon=True).start()
-                    except Exception as e:
-                        print(f"[Hotkey Error] Callback falló: {e}")
+                    key_name = VK_TO_NAME.get(vk, f"VK_{vk}")
+                    # Emitir a través de la señal Qt hacia el hilo GUI principal
+                    self.signals.triggered.emit(vk, key_name)
                 elif not is_pressed and prev_state:
-                    # Se soltó la tecla
                     self._pressed_states[vk] = False
 
-            time.sleep(0.015)  # 15 ms polling (~66 Hz) -> 0% CPU pero respuesta instantánea
+            time.sleep(0.015)
+
+    def _dispatch_callback(self, vk: int, key_name: str):
+        """Se ejecuta en el hilo principal de Qt de forma 100% segura."""
+        cb = self._callbacks.get(vk)
+        if cb:
+            try:
+                cb()
+            except Exception as e:
+                print(f"[GlobalHotkeyListener] Error ejecutando callback para {key_name}: {e}")

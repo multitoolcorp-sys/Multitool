@@ -1,7 +1,7 @@
 """
 macro_recorder.py - Submódulo de Grabación y Reproducción de Macros para Ratón y Teclado.
 Permite grabar secuencias de acciones en tiempo real, editarlas, guardarlas en archivos .mtmacro,
-y reproducirlas con aceleradores de velocidad y bucles con atajos globales F8 y F9.
+y reproducirlas con aceleradores de velocidad y bucles con atajos interactivos configurables.
 """
 
 import time
@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
     QSpinBox, QDoubleSpinBox, QCheckBox, QFrame, QFileDialog,
-    QProgressBar, QMessageBox
+    QProgressBar, QMessageBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QColor
@@ -20,6 +20,7 @@ from ..utils.macro_engine import (
     save_macro_file, load_macro_file
 )
 from ..utils.input_simulator import GlobalHotkeyListener
+from ..utils.hotkey_widget import HotkeyCaptureButton
 
 class MacroSignals(QObject):
     event_recorded = pyqtSignal(object)
@@ -28,7 +29,7 @@ class MacroSignals(QObject):
 
 
 class TabMacroRecorder(QWidget):
-    """Interfaz gráfica para el Grabador y Reproductor de Macros."""
+    """Interfaz gráfica responsiva para el Grabador y Reproductor de Macros."""
     def __init__(self, parent=None, colores=None, context=None, **kwargs):
         super().__init__(parent)
         self.context = context
@@ -39,27 +40,28 @@ class TabMacroRecorder(QWidget):
         }
         self.font_family = "Segoe UI"
 
-        self.signals = MacroSignals()
+        self.signals = MacroSignals(self)
         self.recorder = MacroRecorder()
         self.player = MacroPlayer()
 
         self.recorded_events: list[MacroEvent] = []
 
-        # Conectar señales
-        self.signals.event_recorded.connect(self._on_event_recorded_ui)
-        self.signals.playback_progress.connect(self._on_playback_progress_ui)
-        self.signals.playback_finished.connect(self._on_playback_finished_ui)
+        # Conectar señales con QueuedConnection estricto para evitar problemas de hilos cruzados
+        self.signals.event_recorded.connect(self._on_event_recorded_ui, Qt.ConnectionType.QueuedConnection)
+        self.signals.playback_progress.connect(self._on_playback_progress_ui, Qt.ConnectionType.QueuedConnection)
+        self.signals.playback_finished.connect(self._on_playback_finished_ui, Qt.ConnectionType.QueuedConnection)
 
         self.recorder.on_event_recorded = lambda evt: self.signals.event_recorded.emit(evt)
         self.player.on_progress = lambda curr, total: self.signals.playback_progress.emit(curr, total)
         self.player.on_finished = lambda: self.signals.playback_finished.emit()
 
-        # Hotkeys globales (F8 para Grabar, F9 para Reproducir)
+        # Hotkeys globales interactivos
         self.hotkey_listener = GlobalHotkeyListener()
-        self.hotkey_listener.register_hotkey("F8", self.toggle_record)
-        self.hotkey_listener.register_hotkey("F9", self.toggle_playback)
+        self.hotkey_record = "F8"
+        self.hotkey_play = "F9"
 
         self._init_ui()
+        self._registrar_hotkeys()
 
     def _init_ui(self):
         main_layout = QVBoxLayout(self)
@@ -73,21 +75,21 @@ class TabMacroRecorder(QWidget):
                 background-color: {self.colores['bg_secundario']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 10px;
-                padding: 12px;
+                padding: 10px;
             }}
         """)
         h_lay = QHBoxLayout(header_card)
-        h_lay.setContentsMargins(10, 8, 10, 8)
+        h_lay.setContentsMargins(10, 6, 10, 6)
 
         lbl_title = QLabel("🎬 Grabador y Reproductor de Macros")
-        lbl_title.setFont(QFont(self.font_family, 14, QFont.Weight.Bold))
+        lbl_title.setFont(QFont(self.font_family, 13, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: white; border: none;")
         h_lay.addWidget(lbl_title)
 
         h_lay.addStretch()
 
         self.lbl_status = QLabel("● INACTIVO")
-        self.lbl_status.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        self.lbl_status.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.lbl_status.setStyleSheet(f"""
             background-color: rgba(255, 255, 255, 0.06);
             color: {self.colores['fg_secundario']};
@@ -112,34 +114,56 @@ class TabMacroRecorder(QWidget):
         cb_lay.setSpacing(8)
 
         # Botón Grabar
-        self.btn_record = QPushButton("🔴 Grabar (F8)")
-        self.btn_record.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        self.btn_record = QPushButton(f"🔴 Grabar ({self.hotkey_record})")
+        self.btn_record.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.btn_record.setStyleSheet(self._estilo_btn_record(activo=False))
         self.btn_record.clicked.connect(self.toggle_record)
         cb_lay.addWidget(self.btn_record)
 
+        # Botón Atajo de Grabación
+        self.btn_hk_record = HotkeyCaptureButton(
+            default_key="F8",
+            listener=self.hotkey_listener,
+            colores=self.colores,
+            parent=self
+        )
+        self.btn_hk_record.hotkey_changed.connect(self._on_record_hk_changed)
+        cb_lay.addWidget(self.btn_hk_record)
+
+        cb_lay.addSpacing(6)
+
         # Botón Reproducir
-        self.btn_play = QPushButton("▶ Reproducir (F9)")
-        self.btn_play.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        self.btn_play = QPushButton(f"▶ Reproducir ({self.hotkey_play})")
+        self.btn_play.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.btn_play.setStyleSheet(self._estilo_btn_play(activo=False))
         self.btn_play.clicked.connect(self.toggle_playback)
         cb_lay.addWidget(self.btn_play)
 
-        cb_lay.addSpacing(12)
+        # Botón Atajo de Reproducción
+        self.btn_hk_play = HotkeyCaptureButton(
+            default_key="F9",
+            listener=self.hotkey_listener,
+            colores=self.colores,
+            parent=self
+        )
+        self.btn_hk_play.hotkey_changed.connect(self._on_play_hk_changed)
+        cb_lay.addWidget(self.btn_hk_play)
+
+        cb_lay.addStretch()
 
         # Opciones de Grabación
         self.chk_record_clicks = QCheckBox("Clics")
         self.chk_record_clicks.setChecked(True)
         self.chk_record_keys = QCheckBox("Teclas")
         self.chk_record_keys.setChecked(True)
-        self.chk_record_moves = QCheckBox("Movimiento")
+        self.chk_record_moves = QCheckBox("Movimientos")
         self.chk_record_moves.setChecked(False)
 
         for chk in (self.chk_record_clicks, self.chk_record_keys, self.chk_record_moves):
             chk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
             cb_lay.addWidget(chk)
 
-        cb_lay.addStretch()
+        cb_lay.addSpacing(8)
 
         # Botones de Archivo
         btn_save = QPushButton("💾 Guardar")
@@ -170,9 +194,8 @@ class TabMacroRecorder(QWidget):
             }}
         """)
         pc_lay = QHBoxLayout(play_cfg_frame)
-        pc_lay.setSpacing(14)
+        pc_lay.setSpacing(12)
 
-        # Velocidad
         pc_lay.addWidget(QLabel("Velocidad:"))
         self.combo_speed = QComboBox()
         self.combo_speed.addItems(["0.25x", "0.5x", "1.0x (Normal)", "1.5x", "2.0x", "3.0x", "5.0x", "10.0x"])
@@ -180,8 +203,7 @@ class TabMacroRecorder(QWidget):
         self.combo_speed.setStyleSheet(self._estilo_combo())
         pc_lay.addWidget(self.combo_speed)
 
-        # Repeticiones
-        pc_lay.addWidget(QLabel("Repetir bucle:"))
+        pc_lay.addWidget(QLabel("Bucle:"))
         self.spin_loops = QSpinBox()
         self.spin_loops.setRange(1, 10000)
         self.spin_loops.setValue(1)
@@ -189,8 +211,7 @@ class TabMacroRecorder(QWidget):
         self.spin_loops.setStyleSheet(self._estilo_combo())
         pc_lay.addWidget(self.spin_loops)
 
-        # Espera entre bucles
-        pc_lay.addWidget(QLabel("Espera entre ciclos:"))
+        pc_lay.addWidget(QLabel("Espera:"))
         self.spin_loop_delay = QDoubleSpinBox()
         self.spin_loop_delay.setRange(0.0, 60.0)
         self.spin_loop_delay.setValue(0.5)
@@ -200,11 +221,10 @@ class TabMacroRecorder(QWidget):
 
         pc_lay.addStretch()
 
-        # Barra de progreso
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-        self.progress_bar.setFixedWidth(160)
+        self.progress_bar.setFixedWidth(140)
         self.progress_bar.setStyleSheet(f"""
             QProgressBar {{
                 background-color: {self.colores['bg_principal']};
@@ -335,6 +355,23 @@ class TabMacroRecorder(QWidget):
         """
 
     # ── ACCIONES ─────────────────────────────────────────────────────────────
+    def _registrar_hotkeys(self):
+        self.hotkey_listener.unregister_all()
+        if self.hotkey_record:
+            self.hotkey_listener.register_hotkey(self.hotkey_record, self.toggle_record)
+        if self.hotkey_play:
+            self.hotkey_listener.register_hotkey(self.hotkey_play, self.toggle_playback)
+
+    def _on_record_hk_changed(self, new_key: str, vk: int):
+        self.hotkey_record = new_key
+        self.btn_record.setText(f"🔴 Grabar ({new_key})" if not self.recorder.is_recording() else f"⏹ Detener ({new_key})")
+        self._registrar_hotkeys()
+
+    def _on_play_hk_changed(self, new_key: str, vk: int):
+        self.hotkey_play = new_key
+        self.btn_play.setText(f"▶ Reproducir ({new_key})" if not self.player.is_playing() else f"⏹ Detener ({new_key})")
+        self._registrar_hotkeys()
+
     def toggle_record(self):
         if self.recorder.is_recording():
             self._detener_grabacion()
@@ -346,7 +383,7 @@ class TabMacroRecorder(QWidget):
             self.player.stop()
 
         self._limpiar_macro()
-        self.btn_record.setText("⏹ Detener Grabación (F8)")
+        self.btn_record.setText(f"⏹ Detener ({self.hotkey_record})")
         self.btn_record.setStyleSheet(self._estilo_btn_record(activo=True))
         self.btn_play.setEnabled(False)
 
@@ -367,7 +404,7 @@ class TabMacroRecorder(QWidget):
 
     def _detener_grabacion(self):
         self.recorded_events = self.recorder.stop_recording()
-        self.btn_record.setText("🔴 Grabar (F8)")
+        self.btn_record.setText(f"🔴 Grabar ({self.hotkey_record})")
         self.btn_record.setStyleSheet(self._estilo_btn_record(activo=False))
         self.btn_play.setEnabled(True)
 
@@ -394,7 +431,6 @@ class TabMacroRecorder(QWidget):
         if self.recorder.is_recording():
             self._detener_grabacion()
 
-        # Parsear velocidad
         spd_text = self.combo_speed.currentText().split()[0].replace("x", "")
         try:
             speed = float(spd_text)
@@ -404,7 +440,7 @@ class TabMacroRecorder(QWidget):
         loops = self.spin_loops.value()
         delay = self.spin_loop_delay.value()
 
-        self.btn_play.setText("⏹ Detener Reproducción (F9)")
+        self.btn_play.setText(f"⏹ Detener ({self.hotkey_play})")
         self.btn_play.setStyleSheet(self._estilo_btn_play(activo=True))
         self.btn_record.setEnabled(False)
 
@@ -432,7 +468,7 @@ class TabMacroRecorder(QWidget):
                 self.table.selectRow(current - 1)
 
     def _on_playback_finished_ui(self):
-        self.btn_play.setText("▶ Reproducir (F9)")
+        self.btn_play.setText(f"▶ Reproducir ({self.hotkey_play})")
         self.btn_play.setStyleSheet(self._estilo_btn_play(activo=False))
         self.btn_record.setEnabled(True)
         self.progress_bar.setValue(100)
@@ -447,6 +483,7 @@ class TabMacroRecorder(QWidget):
         """)
 
     def _on_event_recorded_ui(self, evt: MacroEvent):
+        """Se ejecuta con total seguridad en el hilo principal de Qt gracias a QueuedConnection."""
         row = self.table.rowCount()
         self.table.insertRow(row)
 
