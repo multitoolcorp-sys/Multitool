@@ -119,3 +119,4 @@ class HotkeyCaptureButton(QPushButton):
         name = text if text and text.isalnum() else event.keyCombination().key().name.replace("Key_", "")
         self._on_global_key_captured(0, name)
         event.accept()
+

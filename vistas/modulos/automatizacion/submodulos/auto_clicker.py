@@ -1,7 +1,7 @@
 """
 auto_clicker.py - Submódulo Pro de Auto Clicker de Alta Velocidad (Speed & OP AutoClicker).
-Soporta desde 1 hasta más de 1000 CPS, atajos configurables interactivos por el usuario,
-opciones de jitter / dispersión anti-detección, modo mantener presionado y diseño responsivo.
+Cuenta con 2 botones separados para Iniciar y Detener (evita clics accidentales),
+atajo interactivo, perfiles/presets preconfigurados, bloqueo de cursor, jitter y modo hold-to-click.
 """
 
 import time
@@ -17,6 +17,7 @@ from PyQt6.QtGui import QFont, QColor
 
 from ..utils.input_simulator import (
     mouse_click, get_cursor_pos, set_cursor_pos,
+    lock_cursor_to_point, unlock_cursor, play_sound_feedback,
     GlobalHotkeyListener, VK_MAP
 )
 from ..utils.hotkey_widget import HotkeyCaptureButton
@@ -48,6 +49,7 @@ class AutoClickerWorker:
         self.jitter_enabled = False
         self.jitter_radius = 5  # pixels
         self.jitter_time_pct = 15  # %
+        self.lock_cursor = False
 
     def start(self):
         if self.running:
@@ -66,6 +68,10 @@ class AutoClickerWorker:
         last_stat_time = start_time
         clicks_in_window = 0
 
+        # Bloquear cursor si está habilitado en modo coordenadas fijas
+        if self.lock_cursor and self.location_mode == "fixed":
+            lock_cursor_to_point(self.fixed_x, self.fixed_y)
+
         # Manejo especial de Modo Mantener Presionado (Hold Mouse Button)
         if self.click_type == "hold_down":
             if self.location_mode == "fixed":
@@ -74,6 +80,8 @@ class AutoClickerWorker:
             while self.running:
                 time.sleep(0.05)
             mouse_click(self.button, "release")
+            if self.lock_cursor:
+                unlock_cursor()
             self.signals.stopped.emit()
             return
 
@@ -131,19 +139,21 @@ class AutoClickerWorker:
         finally:
             if self.click_type == "hold_down":
                 mouse_click(self.button, "release")
+            if self.lock_cursor:
+                unlock_cursor()
             self.running = False
             self.signals.stopped.emit()
 
 
 class TabAutoClicker(QWidget):
-    """Interfaz gráfica responsiva para el Auto Clicker Pro."""
+    """Interfaz gráfica responsiva para el Auto Clicker Pro con 2 botones de acción independientes."""
     def __init__(self, parent=None, colores=None, context=None, **kwargs):
         super().__init__(parent)
         self.context = context
         self.colores = colores or {
             "bg_principal": "#121218", "bg_secundario": "#1E1E2E", "bg_terciario": "#2D2D3D",
             "fg_principal": "#E2E2E2", "fg_secundario": "#AAB0B8", "acento": "#6366F1",
-            "acento_hover": "#818CF8", "exito": "#34D399", "error": "#F87171",
+            "acento_hover": "#818CF8", "exito": "#10B981", "error": "#EF4444",
         }
         self.font_family = "Segoe UI"
 
@@ -191,7 +201,7 @@ class TabAutoClicker(QWidget):
         container = QWidget()
         main_layout = QVBoxLayout(container)
         main_layout.setContentsMargins(18, 18, 18, 18)
-        main_layout.setSpacing(14)
+        main_layout.setSpacing(12)
 
         # ── 1. HEADER CARD ───────────────────────────────────────────────────
         header_card = QFrame()
@@ -213,10 +223,31 @@ class TabAutoClicker(QWidget):
 
         h_lay.addStretch()
 
+        # Selector de Presets Rápidos
+        lbl_preset = QLabel("⚡ Perfil:")
+        lbl_preset.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none;")
+        h_lay.addWidget(lbl_preset)
+
+        self.combo_presets = QComboBox()
+        self.combo_presets.addItems([
+            "Personalizado",
+            "⚔️ Minecraft PvP (16 CPS)",
+            "🤖 Roblox AFK (5 CPS)",
+            "⚡ Ultra Speed (500 CPS)",
+            "🎯 Doble Clic Rápido (12 CPS)",
+            "🖱️ Clic Derecho Spammer (20 CPS)",
+            "⛏️ Modo Minero (Hold)"
+        ])
+        self.combo_presets.setStyleSheet(self._estilo_input())
+        self.combo_presets.currentIndexChanged.connect(self._aplicar_preset)
+        h_lay.addWidget(self.combo_presets)
+
+        h_lay.addSpacing(10)
+
         self.lbl_status = QLabel("● DETENIDO")
         self.lbl_status.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(248, 113, 113, 0.15);
+            background-color: rgba(239, 68, 68, 0.15);
             color: {self.colores['error']};
             border: 1px solid {self.colores['error']};
             border-radius: 6px;
@@ -361,14 +392,32 @@ class TabAutoClicker(QWidget):
         fc_lay.addWidget(self.btn_pick_pos)
 
         p_lay.addWidget(self.frame_fixed_coords)
+
+        self.chk_lock_cursor = QCheckBox("Bloquear cursor en coordenadas mientras cliquea")
+        self.chk_lock_cursor.setChecked(False)
+        self.chk_lock_cursor.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
+        p_lay.addWidget(self.chk_lock_cursor)
+
         grid.addWidget(card_pos, 1, 0)
 
         # CARD D: Repetición y Límites
-        card_repeat = self._crear_card("🔁 Repetición y Límite")
+        card_repeat = self._crear_card("🔁 Repetición y Disparo")
         rep_lay = QVBoxLayout(card_repeat)
 
-        self.rb_rep_inf = QRadioButton("Repetir indefinidamente (hasta detener)")
-        self.rb_rep_count = QRadioButton("Repetir cantidad fija de veces")
+        # Modo de activación (Toggle vs Hold-to-Click)
+        act_box = QHBoxLayout()
+        self.rb_act_toggle = QRadioButton("Alternar (Toggle on/off)")
+        self.rb_act_hold = QRadioButton("Mantener (Hold-to-Click)")
+        self.rb_act_toggle.setChecked(True)
+        self.rb_act_toggle.toggled.connect(self._on_activation_mode_changed)
+
+        for rb in (self.rb_act_toggle, self.rb_act_hold):
+            rb.setStyleSheet(f"color: {self.colores['fg_principal']}; font-weight: 500;")
+            act_box.addWidget(rb)
+        rep_lay.addLayout(act_box)
+
+        self.rb_rep_inf = QRadioButton("Repetir indefinidamente")
+        self.rb_rep_count = QRadioButton("Repetir cantidad fija")
         self.rb_rep_inf.setChecked(True)
         self.rb_rep_count.toggled.connect(self._on_repeat_mode_toggled)
 
@@ -380,34 +429,46 @@ class TabAutoClicker(QWidget):
         self.frame_rep_count.setVisible(False)
         rc_lay = QHBoxLayout(self.frame_rep_count)
         rc_lay.setContentsMargins(0, 4, 0, 4)
-        rc_lay.addWidget(QLabel("Número de clics:"))
+        rc_lay.addWidget(QLabel("Cantidad:"))
         self.spin_target_count = self._crear_subspin(1, 1000000, " clics", val=100)
         rc_lay.addWidget(self.spin_target_count)
         rep_lay.addWidget(self.frame_rep_count)
 
         grid.addWidget(card_repeat, 1, 1)
 
-        # CARD E: Opciones Pro Anti-Detección (Jitter & Dispersión)
-        card_extra = self._crear_card("🛡️ Opciones Anti-Detección y Humanización")
+        # CARD E: Opciones Pro Anti-Detección, Sonido y Ventana
+        card_extra = self._crear_card("🛡️ Opciones Adicionales Pro")
         ex_lay = QHBoxLayout(card_extra)
+        ex_lay.setSpacing(12)
+
         self.chk_jitter = QCheckBox("Dispersión aleatoria (Jitter)")
         self.chk_jitter.setChecked(False)
-        self.chk_jitter.setStyleSheet(f"color: {self.colores['fg_principal']};")
+        self.chk_jitter.setStyleSheet(f"color: {self.colores['fg_principal']}; font-size: 11px;")
         ex_lay.addWidget(self.chk_jitter)
 
         ex_lay.addWidget(QLabel("Radio:"))
         self.spin_jitter_rad = self._crear_subspin(1, 50, " px", val=5)
         ex_lay.addWidget(self.spin_jitter_rad)
 
-        ex_lay.addWidget(QLabel("Variación de tiempo:"))
+        ex_lay.addWidget(QLabel("Jitter %:"))
         self.spin_jitter_time = self._crear_subspin(5, 50, " %", val=15)
         ex_lay.addWidget(self.spin_jitter_time)
-        ex_lay.addStretch()
 
+        self.chk_sound = QCheckBox("Sonido Beep")
+        self.chk_sound.setChecked(True)
+        self.chk_sound.setStyleSheet(f"color: {self.colores['fg_principal']}; font-size: 11px;")
+        ex_lay.addWidget(self.chk_sound)
+
+        self.chk_minimize = QCheckBox("Minimizar al iniciar")
+        self.chk_minimize.setChecked(False)
+        self.chk_minimize.setStyleSheet(f"color: {self.colores['fg_principal']}; font-size: 11px;")
+        ex_lay.addWidget(self.chk_minimize)
+
+        ex_lay.addStretch()
         grid.addWidget(card_extra, 2, 0, 1, 2)
         main_layout.addLayout(grid)
 
-        # ── 3. CONTROLES DE EJECUCIÓN CON CAPTURADOR DE ATAJO INTELIGENTE ─────
+        # ── 3. CONTROLES DE ACCIÓN CON 2 BOTONES INDEPENDIENTES ───────────────
         ctrl_card = QFrame()
         ctrl_card.setStyleSheet(f"""
             QFrame {{
@@ -418,11 +479,11 @@ class TabAutoClicker(QWidget):
             }}
         """)
         c_lay = QHBoxLayout(ctrl_card)
-        c_lay.setSpacing(14)
+        c_lay.setSpacing(12)
 
-        # Botón Interactivo de Captura de Hotkey (como OP AutoClicker)
+        # Selector de Atajo
         hk_box = QVBoxLayout()
-        lbl_hk = QLabel("Atajo Personalizado:")
+        lbl_hk = QLabel("Atajo Teclado:")
         lbl_hk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         hk_box.addWidget(lbl_hk)
 
@@ -436,14 +497,26 @@ class TabAutoClicker(QWidget):
         hk_box.addWidget(self.btn_hotkey)
         c_lay.addLayout(hk_box)
 
-        # Botón Principal de Inicio / Parada
-        self.btn_toggle = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
-        self.btn_toggle.setFont(QFont(self.font_family, 12, QFont.Weight.Bold))
-        self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.setFixedHeight(48)
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
-        self.btn_toggle.clicked.connect(self.toggle_clicker)
-        c_lay.addWidget(self.btn_toggle, 1)
+        c_lay.addSpacing(6)
+
+        # BOTÓN 1: INICIAR (Habilitado cuando está detenido, se apaga al hacer clic)
+        self.btn_start = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
+        self.btn_start.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
+        self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_start.setFixedHeight(48)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=True))
+        self.btn_start.clicked.connect(self.start_clicker)
+        c_lay.addWidget(self.btn_start, 1)
+
+        # BOTÓN 2: DETENER (Deshabilitado cuando está detenido, se enciende al iniciar)
+        self.btn_stop = QPushButton(f"⏹ DETENER ({self.current_hotkey})")
+        self.btn_stop.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
+        self.btn_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_stop.setFixedHeight(48)
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=False))
+        self.btn_stop.clicked.connect(self.stop_clicker)
+        c_lay.addWidget(self.btn_stop, 1)
 
         main_layout.addWidget(ctrl_card)
 
@@ -468,7 +541,6 @@ class TabAutoClicker(QWidget):
 
         main_layout.addWidget(stats_frame)
 
-        # Añadir al contenedor
         scroll.setWidget(container)
         root_layout.addWidget(scroll)
 
@@ -516,7 +588,7 @@ class TabAutoClicker(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
                 border-radius: 6px;
-                padding: 5px 8px;
+                padding: 4px 8px;
                 font-size: 11px;
             }}
             QSpinBox:focus, QComboBox:focus {{
@@ -530,8 +602,33 @@ class TabAutoClicker(QWidget):
             }}
         """
 
-    def _estilo_boton_accion(self, activo: bool) -> str:
-        if activo:
+    def _estilo_btn_iniciar(self, habilitado: bool) -> str:
+        if habilitado:
+            return f"""
+                QPushButton {{
+                    background-color: {self.colores['exito']};
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px;
+                }}
+                QPushButton:hover {{
+                    background-color: #059669;
+                }}
+            """
+        else:
+            return f"""
+                QPushButton {{
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.2);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    border-radius: 8px;
+                    padding: 8px;
+                }}
+            """
+
+    def _estilo_btn_detener(self, habilitado: bool) -> str:
+        if habilitado:
             return f"""
                 QPushButton {{
                     background-color: {self.colores['error']};
@@ -541,20 +638,17 @@ class TabAutoClicker(QWidget):
                     padding: 8px;
                 }}
                 QPushButton:hover {{
-                    background-color: #EF4444;
+                    background-color: #DC2626;
                 }}
             """
         else:
             return f"""
                 QPushButton {{
-                    background-color: {self.colores['acento']};
-                    color: white;
-                    border: none;
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.2);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
                     padding: 8px;
-                }}
-                QPushButton:hover {{
-                    background-color: {self.colores['acento_hover']};
                 }}
             """
 
@@ -565,7 +659,7 @@ class TabAutoClicker(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 6px;
-                padding: 5px 12px;
+                padding: 4px 12px;
                 font-size: 10px;
                 font-weight: 500;
             }}
@@ -574,10 +668,50 @@ class TabAutoClicker(QWidget):
             }}
         """
 
-    # ── GESTIÓN DE EVENTOS Y ACCIONES ─────────────────────────────────────────
+    # ── GESTIÓN DE EVENTOS Y PRESETS ─────────────────────────────────────────
+    def _aplicar_preset(self, index: int):
+        if index == 0:
+            return  # Personalizado
+        elif index == 1:  # Minecraft PvP 16 CPS
+            self.rb_mode_cps.setChecked(True)
+            self.spin_cps.setValue(16)
+            self.combo_btn.setCurrentIndex(0)
+            self.combo_type.setCurrentIndex(0)
+            self.rb_pos_curr.setChecked(True)
+            self.chk_jitter.setChecked(True)
+            self.spin_jitter_rad.setValue(3)
+        elif index == 2:  # Roblox AFK 5 CPS
+            self.rb_mode_cps.setChecked(True)
+            self.spin_cps.setValue(5)
+            self.combo_btn.setCurrentIndex(0)
+            self.combo_type.setCurrentIndex(0)
+            self.rb_pos_curr.setChecked(True)
+            self.chk_jitter.setChecked(False)
+        elif index == 3:  # Ultra Speed 500 CPS
+            self.rb_mode_cps.setChecked(True)
+            self.spin_cps.setValue(500)
+            self.combo_btn.setCurrentIndex(0)
+            self.combo_type.setCurrentIndex(0)
+        elif index == 4:  # Doble Clic 12 CPS
+            self.rb_mode_cps.setChecked(True)
+            self.spin_cps.setValue(12)
+            self.combo_btn.setCurrentIndex(0)
+            self.combo_type.setCurrentIndex(1)
+        elif index == 5:  # Clic Derecho Spammer 20 CPS
+            self.rb_mode_cps.setChecked(True)
+            self.spin_cps.setValue(20)
+            self.combo_btn.setCurrentIndex(1)
+            self.combo_type.setCurrentIndex(0)
+        elif index == 6:  # Modo Minero Hold
+            self.combo_btn.setCurrentIndex(0)
+            self.combo_type.setCurrentIndex(3)
+
     def _on_mode_toggled(self, checked: bool):
         self.frame_cps.setVisible(self.rb_mode_cps.isChecked())
         self.frame_interval.setVisible(self.rb_mode_interval.isChecked())
+
+    def _on_activation_mode_changed(self, checked: bool):
+        self._registrar_hotkey(self.current_hotkey)
 
     def _on_slider_cps_changed(self, val: int):
         self.spin_cps.blockSignals(True)
@@ -629,19 +763,36 @@ class TabAutoClicker(QWidget):
         if self.current_hotkey:
             self.hotkey_listener.unregister_hotkey(self.current_hotkey)
         self.current_hotkey = hotkey_name
-        self.btn_toggle.setText(f"▶ INICIAR ({hotkey_name})" if not self.worker.running else f"⏹ DETENER ({hotkey_name})")
-        self.hotkey_listener.register_hotkey(hotkey_name, self.toggle_clicker)
+        self.btn_start.setText(f"▶ INICIAR ({hotkey_name})")
+        self.btn_stop.setText(f"⏹ DETENER ({hotkey_name})")
 
-    def toggle_clicker(self):
-        """Alterna el estado de ejecución de forma segura en el hilo principal de Qt."""
-        if self.worker.running:
-            self.worker.stop()
+        if self.rb_act_toggle.isChecked():
+            # Modo Toggle: presionar tecla alterna on/off
+            self.hotkey_listener.register_hotkey(hotkey_name, on_down=self._on_hotkey_toggle, on_up=None)
         else:
-            self._aplicar_configuracion_al_worker()
-            self.worker.start()
+            # Modo Hold-to-Click: presionar tecla inicia, soltarla detiene
+            self.hotkey_listener.register_hotkey(hotkey_name, on_down=self.start_clicker, on_up=self.stop_clicker)
+
+    def _on_hotkey_toggle(self):
+        if self.worker.running:
+            self.stop_clicker()
+        else:
+            self.start_clicker()
+
+    def start_clicker(self):
+        """Inicia el autoclicker: apaga el botón de inicio y enciende el de parada."""
+        if self.worker.running:
+            return
+        self._aplicar_configuracion_al_worker()
+        self.worker.start()
+
+    def stop_clicker(self):
+        """Detiene el autoclicker: apaga el botón de parada y enciende el de inicio."""
+        if not self.worker.running:
+            return
+        self.worker.stop()
 
     def _aplicar_configuracion_al_worker(self):
-        # Modo
         if self.rb_mode_cps.isChecked():
             self.worker.mode = "cps"
             self.worker.target_cps = float(self.spin_cps.value())
@@ -655,11 +806,9 @@ class TabAutoClicker(QWidget):
             )
             self.worker.interval_sec = max(0.001, total_sec)
 
-        # Botón
         btn_idx = self.combo_btn.currentIndex()
         self.worker.button = "left" if btn_idx == 0 else ("right" if btn_idx == 1 else "middle")
 
-        # Tipo
         type_idx = self.combo_type.currentIndex()
         if type_idx == 0:
             self.worker.click_type = "single"
@@ -670,7 +819,6 @@ class TabAutoClicker(QWidget):
         else:
             self.worker.click_type = "hold_down"
 
-        # Posición
         if self.rb_pos_fixed.isChecked():
             self.worker.location_mode = "fixed"
             self.worker.fixed_x = self.spin_x.value()
@@ -678,41 +826,61 @@ class TabAutoClicker(QWidget):
         else:
             self.worker.location_mode = "dynamic"
 
-        # Repetición
         if self.rb_rep_count.isChecked():
             self.worker.repeat_mode = "count"
             self.worker.target_count = self.spin_target_count.value()
         else:
             self.worker.repeat_mode = "infinite"
 
-        # Jitter
         self.worker.jitter_enabled = self.chk_jitter.isChecked()
         self.worker.jitter_radius = self.spin_jitter_rad.value()
         self.worker.jitter_time_pct = self.spin_jitter_time.value()
+        self.worker.lock_cursor = self.chk_lock_cursor.isChecked()
 
     def _on_worker_started(self):
         self.lbl_status.setText("● EN EJECUCIÓN")
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(52, 211, 153, 0.15);
+            background-color: rgba(16, 185, 129, 0.15);
             color: {self.colores['exito']};
             border: 1px solid {self.colores['exito']};
             border-radius: 6px;
             padding: 4px 12px;
         """)
-        self.btn_toggle.setText(f"⏹ DETENER ({self.current_hotkey})")
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=True))
+
+        # Separación clara de 2 botones: apagar Iniciar y encender Detener
+        self.btn_start.setEnabled(False)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=False))
+
+        self.btn_stop.setEnabled(True)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=True))
+
+        if self.chk_sound.isChecked():
+            play_sound_feedback("start")
+
+        if self.chk_minimize.isChecked():
+            top = self.window()
+            if top:
+                top.showMinimized()
 
     def _on_worker_stopped(self):
         self.lbl_status.setText("● DETENIDO")
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(248, 113, 113, 0.15);
+            background-color: rgba(239, 68, 68, 0.15);
             color: {self.colores['error']};
             border: 1px solid {self.colores['error']};
             border-radius: 6px;
             padding: 4px 12px;
         """)
-        self.btn_toggle.setText(f"▶ INICIAR ({self.current_hotkey})")
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
+
+        # Separación clara de 2 botones: encender Iniciar y apagar Detener
+        self.btn_start.setEnabled(True)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=True))
+
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=False))
+
+        if self.chk_sound.isChecked():
+            play_sound_feedback("stop")
 
     def _on_click_update(self, total_clicks: int, actual_cps: float):
         self.lbl_stats_clicks.setText(f"Clics: {total_clicks:,}")
@@ -722,6 +890,7 @@ class TabAutoClicker(QWidget):
         """Detiene listeners e hilos al cerrar la aplicación."""
         if hasattr(self, "worker") and self.worker.running:
             self.worker.stop()
+        unlock_cursor()
         if hasattr(self, "hotkey_listener"):
             self.hotkey_listener.stop()
         if hasattr(self, "mouse_pos_timer"):

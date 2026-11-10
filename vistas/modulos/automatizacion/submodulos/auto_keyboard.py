@@ -1,7 +1,7 @@
 """
 auto_keyboard.py - Submódulo Pro de Automatización de Teclado (Auto Key Presser & Spammer).
 Permite automatizar pulsaciones de teclas individuales, secuencias de texto,
-modo mantener tecla (Hold Key para juegos/AFK) con intervalos humanizados y atajo configurable interactivo.
+modo mantener tecla (Hold Key para juegos/AFK) con 2 botones separados para iniciar y detener.
 """
 
 import time
@@ -16,7 +16,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont
 
 from ..utils.input_simulator import (
-    key_press, key_down, key_up, type_text,
+    key_press, key_down, key_up, type_text, play_sound_feedback,
     GlobalHotkeyListener, VK_MAP, VK_TO_NAME
 )
 from ..utils.hotkey_widget import HotkeyCaptureButton
@@ -109,14 +109,14 @@ class AutoKeyboardWorker:
 
 
 class TabAutoKeyboard(QWidget):
-    """Interfaz gráfica responsiva para el Auto Teclado."""
+    """Interfaz gráfica responsiva para el Auto Teclado con 2 botones de acción independientes."""
     def __init__(self, parent=None, colores=None, context=None, **kwargs):
         super().__init__(parent)
         self.context = context
         self.colores = colores or {
             "bg_principal": "#121218", "bg_secundario": "#1E1E2E", "bg_terciario": "#2D2D3D",
             "fg_principal": "#E2E2E2", "fg_secundario": "#AAB0B8", "acento": "#6366F1",
-            "acento_hover": "#818CF8", "exito": "#34D399", "error": "#F87171",
+            "acento_hover": "#818CF8", "exito": "#10B981", "error": "#EF4444",
         }
         self.font_family = "Segoe UI"
 
@@ -161,7 +161,7 @@ class TabAutoKeyboard(QWidget):
         container = QWidget()
         main_layout = QVBoxLayout(container)
         main_layout.setContentsMargins(18, 18, 18, 18)
-        main_layout.setSpacing(14)
+        main_layout.setSpacing(12)
 
         # ── 1. HEADER CARD ───────────────────────────────────────────────────
         header_card = QFrame()
@@ -186,7 +186,7 @@ class TabAutoKeyboard(QWidget):
         self.lbl_status = QLabel("● DETENIDO")
         self.lbl_status.setFont(QFont(self.font_family, 9, QFont.Weight.Bold))
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(248, 113, 113, 0.15);
+            background-color: rgba(239, 68, 68, 0.15);
             color: {self.colores['error']};
             border: 1px solid {self.colores['error']};
             border-radius: 6px;
@@ -222,7 +222,6 @@ class TabAutoKeyboard(QWidget):
         sk_lay.setContentsMargins(0, 0, 0, 0)
         sk_lay.addWidget(QLabel("Tecla a pulsar:"))
 
-        # Botón para capturar cualquier tecla a presionar
         self.btn_pick_key = HotkeyCaptureButton(
             default_key="ESPACIO",
             listener=self.hotkey_listener,
@@ -291,7 +290,7 @@ class TabAutoKeyboard(QWidget):
         card_rep = self._crear_card("🔁 Límite de Repetición")
         rep_lay = QVBoxLayout(card_rep)
 
-        self.rb_rep_inf = QRadioButton("Repetir indefinidamente (hasta detener)")
+        self.rb_rep_inf = QRadioButton("Repetir indefinidamente")
         self.rb_rep_count = QRadioButton("Repetir cantidad fija")
         self.rb_rep_inf.setChecked(True)
         self.rb_rep_count.toggled.connect(self._on_repeat_mode_toggled)
@@ -316,7 +315,7 @@ class TabAutoKeyboard(QWidget):
         grid.addWidget(card_rep, 1, 0, 1, 2)
         main_layout.addLayout(grid)
 
-        # ── 4. BOTÓN DE CONTROL CON HOTKEY INTERACTIVO ────────────────────────
+        # ── 4. CONTROLES DE ACCIÓN CON 2 BOTONES INDEPENDIENTES ───────────────
         ctrl_card = QFrame()
         ctrl_card.setStyleSheet(f"""
             QFrame {{
@@ -327,10 +326,10 @@ class TabAutoKeyboard(QWidget):
             }}
         """)
         c_lay = QHBoxLayout(ctrl_card)
-        c_lay.setSpacing(14)
+        c_lay.setSpacing(12)
 
         hk_box = QVBoxLayout()
-        lbl_hk = QLabel("Atajo de Inicio/Parada:")
+        lbl_hk = QLabel("Atajo Teclado:")
         lbl_hk.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 11px;")
         hk_box.addWidget(lbl_hk)
 
@@ -344,13 +343,26 @@ class TabAutoKeyboard(QWidget):
         hk_box.addWidget(self.btn_hotkey)
         c_lay.addLayout(hk_box)
 
-        self.btn_toggle = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
-        self.btn_toggle.setFont(QFont(self.font_family, 12, QFont.Weight.Bold))
-        self.btn_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_toggle.setFixedHeight(48)
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
-        self.btn_toggle.clicked.connect(self.toggle_keyboard)
-        c_lay.addWidget(self.btn_toggle, 1)
+        c_lay.addSpacing(6)
+
+        # BOTÓN 1: INICIAR (Habilitado inicialmente, se apaga al hacer clic)
+        self.btn_start = QPushButton(f"▶ INICIAR ({self.current_hotkey})")
+        self.btn_start.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
+        self.btn_start.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_start.setFixedHeight(48)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=True))
+        self.btn_start.clicked.connect(self.start_keyboard)
+        c_lay.addWidget(self.btn_start, 1)
+
+        # BOTÓN 2: DETENER (Deshabilitado inicialmente, se enciende al iniciar)
+        self.btn_stop = QPushButton(f"⏹ DETENER ({self.current_hotkey})")
+        self.btn_stop.setFont(QFont(self.font_family, 11, QFont.Weight.Bold))
+        self.btn_stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_stop.setFixedHeight(48)
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=False))
+        self.btn_stop.clicked.connect(self.stop_keyboard)
+        c_lay.addWidget(self.btn_stop, 1)
 
         main_layout.addWidget(ctrl_card)
 
@@ -397,7 +409,7 @@ class TabAutoKeyboard(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
                 border-radius: 6px;
-                padding: 5px 8px;
+                padding: 4px 8px;
                 font-size: 11px;
             }}
             QSpinBox:focus {{
@@ -405,8 +417,31 @@ class TabAutoKeyboard(QWidget):
             }}
         """
 
-    def _estilo_boton_accion(self, activo: bool) -> str:
-        if activo:
+    def _estilo_btn_iniciar(self, habilitado: bool) -> str:
+        if habilitado:
+            return f"""
+                QPushButton {{
+                    background-color: {self.colores['exito']};
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px;
+                }}
+                QPushButton:hover {{ background-color: #059669; }}
+            """
+        else:
+            return f"""
+                QPushButton {{
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.2);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                    border-radius: 8px;
+                    padding: 8px;
+                }}
+            """
+
+    def _estilo_btn_detener(self, habilitado: bool) -> str:
+        if habilitado:
             return f"""
                 QPushButton {{
                     background-color: {self.colores['error']};
@@ -415,18 +450,17 @@ class TabAutoKeyboard(QWidget):
                     border-radius: 8px;
                     padding: 8px;
                 }}
-                QPushButton:hover {{ background-color: #EF4444; }}
+                QPushButton:hover {{ background-color: #DC2626; }}
             """
         else:
             return f"""
                 QPushButton {{
-                    background-color: {self.colores['acento']};
-                    color: white;
-                    border: none;
+                    background-color: rgba(255, 255, 255, 0.05);
+                    color: rgba(255, 255, 255, 0.2);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
                     border-radius: 8px;
                     padding: 8px;
                 }}
-                QPushButton:hover {{ background-color: {self.colores['acento_hover']}; }}
             """
 
     def _estilo_boton_secundario(self) -> str:
@@ -436,7 +470,7 @@ class TabAutoKeyboard(QWidget):
                 color: {self.colores['fg_principal']};
                 border: 1px solid rgba(255, 255, 255, 0.08);
                 border-radius: 6px;
-                padding: 5px 12px;
+                padding: 4px 12px;
                 font-size: 10px;
                 font-weight: 500;
             }}
@@ -462,15 +496,28 @@ class TabAutoKeyboard(QWidget):
         if self.current_hotkey:
             self.hotkey_listener.unregister_hotkey(self.current_hotkey)
         self.current_hotkey = hotkey_name
-        self.btn_toggle.setText(f"▶ INICIAR ({hotkey_name})" if not self.worker.running else f"⏹ DETENER ({hotkey_name})")
-        self.hotkey_listener.register_hotkey(hotkey_name, self.toggle_keyboard)
+        self.btn_start.setText(f"▶ INICIAR ({hotkey_name})")
+        self.btn_stop.setText(f"⏹ DETENER ({hotkey_name})")
+        self.hotkey_listener.register_hotkey(hotkey_name, on_down=self._on_hotkey_toggle, on_up=None)
 
-    def toggle_keyboard(self):
+    def _on_hotkey_toggle(self):
         if self.worker.running:
-            self.worker.stop()
+            self.stop_keyboard()
         else:
-            self._aplicar_configuracion()
-            self.worker.start()
+            self.start_keyboard()
+
+    def start_keyboard(self):
+        """Inicia el auto teclado: apaga el botón Iniciar y enciende Detener."""
+        if self.worker.running:
+            return
+        self._aplicar_configuracion()
+        self.worker.start()
+
+    def stop_keyboard(self):
+        """Detiene el auto teclado: apaga el botón Detener y enciende Iniciar."""
+        if not self.worker.running:
+            return
+        self.worker.stop()
 
     def _aplicar_configuracion(self):
         if self.rb_mode_single.isChecked():
@@ -496,26 +543,40 @@ class TabAutoKeyboard(QWidget):
     def _on_worker_started(self):
         self.lbl_status.setText("● EN EJECUCIÓN")
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(52, 211, 153, 0.15);
+            background-color: rgba(16, 185, 129, 0.15);
             color: {self.colores['exito']};
             border: 1px solid {self.colores['exito']};
             border-radius: 6px;
             padding: 4px 12px;
         """)
-        self.btn_toggle.setText(f"⏹ DETENER ({self.current_hotkey})")
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=True))
+
+        # Separación clara de 2 botones: apagar Iniciar y encender Detener
+        self.btn_start.setEnabled(False)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=False))
+
+        self.btn_stop.setEnabled(True)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=True))
+
+        play_sound_feedback("start")
 
     def _on_worker_stopped(self):
         self.lbl_status.setText("● DETENIDO")
         self.lbl_status.setStyleSheet(f"""
-            background-color: rgba(248, 113, 113, 0.15);
+            background-color: rgba(239, 68, 68, 0.15);
             color: {self.colores['error']};
             border: 1px solid {self.colores['error']};
             border-radius: 6px;
             padding: 4px 12px;
         """)
-        self.btn_toggle.setText(f"▶ INICIAR ({self.current_hotkey})")
-        self.btn_toggle.setStyleSheet(self._estilo_boton_accion(activo=False))
+
+        # Separación clara de 2 botones: encender Iniciar y apagar Detener
+        self.btn_start.setEnabled(True)
+        self.btn_start.setStyleSheet(self._estilo_btn_iniciar(habilitado=True))
+
+        self.btn_stop.setEnabled(False)
+        self.btn_stop.setStyleSheet(self._estilo_btn_detener(habilitado=False))
+
+        play_sound_feedback("stop")
 
     def _on_press_update(self, total: int):
         self.lbl_stats_count.setText(f"Pulsaciones enviadas: {total:,}")

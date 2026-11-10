@@ -80,6 +80,10 @@ class POINT(Structure):
     _fields_ = [("x", c_long), ("y", c_long)]
 
 
+class RECT(Structure):
+    _fields_ = [("left", c_long), ("top", c_long), ("right", c_long), ("bottom", c_long)]
+
+
 def get_cursor_pos() -> tuple[int, int]:
     """Obtiene las coordenadas absolutas actuales del cursor (X, Y)."""
     if not user32:
@@ -93,6 +97,33 @@ def set_cursor_pos(x: int, y: int):
     """Establece la posición del cursor en pantalla."""
     if user32:
         user32.SetCursorPos(int(x), int(y))
+
+
+def lock_cursor_to_point(x: int, y: int):
+    """Bloquea el cursor del ratón en una coordenada exacta de la pantalla."""
+    if user32:
+        r = RECT(int(x), int(y), int(x) + 1, int(y) + 1)
+        user32.ClipCursor(byref(r))
+
+
+def unlock_cursor():
+    """Libera el cursor del ratón para permitir libre movimiento."""
+    if user32:
+        user32.ClipCursor(None)
+
+
+def play_sound_feedback(kind: str = "start"):
+    """Emite un sonido de feedback en Windows."""
+    try:
+        import winsound
+        if kind == "start":
+            winsound.Beep(950, 45)
+        elif kind == "stop":
+            winsound.Beep(550, 45)
+        elif kind == "click":
+            winsound.Beep(1800, 10)
+    except Exception:
+        pass
 
 
 def mouse_click(button: str = "left", click_type: str = "single", x: int = None, y: int = None):
@@ -206,8 +237,9 @@ def type_text(text: str, delay: float = 0.01):
 
 class HotkeySignals(QObject):
     """Puente de señales Qt seguro para cruzar desde el hilo daemon al hilo principal de la GUI."""
-    triggered = pyqtSignal(int, str)  # vk_code, key_name
-    key_captured = pyqtSignal(int, str)  # Para captura interactiva de atajos
+    triggered_down = pyqtSignal(int, str)  # vk_code, key_name (cuando se pulsa)
+    triggered_up = pyqtSignal(int, str)    # vk_code, key_name (cuando se suelta)
+    key_captured = pyqtSignal(int, str)    # Para captura interactiva de atajos
 
 
 class GlobalHotkeyListener:
@@ -218,16 +250,17 @@ class GlobalHotkeyListener:
     """
     def __init__(self):
         self.signals = HotkeySignals()
-        self._callbacks = {}  # {vk_code: callable}
+        self._callbacks_down = {}  # {vk_code: callable}
+        self._callbacks_up = {}    # {vk_code: callable}
         self._running = False
         self._thread = None
         self._pressed_states = {}
         self._capturing_next_key = False
 
-        # Conectar la señal de disparo con el despachador
-        self.signals.triggered.connect(self._dispatch_callback)
+        self.signals.triggered_down.connect(self._dispatch_down)
+        self.signals.triggered_up.connect(self._dispatch_up)
 
-    def register_hotkey(self, key_name_or_vk, callback):
+    def register_hotkey(self, key_name_or_vk, on_down, on_up=None):
         """Registra un atajo de teclado por nombre ('F6', 'X', etc.) o código VK."""
         if isinstance(key_name_or_vk, str):
             vk = VK_MAP.get(key_name_or_vk.upper(), None)
@@ -235,7 +268,9 @@ class GlobalHotkeyListener:
             vk = int(key_name_or_vk)
 
         if vk:
-            self._callbacks[vk] = callback
+            self._callbacks_down[vk] = on_down
+            if on_up:
+                self._callbacks_up[vk] = on_up
             self._pressed_states[vk] = False
             self.start()
 
@@ -246,13 +281,14 @@ class GlobalHotkeyListener:
         else:
             vk = int(key_name_or_vk)
 
-        if vk in self._callbacks:
-            del self._callbacks[vk]
-            self._pressed_states.pop(vk, None)
+        self._callbacks_down.pop(vk, None)
+        self._callbacks_up.pop(vk, None)
+        self._pressed_states.pop(vk, None)
 
     def unregister_all(self):
         """Elimina todos los atajos registrados."""
-        self._callbacks.clear()
+        self._callbacks_down.clear()
+        self._callbacks_up.clear()
         self._pressed_states.clear()
 
     def start_capturing(self):
@@ -288,7 +324,7 @@ class GlobalHotkeyListener:
                         key_name = VK_TO_NAME.get(vk, f"VK_{vk}")
                         self.signals.key_captured.emit(vk, key_name)
                         captured = True
-                        time.sleep(0.2)  # Pausa para evitar rebote
+                        time.sleep(0.2)
                         break
                 if captured:
                     continue
@@ -296,11 +332,11 @@ class GlobalHotkeyListener:
                 continue
 
             # 2. Monitoreo Normal de Atajos Registrados
-            if not self._callbacks:
+            if not self._callbacks_down:
                 time.sleep(0.05)
                 continue
 
-            for vk in list(self._callbacks.keys()):
+            for vk in list(self._callbacks_down.keys()):
                 state = user32.GetAsyncKeyState(vk)
                 is_pressed = (state & 0x8000) != 0
 
@@ -308,18 +344,26 @@ class GlobalHotkeyListener:
                 if is_pressed and not prev_state:
                     self._pressed_states[vk] = True
                     key_name = VK_TO_NAME.get(vk, f"VK_{vk}")
-                    # Emitir a través de la señal Qt hacia el hilo GUI principal
-                    self.signals.triggered.emit(vk, key_name)
+                    self.signals.triggered_down.emit(vk, key_name)
                 elif not is_pressed and prev_state:
                     self._pressed_states[vk] = False
+                    key_name = VK_TO_NAME.get(vk, f"VK_{vk}")
+                    self.signals.triggered_up.emit(vk, key_name)
 
             time.sleep(0.015)
 
-    def _dispatch_callback(self, vk: int, key_name: str):
-        """Se ejecuta en el hilo principal de Qt de forma 100% segura."""
-        cb = self._callbacks.get(vk)
+    def _dispatch_down(self, vk: int, key_name: str):
+        cb = self._callbacks_down.get(vk)
         if cb:
             try:
                 cb()
             except Exception as e:
-                print(f"[GlobalHotkeyListener] Error ejecutando callback para {key_name}: {e}")
+                print(f"[GlobalHotkeyListener] Error en callback down {key_name}: {e}")
+
+    def _dispatch_up(self, vk: int, key_name: str):
+        cb = self._callbacks_up.get(vk)
+        if cb:
+            try:
+                cb()
+            except Exception as e:
+                print(f"[GlobalHotkeyListener] Error en callback up {key_name}: {e}")
