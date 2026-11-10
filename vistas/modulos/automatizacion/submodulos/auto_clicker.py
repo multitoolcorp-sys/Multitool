@@ -421,9 +421,11 @@ class TabAutoClicker(QWidget):
         self.speed_hotkey_listener.enabled = False  # Desactivado inicialmente porque inicia en OP
         self.speed_hotkey = "MButton"
         self.speed_is_capturing_key = False
+        self._last_speed_capture_ts = 0.0
         self.speed_allowed_apps = []
 
         self.speed_hotkey_listener.signals.key_captured.connect(self._on_speed_key_captured)
+        self.speed_hotkey_listener.signals.capture_cancelled.connect(self._cancel_speed_key_select)
 
         self.picker_timer = QTimer(self)
         self.picker_countdown = 3
@@ -1198,21 +1200,28 @@ class TabAutoClicker(QWidget):
         self.lbl_click_wait.setText(f"Click / Wait: {click_ms:.1f} ms / {wait_ms:.1f} ms")
 
     def _toggle_speed_key_select(self):
-        if self.speed_is_capturing_key:
-            self.speed_is_capturing_key = False
-            self.speed_hotkey_listener.cancel_capturing()
-            self.btn_speed_select_key.setText("SELECT...")
-            self.lbl_speed_key_box.setText(self.speed_hotkey)
-        else:
+        # Si acaba de terminar una captura con clic izquierdo (LButton) hace menos de 350ms,
+        # ignorar el evento clicked de soltar el botón sobre 'SELECT...' para no reabrir la captura.
+        if time.perf_counter() - self._last_speed_capture_ts < 0.35:
+            return
+        if not self.speed_is_capturing_key:
             self.speed_is_capturing_key = True
-            self.btn_speed_select_key.setText("CANCEL...")
-            self.lbl_speed_key_box.setText("Press key / mouse...")
+            self.btn_speed_select_key.setText("ESC = CANCEL")
+            self.lbl_speed_key_box.setText("Press key, mouse or pad...")
             self.speed_hotkey_listener.start_capturing()
+
+    def _cancel_speed_key_select(self):
+        self.speed_is_capturing_key = False
+        self._last_speed_capture_ts = time.perf_counter()
+        self.speed_hotkey_listener.cancel_capturing()
+        self.btn_speed_select_key.setText("SELECT...")
+        self.lbl_speed_key_box.setText(self.speed_hotkey)
 
     def _on_speed_key_captured(self, vk: int, key_name: str):
         if not self.speed_is_capturing_key:
             return
         self.speed_is_capturing_key = False
+        self._last_speed_capture_ts = time.perf_counter()
         self.btn_speed_select_key.setText("SELECT...")
         self._registrar_speed_hotkey(key_name)
 

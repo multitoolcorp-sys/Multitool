@@ -121,7 +121,7 @@ class MacroRecorder:
             # 3. Teclas
             if self.record_keys:
                 for key_name, vk in VK_MAP.items():
-                    if key_name in ("F8", "F9"):  # Evitar registrar las teclas de control de grabación
+                    if vk in (0x01, 0x02, 0x04, 0x05, 0x06) or key_name in ("F8", "F9"):
                         continue
                     pressed = (user32.GetAsyncKeyState(vk) & 0x8000) != 0
                     if pressed and not self._key_states.get(vk, False):
