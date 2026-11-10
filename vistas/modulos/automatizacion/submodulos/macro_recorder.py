@@ -292,6 +292,29 @@ class TabMacroRecorder(QWidget):
                 padding: 4px 8px;
                 font-size: 11px;
             }}
+            QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {{
+                border: 1px solid {self.colores['acento']};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {self.colores['bg_secundario']};
+                color: #FFFFFF;
+                selection-background-color: {self.colores['acento']};
+                selection-color: #FFFFFF;
+                border: 1px solid {self.colores['bg_terciario']};
+                outline: none;
+                padding: 4px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                background-color: {self.colores['bg_secundario']};
+                color: #FFFFFF;
+                padding: 6px 10px;
+                min-height: 22px;
+            }}
+            QComboBox QAbstractItemView::item:selected,
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {self.colores['acento']};
+                color: #FFFFFF;
+            }}
         """
 
     def _estilo_btn_record(self, activo: bool) -> str:

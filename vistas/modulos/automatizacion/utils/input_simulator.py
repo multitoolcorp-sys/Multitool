@@ -8,7 +8,7 @@ para Windows usando la API Win32 nativa (user32.dll), con puente de señales
 import sys
 import time
 import ctypes
-from ctypes import wintypes, byref, Structure, c_long
+from ctypes import wintypes, byref, Structure, c_long, WINFUNCTYPE, c_bool, c_int
 import threading
 from PyQt6.QtCore import QObject, pyqtSignal
 
@@ -35,8 +35,9 @@ KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
 KEYEVENTF_SCANCODE = 0x0008
 
-# Mapeo Completo de Códigos Virtuales (VK) a Nombres
+# Mapeo Completo de Códigos Virtuales (VK) a Nombres (incluye botones de ratón estilo Speed AutoClicker)
 VK_TO_NAME = {
+    0x04: "MButton", 0x05: "XButton1", 0x06: "XButton2",
     0x08: "BACKSPACE", 0x09: "TAB", 0x0D: "ENTER", 0x10: "SHIFT",
     0x11: "CTRL", 0x12: "ALT", 0x13: "PAUSE", 0x14: "BLOQ MAYUS",
     0x1B: "ESC", 0x20: "ESPACIO", 0x21: "AV PAG", 0x22: "RE PAG",
@@ -66,10 +67,15 @@ VK_TO_NAME[0x6D] = "NUMPAD -"
 VK_TO_NAME[0x6E] = "NUMPAD ."
 VK_TO_NAME[0x6F] = "NUMPAD /"
 
-# Mapeo inverso de Nombres a VK
-VK_MAP = {v: k for k, v in VK_TO_NAME.items()}
+# Mapeo inverso de Nombres a VK (mayúsculas y original)
+VK_MAP = {}
+for k, v in VK_TO_NAME.items():
+    VK_MAP[v] = k
+    VK_MAP[v.upper()] = k
+
 # Aliases comunes
 VK_MAP.update({
+    "MBUTTON": 0x04, "XBUTTON1": 0x05, "XBUTTON2": 0x06,
     "SPACE": 0x20, "INTRO": 0x0D, "ESCAPE": 0x1B, "DELETE": 0x2E,
     "CONTROL": 0x11, "MAYUS": 0x10, "CAPSLOCK": 0x14, "PGUP": 0x21,
     "PGDN": 0x22, "LEFT": 0x25, "UP": 0x26, "RIGHT": 0x27, "DOWN": 0x28,
@@ -112,6 +118,43 @@ def unlock_cursor():
         user32.ClipCursor(None)
 
 
+def get_foreground_window_title() -> str:
+    """Devuelve el título de la ventana activa en primer plano en Windows."""
+    if not user32:
+        return ""
+    hwnd = user32.GetForegroundWindow()
+    if not hwnd:
+        return ""
+    length = user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, length + 1)
+    return buf.value.strip()
+
+
+def get_open_window_titles() -> list[str]:
+    """Enumera los títulos de las ventanas visibles actualmente abiertas en Windows."""
+    if not user32:
+        return []
+    titles = []
+    EnumWindowsProc = WINFUNCTYPE(c_bool, wintypes.HWND, wintypes.LPARAM)
+
+    def foreach_window(hwnd, lParam):
+        if user32.IsWindowVisible(hwnd):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                val = buf.value.strip()
+                if val and val not in titles and val not in ("Program Manager", "Settings", "Configuración"):
+                    titles.append(val)
+        return True
+
+    user32.EnumWindows(EnumWindowsProc(foreach_window), 0)
+    return sorted(titles)
+
+
 def play_sound_feedback(kind: str = "start"):
     """Emite un sonido de feedback en Windows."""
     try:
@@ -126,12 +169,13 @@ def play_sound_feedback(kind: str = "start"):
         pass
 
 
-def mouse_click(button: str = "left", click_type: str = "single", x: int = None, y: int = None):
+def mouse_click(button: str = "left", click_type: str = "single", x: int = None, y: int = None, hold_duration: float = 0.001):
     """
-    Ejecuta un clic del ratón de forma instantánea.
+    Ejecuta un clic del ratón de forma instantánea o con duty cycle configurable.
     - button: 'left', 'right', 'middle'
     - click_type: 'single', 'double', 'triple', 'hold_down', 'release'
     - x, y: opcionales, si se especifican se mueve el cursor antes de hacer clic.
+    - hold_duration: segundos que el botón permanece presionado antes de soltar (Duty Cycle).
     """
     if not user32:
         return
@@ -162,9 +206,15 @@ def mouse_click(button: str = "left", click_type: str = "single", x: int = None,
     elif click_type == "triple":
         clicks = 3
 
+    hold_sec = max(0.0005, float(hold_duration))
     for _ in range(clicks):
         user32.mouse_event(down_flag, 0, 0, 0, 0)
-        time.sleep(0.001)
+        if hold_sec >= 0.002:
+            time.sleep(hold_sec)
+        else:
+            t_hold = time.perf_counter()
+            while (time.perf_counter() - t_hold) < hold_sec:
+                pass
         user32.mouse_event(up_flag, 0, 0, 0, 0)
         if clicks > 1:
             time.sleep(0.02)
@@ -256,14 +306,15 @@ class GlobalHotkeyListener:
         self._thread = None
         self._pressed_states = {}
         self._capturing_next_key = False
+        self.enabled = True
 
         self.signals.triggered_down.connect(self._dispatch_down)
         self.signals.triggered_up.connect(self._dispatch_up)
 
     def register_hotkey(self, key_name_or_vk, on_down, on_up=None):
-        """Registra un atajo de teclado por nombre ('F6', 'X', etc.) o código VK."""
+        """Registra un atajo de teclado por nombre ('F6', 'MButton', etc.) o código VK."""
         if isinstance(key_name_or_vk, str):
-            vk = VK_MAP.get(key_name_or_vk.upper(), None)
+            vk = VK_MAP.get(key_name_or_vk, None) or VK_MAP.get(key_name_or_vk.upper(), None)
         else:
             vk = int(key_name_or_vk)
 
@@ -271,13 +322,15 @@ class GlobalHotkeyListener:
             self._callbacks_down[vk] = on_down
             if on_up:
                 self._callbacks_up[vk] = on_up
+            else:
+                self._callbacks_up.pop(vk, None)
             self._pressed_states[vk] = False
             self.start()
 
     def unregister_hotkey(self, key_name_or_vk):
         """Elimina el registro de un atajo."""
         if isinstance(key_name_or_vk, str):
-            vk = VK_MAP.get(key_name_or_vk.upper(), None)
+            vk = VK_MAP.get(key_name_or_vk, None) or VK_MAP.get(key_name_or_vk.upper(), None)
         else:
             vk = int(key_name_or_vk)
 
@@ -292,7 +345,7 @@ class GlobalHotkeyListener:
         self._pressed_states.clear()
 
     def start_capturing(self):
-        """Pone al listener en modo captura para registrar la próxima tecla pulsada."""
+        """Pone al listener en modo captura para registrar la próxima tecla o botón pulsado."""
         self._capturing_next_key = True
         self.start()
 
@@ -314,7 +367,11 @@ class GlobalHotkeyListener:
 
     def _loop(self):
         while self._running:
-            # 1. Modo Captura Interactiva de Tecla
+            if not self.enabled:
+                time.sleep(0.05)
+                continue
+
+            # 1. Modo Captura Interactiva de Tecla / Botón de Ratón
             if self._capturing_next_key:
                 captured = False
                 for vk in list(VK_TO_NAME.keys()):
@@ -353,6 +410,8 @@ class GlobalHotkeyListener:
             time.sleep(0.015)
 
     def _dispatch_down(self, vk: int, key_name: str):
+        if not self.enabled:
+            return
         cb = self._callbacks_down.get(vk)
         if cb:
             try:
@@ -361,6 +420,8 @@ class GlobalHotkeyListener:
                 print(f"[GlobalHotkeyListener] Error en callback down {key_name}: {e}")
 
     def _dispatch_up(self, vk: int, key_name: str):
+        if not self.enabled:
+            return
         cb = self._callbacks_up.get(vk)
         if cb:
             try:

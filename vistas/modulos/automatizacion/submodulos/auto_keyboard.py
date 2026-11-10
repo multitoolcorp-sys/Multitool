@@ -428,7 +428,7 @@ class TabAutoKeyboard(QWidget):
 
     def _estilo_input(self) -> str:
         return f"""
-            QSpinBox {{
+            QSpinBox, QComboBox {{
                 background-color: {self.colores['bg_principal']};
                 color: {self.colores['fg_principal']};
                 border: 1px solid {self.colores['bg_terciario']};
@@ -436,8 +436,28 @@ class TabAutoKeyboard(QWidget):
                 padding: 5px 8px;
                 font-size: 11px;
             }}
-            QSpinBox:focus {{
+            QSpinBox:focus, QComboBox:focus {{
                 border: 1px solid {self.colores['acento']};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {self.colores['bg_secundario']};
+                color: #FFFFFF;
+                selection-background-color: {self.colores['acento']};
+                selection-color: #FFFFFF;
+                border: 1px solid {self.colores['bg_terciario']};
+                outline: none;
+                padding: 4px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                background-color: {self.colores['bg_secundario']};
+                color: #FFFFFF;
+                padding: 6px 10px;
+                min-height: 22px;
+            }}
+            QComboBox QAbstractItemView::item:selected,
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {self.colores['acento']};
+                color: #FFFFFF;
             }}
         """
 

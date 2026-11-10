@@ -39,9 +39,42 @@ class TabAutomatizacion(QWidget):
 
     def init_ui(self):
         bg_main = self.colores.get('bg_principal', '#121218')
+        bg_sec = self.colores.get('bg_secundario', '#1E1E2E')
+        bg_ter = self.colores.get('bg_terciario', '#2D2D3D')
+        fg_main = self.colores.get('fg_principal', '#E2E2E2')
+        acento = self.colores.get('acento', '#6366F1')
         self.setStyleSheet(f"""
-            TabAutomatizacion {{ background-color: {bg_main}; color: white; }}
-            QWidget {{ background-color: transparent; color: white; }}
+            TabAutomatizacion {{ background-color: {bg_main}; color: {fg_main}; }}
+            QComboBox {{
+                background-color: {bg_main};
+                color: {fg_main};
+                border: 1px solid {bg_ter};
+                border-radius: 6px;
+                padding: 5px 10px;
+            }}
+            QComboBox:hover, QComboBox:focus {{
+                border: 1px solid {acento};
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {bg_sec};
+                color: #FFFFFF;
+                selection-background-color: {acento};
+                selection-color: #FFFFFF;
+                border: 1px solid {bg_ter};
+                outline: none;
+                padding: 4px;
+            }}
+            QComboBox QAbstractItemView::item {{
+                background-color: {bg_sec};
+                color: #FFFFFF;
+                padding: 6px 10px;
+                min-height: 24px;
+            }}
+            QComboBox QAbstractItemView::item:selected,
+            QComboBox QAbstractItemView::item:hover {{
+                background-color: {acento};
+                color: #FFFFFF;
+            }}
         """)
 
         layout = QVBoxLayout(self)
@@ -167,6 +200,8 @@ class TabAutomatizacion(QWidget):
     def detener_todo(self):
         """Detiene cualquier tarea activa en todos los submódulos."""
         for inst in self.submod_instances.values():
+            if hasattr(inst, "stop_all"):
+                inst.stop_all()
             if hasattr(inst, "worker") and hasattr(inst.worker, "stop"):
                 inst.worker.stop()
             if hasattr(inst, "recorder") and hasattr(inst.recorder, "stop_recording"):
