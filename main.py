@@ -89,38 +89,44 @@ def main():
     setup_error_handler()
     setup_platform_specific()
 
-    # Detección de Instancia Única y Protocolo URL (IPC)
+    # Manejo de enlaces web externos cuando MultiTool actúa como navegador
     from PyQt6.QtNetwork import QLocalServer, QLocalSocket
-    ipc_server_name = "MultiTool_SingleInstance_IPC"
+    ipc_main_channel = "MultiTool_Browser_IPC"
     target_url = extraer_url_de_argumentos(sys.argv)
-    force_start = any(arg in ("--force", "-f", "--multi", "-m") for arg in sys.argv)
 
-    if not force_start:
-        test_socket = QLocalSocket()
-        test_socket.connectToServer(ipc_server_name)
-        if test_socket.waitForConnected(400):
-            # Hay otra instancia activa de MultiTool: enviar la URL y cerrar este proceso de inmediato
-            print("[MultiTool] Ya existe una instancia de MultiTool ejecutándose en este equipo.")
-            print("           Se envió la solicitud a la instancia activa para traerla al frente.")
-            print("           (Sugerencia: Usa 'python main.py --force' para ejecutar múltiples instancias en desarrollo)")
-            msg = f"OPEN_URL:{target_url}" if target_url else "BRING_TO_FRONT"
-            test_socket.write(msg.encode("utf-8"))
-            test_socket.flush()
-            test_socket.waitForBytesWritten(1000)
-            test_socket.disconnectFromServer()
+    # Si se invoca la aplicación pasando explícitamente una URL web (ej. clic en enlace externo):
+    # intentamos despachar la pestaña a una instancia activa para no duplicar toda la suite.
+    if target_url:
+        client_socket = QLocalSocket()
+        client_socket.connectToServer(ipc_main_channel)
+        if client_socket.waitForConnected(300):
+            msg = f"OPEN_URL:{target_url}"
+            client_socket.write(msg.encode("utf-8"))
+            client_socket.flush()
+            client_socket.waitForBytesWritten(1000)
+            client_socket.disconnectFromServer()
             sys.exit(0)
-    else:
-        ipc_server_name = f"MultiTool_SingleInstance_IPC_{os.getpid()}"
 
-    # 1. Crear la Aplicación
+    # 1. Crear la Aplicación (Soporte Multi-instancia completo: permite múltiples usuarios y sesiones)
     app = QApplication(sys.argv)
     app.setApplicationName("Multitool")
     app.setOrganizationName("Antigravity")
     app.initial_url_to_open = target_url
 
-    # Iniciar servidor IPC en la instancia principal
-    QLocalServer.removeServer(ipc_server_name)
+    # Servidor IPC para recepción de enlaces externos en el navegador
     ipc_server = QLocalServer(app)
+    is_primary_ipc = False
+
+    if ipc_server.listen(ipc_main_channel):
+        is_primary_ipc = True
+    else:
+        # Si había quedado un pipe inactivo, intentamos limpiar y escuchar una vez
+        QLocalServer.removeServer(ipc_main_channel)
+        if ipc_server.listen(ipc_main_channel):
+            is_primary_ipc = True
+        else:
+            # Esta instancia funciona con su propio identificador de proceso independiente
+            ipc_server.listen(f"MultiTool_IPC_{os.getpid()}")
 
     def on_ipc_connection():
         client = ipc_server.nextPendingConnection()
@@ -141,8 +147,16 @@ def main():
                     main_win.traer_al_frente()
 
     ipc_server.newConnection.connect(on_ipc_connection)
-    ipc_server.listen(ipc_server_name)
-    app.aboutToQuit.connect(lambda: QLocalServer.removeServer(ipc_server_name))
+
+    def cleanup_ipc():
+        try:
+            ipc_server.close()
+            if is_primary_ipc:
+                QLocalServer.removeServer(ipc_main_channel)
+        except Exception:
+            pass
+
+    app.aboutToQuit.connect(cleanup_ipc)
     
     # Estilo base global para diálogos, mensajes emergentes (QMessageBox) y tooltips
     app.setStyleSheet("""
