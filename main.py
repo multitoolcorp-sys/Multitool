@@ -93,17 +93,24 @@ def main():
     from PyQt6.QtNetwork import QLocalServer, QLocalSocket
     ipc_server_name = "MultiTool_SingleInstance_IPC"
     target_url = extraer_url_de_argumentos(sys.argv)
+    force_start = any(arg in ("--force", "-f", "--multi", "-m") for arg in sys.argv)
 
-    test_socket = QLocalSocket()
-    test_socket.connectToServer(ipc_server_name)
-    if test_socket.waitForConnected(400):
-        # Hay otra instancia activa de MultiTool: enviar la URL y cerrar este proceso de inmediato
-        msg = f"OPEN_URL:{target_url}" if target_url else "BRING_TO_FRONT"
-        test_socket.write(msg.encode("utf-8"))
-        test_socket.flush()
-        test_socket.waitForBytesWritten(1000)
-        test_socket.disconnectFromServer()
-        sys.exit(0)
+    if not force_start:
+        test_socket = QLocalSocket()
+        test_socket.connectToServer(ipc_server_name)
+        if test_socket.waitForConnected(400):
+            # Hay otra instancia activa de MultiTool: enviar la URL y cerrar este proceso de inmediato
+            print("[MultiTool] Ya existe una instancia de MultiTool ejecutándose en este equipo.")
+            print("           Se envió la solicitud a la instancia activa para traerla al frente.")
+            print("           (Sugerencia: Usa 'python main.py --force' para ejecutar múltiples instancias en desarrollo)")
+            msg = f"OPEN_URL:{target_url}" if target_url else "BRING_TO_FRONT"
+            test_socket.write(msg.encode("utf-8"))
+            test_socket.flush()
+            test_socket.waitForBytesWritten(1000)
+            test_socket.disconnectFromServer()
+            sys.exit(0)
+    else:
+        ipc_server_name = f"MultiTool_SingleInstance_IPC_{os.getpid()}"
 
     # 1. Crear la Aplicación
     app = QApplication(sys.argv)
