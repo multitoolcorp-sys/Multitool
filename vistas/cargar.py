@@ -9,6 +9,37 @@ from controlador.utils.paths import get_user_path
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMessageBox, QLabel, QPushButton, QApplication
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
+def _cargar_vistas_reemplazables_disco():
+    """
+    Carga dinámicamente vistas/scrollable.py, vistas/command_palette.py,
+    vistas/dashboard_layout.py y vistas/gui.py desde disco (si existen físicamente)
+    e inyecta sus módulos en sys.modules para que las actualizaciones (.mtu)
+    reemplacen efectivamente la interfaz incluso en ejecutables compilados con Nuitka.
+    """
+    try:
+        from controlador.utils.paths import get_resource_path
+        import vistas
+        vistas_dir = get_resource_path() / "vistas"
+        for mod_short, filename in (
+            ("scrollable", "scrollable.py"),
+            ("command_palette", "command_palette.py"),
+            ("dashboard_layout", "dashboard_layout.py"),
+            ("gui", "gui.py"),
+        ):
+            py_path = vistas_dir / filename
+            full_mod_name = f"vistas.{mod_short}"
+            if py_path.exists():
+                spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
+                if spec and spec.loader:
+                    mod = importlib.util.module_from_spec(spec)
+                    sys.modules[full_mod_name] = mod
+                    spec.loader.exec_module(mod)
+                    setattr(vistas, mod_short, mod)
+    except Exception as e:
+        print(f"[DynamicVistaLoader] Aviso cargando vistas desde disco: {e}")
+
+_cargar_vistas_reemplazables_disco()
+
 from vistas.gui import BaseAppGUI
 from vistas.utils.app_context import AppContext
 from vistas.utils.logs import JsonLogger

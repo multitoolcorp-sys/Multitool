@@ -141,6 +141,30 @@ class Launcher:
         # Delay pequeño para que se renderice
         QTimer.singleShot(150, lambda: self._crear_app(usuario, persona))
     def _crear_app(self, usuario, persona):
+        try:
+            import sys
+            import importlib.util
+            from controlador.utils.paths import get_resource_path
+            import vistas
+            vistas_dir = get_resource_path() / "vistas"
+            for mod_short, filename in (
+                ("scrollable", "scrollable.py"),
+                ("command_palette", "command_palette.py"),
+                ("dashboard_layout", "dashboard_layout.py"),
+                ("gui", "gui.py"),
+                ("cargar", "cargar.py"),
+            ):
+                py_path = vistas_dir / filename
+                full_mod_name = f"vistas.{mod_short}"
+                if py_path.exists():
+                    spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
+                    if spec and spec.loader:
+                        mod = importlib.util.module_from_spec(spec)
+                        sys.modules[full_mod_name] = mod
+                        spec.loader.exec_module(mod)
+                        setattr(vistas, mod_short, mod)
+        except Exception as e_dyn:
+            logging.warning(f"Aviso cargando vistas dinámicas desde disco: {e_dyn}")
 
         from vistas.cargar import AppMultitareasGUI
 

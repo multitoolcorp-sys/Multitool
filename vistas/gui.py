@@ -14,6 +14,33 @@ from PyQt6.QtGui import QIcon, QAction, QFont, QKeySequence, QShortcut
 
 from vistas.utils.titlebar_app import CustomTitleBarApp
 from vistas.utils.notification import show_notification
+
+def _asegurar_dashboard_layout_desde_disco():
+    """Garantiza que vistas/scrollable.py y vistas/dashboard_layout.py se carguen desde el archivo físico en disco para soportar reemplazo por actualizaciones (.mtu)."""
+    try:
+        import sys
+        import importlib.util
+        from controlador.utils.paths import get_resource_path
+        import vistas
+        vistas_dir = get_resource_path() / "vistas"
+        for mod_short, filename in (("scrollable", "scrollable.py"), ("dashboard_layout", "dashboard_layout.py")):
+            full_mod_name = f"vistas.{mod_short}"
+            py_path = vistas_dir / filename
+            if py_path.exists():
+                existing = sys.modules.get(full_mod_name)
+                existing_file = getattr(existing, "__file__", "") if existing else ""
+                if not existing or not existing_file or Path(existing_file).resolve() != py_path.resolve():
+                    spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
+                    if spec and spec.loader:
+                        mod = importlib.util.module_from_spec(spec)
+                        sys.modules[full_mod_name] = mod
+                        spec.loader.exec_module(mod)
+                        setattr(vistas, mod_short, mod)
+    except Exception as e:
+        print(f"[BaseAppGUI] Aviso cargando dashboard_layout desde disco: {e}")
+
+_asegurar_dashboard_layout_desde_disco()
+
 from vistas.scrollable import ScrollableNavBar
 from vistas.dashboard_layout import DashboardSidebar, DashboardTabBar, DashboardEmptyView, CommandPaletteDialog
 from vistas.utils.updates_log_dialog import UpdatesLogDialog
@@ -1160,6 +1187,7 @@ class BaseAppGUI(QMainWindow):
                 es_valido = (
                     "manifest.json" in lista_archivos or
                     any(name.startswith("vistas/modulos/") for name in lista_archivos) or
+                    any(name.startswith("vistas/") for name in lista_archivos) or
                     any(name.startswith("plugins/") for name in lista_archivos) or
                     any(name.endswith("Multitool.exe") or name.endswith("main.py") or name.endswith("Multitool") for name in lista_archivos)
                 )

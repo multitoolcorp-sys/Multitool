@@ -312,6 +312,7 @@ def copiar_y_registrar_actualizacion_web(base_dir, tipo, zip_filename, log_signa
         
         (public_updates / "core").mkdir(parents=True, exist_ok=True)
         (public_updates / "auth").mkdir(parents=True, exist_ok=True)
+        (public_updates / "interfaz").mkdir(parents=True, exist_ok=True)
         (public_updates / "generales").mkdir(parents=True, exist_ok=True)
         for mod in ALL_23_MODULES:
             (public_updates / "modulos" / mod).mkdir(parents=True, exist_ok=True)
@@ -325,6 +326,9 @@ def copiar_y_registrar_actualizacion_web(base_dir, tipo, zip_filename, log_signa
         elif tipo in ["auth", "oaut", "oauth", "autenticacion"]:
             sub_path = Path("auth")
             tipo_label = "Sistema de Autenticación (Auth)"
+        elif tipo in ["interfaz", "ui", "vistas", "dashboard", "gui"]:
+            sub_path = Path("interfaz")
+            tipo_label = "Interfaz y Modo IDE (GUI & Dashboard)"
         elif tipo == "modulo" and mod_name:
             sub_path = Path("modulos") / mod_name.lower().strip()
             tipo_label = f"Módulo: {mod_name.title()}"
@@ -428,12 +432,13 @@ if HAS_PYQT:
         progress_signal = pyqtSignal(int, str)
         finished_signal = pyqtSignal(bool, str)
 
-        def __init__(self, base_dir, modulos_a_compilar, compilar_sistema, compilar_autenticacion=False, unificar_modulos=False, nombre_personalizado="", descripcion="", copiar_a_web=True):
+        def __init__(self, base_dir, modulos_a_compilar, compilar_sistema, compilar_autenticacion=False, compilar_interfaz=False, unificar_modulos=False, nombre_personalizado="", descripcion="", copiar_a_web=True):
             super().__init__()
             self.base_dir = base_dir
             self.modulos = modulos_a_compilar
             self.compilar_sistema = compilar_sistema
             self.compilar_autenticacion = compilar_autenticacion
+            self.compilar_interfaz = compilar_interfaz
             self.unificar = unificar_modulos
             self.nombre_personalizado = nombre_personalizado.strip()
             self.descripcion = descripcion.strip()
@@ -498,7 +503,12 @@ if HAS_PYQT:
             updates_out = self.base_dir / "UPDATES"
             updates_out.mkdir(parents=True, exist_ok=True)
             
-            num_outputs = (1 if self.compilar_sistema else 0) + (1 if self.compilar_autenticacion else 0) + (1 if (self.modulos and self.unificar) else len(self.modulos))
+            num_outputs = (
+                (1 if self.compilar_sistema else 0)
+                + (1 if self.compilar_autenticacion else 0)
+                + (1 if self.compilar_interfaz else 0)
+                + (1 if (self.modulos and self.unificar) else len(self.modulos))
+            )
             
             # Limpiar directorio temporal antes de empezar
             temp_dir = self.base_dir / "updates_temp"
@@ -533,6 +543,11 @@ if HAS_PYQT:
                     "--nofollow-import-to=ctranslate2",
                     "--nofollow-import-to=argostranslate",
                     "--nofollow-import-to=compilar_actualizacion",
+                    "--nofollow-import-to=vistas.modulos",
+                    "--nofollow-import-to=vistas.gui",
+                    "--nofollow-import-to=vistas.dashboard_layout",
+                    "--nofollow-import-to=vistas.scrollable",
+                    "--nofollow-import-to=vistas.command_palette",
                     "--include-module=ssl",
                     "--include-package=urllib",
                     "--include-package=vistas",
@@ -651,9 +666,59 @@ if HAS_PYQT:
                             rel_path = abs_path.relative_to(temp_auth_dir)
                             zipf.write(abs_path, rel_path)
                             
+                calcular_y_guardar_sha256(zip_filename)
                 self.log_signal.emit(f"[ÉXITO] Actualización de Autenticación empaquetada en:\n -> {zip_filename.name}")
                 if self.copiar_a_web:
                     copiar_y_registrar_actualizacion_web(self.base_dir, "oaut", zip_filename, self.log_signal, self.descripcion)
+                else:
+                    self.log_signal.emit(f"[WEB OMITIDO] No se copió a la web (guardado únicamente en UPDATES/{zip_filename.name}).")
+
+            # 1.8. COMPILAR / EMPAQUETAR INTERFAZ Y MODO IDE (vistas/gui.py & vistas/dashboard_layout.py) si está solicitado
+            if self.compilar_interfaz:
+                self.progress_signal.emit(28, "Empaquetando Interfaz y Modo IDE (gui.py & dashboard_layout.py)...")
+                self.log_signal.emit("\n=== INICIANDO EMPAQUETADO DE INTERFAZ Y MODO IDE (GUI & DASHBOARD LAYOUT) ===")
+
+                temp_ui_dir = temp_dir / "interfaz_build"
+                if temp_ui_dir.exists():
+                    shutil.rmtree(temp_ui_dir, ignore_errors=True)
+                temp_ui_dir.mkdir(parents=True, exist_ok=True)
+
+                archivos_interfaz = [
+                    Path("vistas") / "gui.py",
+                    Path("vistas") / "dashboard_layout.py",
+                    Path("vistas") / "scrollable.py",
+                    Path("vistas") / "command_palette.py",
+                    Path("vistas") / "cargar.py",
+                ]
+
+                for rel_file in archivos_interfaz:
+                    src_file = self.base_dir / rel_file
+                    if src_file.exists():
+                        dest_file = temp_ui_dir / rel_file
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_file, dest_file)
+                        self.log_signal.emit(f"[OK] Archivo de interfaz copiado: {rel_file.as_posix()}")
+
+                zip_filename = obtener_ruta_destino(updates_out, "update_interfaz", self.nombre_personalizado, num_outputs, "interfaz")
+                if zip_filename.exists():
+                    zip_filename.unlink()
+
+                self.log_signal.emit(f"Empaquetando {zip_filename.name}...")
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    manifest = generar_manifest_json("interfaz", "vistas_gui_dashboard", self.descripcion)
+                    zipf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+                    if self.descripcion:
+                        zipf.writestr("descripcion.txt", self.descripcion.encode("utf-8"))
+                    for root, dirs, files in os.walk(temp_ui_dir):
+                        for file in files:
+                            abs_path = Path(root) / file
+                            rel_path = abs_path.relative_to(temp_ui_dir)
+                            zipf.write(abs_path, rel_path)
+
+                calcular_y_guardar_sha256(zip_filename)
+                self.log_signal.emit(f"[ÉXITO] Actualización de Interfaz (gui.py & dashboard_layout.py) empaquetada en:\n -> {zip_filename.name}")
+                if self.copiar_a_web:
+                    copiar_y_registrar_actualizacion_web(self.base_dir, "interfaz", zip_filename, self.log_signal, self.descripcion)
                 else:
                     self.log_signal.emit(f"[WEB OMITIDO] No se copió a la web (guardado únicamente en UPDATES/{zip_filename.name}).")
 
@@ -977,8 +1042,13 @@ if HAS_PYQT:
 
             # Checkbox especial de Sistema de Autenticación
             self.cb_autenticacion = QCheckBox("🔑 Sistema de Autenticación (OAuth & Cuentas)")
-            self.cb_autenticacion.setStyleSheet("color: #10B981; font-weight: bold; font-size: 13px; padding-bottom: 5px;")
+            self.cb_autenticacion.setStyleSheet("color: #10B981; font-weight: bold; font-size: 13px; padding-bottom: 3px;")
             self.scroll_layout.addWidget(self.cb_autenticacion)
+
+            # Checkbox especial de Interfaz y Modo IDE (vistas/gui.py & vistas/dashboard_layout.py)
+            self.cb_interfaz = QCheckBox("🖥️ Interfaz y Modo IDE (gui.py & dashboard_layout.py)")
+            self.cb_interfaz.setStyleSheet("color: #F59E0B; font-weight: bold; font-size: 13px; padding-bottom: 5px;")
+            self.scroll_layout.addWidget(self.cb_interfaz)
 
             # Separador visual
             line = QFrame()
@@ -1125,9 +1195,10 @@ if HAS_PYQT:
             modulos_seleccionados = [name for name, cb in self.checkboxes.items() if cb.isChecked()]
             compilar_sistema = self.cb_sistema.isChecked()
             compilar_autenticacion = self.cb_autenticacion.isChecked()
+            compilar_interfaz = self.cb_interfaz.isChecked()
             
-            if not modulos_seleccionados and not compilar_sistema and not compilar_autenticacion:
-                QMessageBox.warning(self, "Advertencia", "Por favor, seleccione al menos un módulo, el Sistema o el Sistema de Autenticación.")
+            if not modulos_seleccionados and not compilar_sistema and not compilar_autenticacion and not compilar_interfaz:
+                QMessageBox.warning(self, "Advertencia", "Por favor, seleccione al menos un módulo, el Sistema, el Sistema de Autenticación o la Interfaz (gui.py & dashboard_layout.py).")
                 return
 
             self.btn_compile.setEnabled(False)
@@ -1135,6 +1206,7 @@ if HAS_PYQT:
             self.btn_deselect_all.setEnabled(False)
             self.cb_sistema.setEnabled(False)
             self.cb_autenticacion.setEnabled(False)
+            self.cb_interfaz.setEnabled(False)
             self.cb_unificar.setEnabled(False)
             self.cb_copiar_web.setEnabled(False)
             self.txt_custom_name.setEnabled(False)
@@ -1151,6 +1223,7 @@ if HAS_PYQT:
                 modulos_seleccionados,
                 compilar_sistema,
                 compilar_autenticacion,
+                compilar_interfaz,
                 self.cb_unificar.isChecked(),
                 self.txt_custom_name.text(),
                 self.txt_descripcion.toPlainText(),
@@ -1183,6 +1256,7 @@ if HAS_PYQT:
             self.btn_deselect_all.setEnabled(True)
             self.cb_sistema.setEnabled(True)
             self.cb_autenticacion.setEnabled(True)
+            self.cb_interfaz.setEnabled(True)
             self.cb_unificar.setEnabled(True)
             self.cb_copiar_web.setEnabled(True)
             self.txt_custom_name.setEnabled(True)
@@ -1235,6 +1309,7 @@ def main():
     args = sys.argv[1:]
     compilar_sistema = False
     compilar_autenticacion = False
+    compilar_interfaz = False
     unificar_modulos = False
     nombre_personalizado = ""
     descripcion_personalizada = ""
@@ -1265,13 +1340,20 @@ def main():
             compilar_sistema = True
         elif arg == "--autenticacion":
             compilar_autenticacion = True
+        elif arg in ("--interfaz", "--vistas", "--dashboard", "--gui-layout"):
+            compilar_interfaz = True
         elif arg == "--unificar":
             unificar_modulos = True
         else:
             modulos_solicitados.append(arg)
             
     updates_out = base_dir / "UPDATES"
-    num_outputs = (1 if compilar_sistema else 0) + (1 if compilar_autenticacion else 0) + (1 if (modulos_solicitados and unificar_modulos) else len(modulos_solicitados))
+    num_outputs = (
+        (1 if compilar_sistema else 0)
+        + (1 if compilar_autenticacion else 0)
+        + (1 if compilar_interfaz else 0)
+        + (1 if (modulos_solicitados and unificar_modulos) else len(modulos_solicitados))
+    )
     updates_out.mkdir(parents=True, exist_ok=True)
     sys_os = platform.system()
     ext_bin = ".pyd" if sys_os == "Windows" else ".so"
@@ -1302,6 +1384,11 @@ def main():
             "--nofollow-import-to=ctranslate2",
             "--nofollow-import-to=argostranslate",
             "--nofollow-import-to=compilar_actualizacion",
+            "--nofollow-import-to=vistas.modulos",
+            "--nofollow-import-to=vistas.gui",
+            "--nofollow-import-to=vistas.dashboard_layout",
+            "--nofollow-import-to=vistas.scrollable",
+            "--nofollow-import-to=vistas.command_palette",
             "--include-module=ssl",
             "--include-package=urllib",
             "--include-package=vistas",
@@ -1373,11 +1460,56 @@ def main():
                         abs_path = Path(root) / file
                         rel_path = abs_path.relative_to(temp_auth_dir)
                         zipf.write(abs_path, rel_path)
+            calcular_y_guardar_sha256(zip_filename)
             print(f"[ÉXITO] Sistema de Autenticación empaquetada en: {zip_filename}")
             if copiar_a_web:
                 copiar_y_registrar_actualizacion_web(base_dir, "oaut", zip_filename, descripcion=descripcion_personalizada)
         except Exception as e:
             print(f"[!] Error empaquetando sistema de autenticación CLI: {e}")
+
+    # Lógica CLI de empaquetado de Interfaz y Modo IDE (vistas/gui.py & vistas/dashboard_layout.py)
+    if compilar_interfaz:
+        banner("EMPAQUETANDO ACTUALIZACIÓN DE INTERFAZ Y MODO IDE (GUI & DASHBOARD LAYOUT)")
+        try:
+            temp_ui_dir = base_dir / "updates_temp" / "interfaz_build"
+            if temp_ui_dir.exists():
+                shutil.rmtree(temp_ui_dir, ignore_errors=True)
+            temp_ui_dir.mkdir(parents=True, exist_ok=True)
+
+            archivos_interfaz = [
+                Path("vistas") / "gui.py",
+                Path("vistas") / "dashboard_layout.py",
+                Path("vistas") / "scrollable.py",
+                Path("vistas") / "command_palette.py",
+                Path("vistas") / "cargar.py",
+            ]
+            for rel_file in archivos_interfaz:
+                src_file = base_dir / rel_file
+                if src_file.exists():
+                    dest_file = temp_ui_dir / rel_file
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_file, dest_file)
+                    print(f"[OK] Archivo copiado: {rel_file.as_posix()}")
+
+            zip_filename = obtener_ruta_destino(updates_out, "update_interfaz", nombre_personalizado, num_outputs, "interfaz")
+            if zip_filename.exists():
+                zip_filename.unlink()
+            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                manifest = generar_manifest_json("interfaz", "vistas_gui_dashboard", descripcion_personalizada)
+                zipf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+                if descripcion_personalizada:
+                    zipf.writestr("descripcion.txt", descripcion_personalizada.encode("utf-8"))
+                for root, dirs, files in os.walk(temp_ui_dir):
+                    for file in files:
+                        abs_path = Path(root) / file
+                        rel_path = abs_path.relative_to(temp_ui_dir)
+                        zipf.write(abs_path, rel_path)
+            calcular_y_guardar_sha256(zip_filename)
+            print(f"[ÉXITO] Interfaz (gui.py & dashboard_layout.py) empaquetada en: {zip_filename}")
+            if copiar_a_web:
+                copiar_y_registrar_actualizacion_web(base_dir, "interfaz", zip_filename, descripcion=descripcion_personalizada)
+        except Exception as e:
+            print(f"[!] Error empaquetando interfaz CLI: {e}")
 
     # Lógica CLI de compilación de Módulos
     if modulos_solicitados:
