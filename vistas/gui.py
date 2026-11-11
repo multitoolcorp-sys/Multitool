@@ -1411,14 +1411,17 @@ class BaseAppGUI(QMainWindow):
 
             def _ajustar_tab_widget(tw):
                 if tw and hasattr(tw, "tabBar") and tw.tabBar():
+                    tb = tw.tabBar()
+                    tb.setAcceptDrops(True)
+                    tb.setChangeCurrentOnDrag(True)
                     parent_cls = tw.parent().__class__.__name__ if tw.parent() else ""
                     if parent_cls in clases_excluidas or tw.__class__.__name__ in clases_excluidas:
                         return
                     if hasattr(tw, "_is_web_browser_tabs") or "browser" in parent_cls.lower():
                         return
-                    tw.tabBar().setVisible(not ocultar)
+                    tb.setVisible(not ocultar)
                     if not ocultar:
-                        tw.tabBar().show()
+                        tb.show()
                     tw.updateGeometry()
 
             # 1. Recorrer instancias conocidas en clases_modulos (contenedores y módulos reales)
@@ -1539,10 +1542,13 @@ class BaseAppGUI(QMainWindow):
                         target_tw.setCurrentIndex(s_i)
                         break
 
-        # Sincronizar selección en sidebar
-        self.sidebar._active_mod_name = mod_name
-        self.sidebar._active_sub_name = sub_name
-        self.sidebar.renderizar_arbol()
+        # Sincronizar selección en sidebar sin recrear todo el árbol (seguro durante eventos Drag & Drop)
+        if hasattr(self.sidebar, "sincronizar_estado_activo"):
+            self.sidebar.sincronizar_estado_activo(mod_name, sub_name, expandir=True)
+        else:
+            self.sidebar._active_mod_name = mod_name
+            self.sidebar._active_sub_name = sub_name
+            self.sidebar.renderizar_arbol()
 
     def _on_dashboard_editor_tab_closed(self, idx):
         """Manejador cuando el usuario cierra una pestaña con '✕'."""
@@ -1550,9 +1556,12 @@ class BaseAppGUI(QMainWindow):
             self.notebook.hide()
             if hasattr(self, "dashboard_empty_view"):
                 self.dashboard_empty_view.show()
-            self.sidebar._active_mod_name = ""
-            self.sidebar._active_sub_name = ""
-            self.sidebar.renderizar_arbol()
+            if hasattr(self.sidebar, "sincronizar_estado_activo"):
+                self.sidebar.sincronizar_estado_activo("", "", expandir=False)
+            else:
+                self.sidebar._active_mod_name = ""
+                self.sidebar._active_sub_name = ""
+                self.sidebar.renderizar_arbol()
 
     def abrir_buscador_general_rapido(self):
         """Abre la búsqueda rápida / selector de módulos (Ctrl+T)."""

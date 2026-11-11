@@ -94,6 +94,9 @@ class TabNavegador(QWidget):
         
         # Main TabWidget
         self.tabs = QTabWidget()
+        if self.tabs.tabBar():
+            self.tabs.tabBar().setAcceptDrops(True)
+            self.tabs.tabBar().setChangeCurrentOnDrag(True)
         self.tabs.setStyleSheet(f"""
             QTabWidget::pane {{ 
                 border: 0; 

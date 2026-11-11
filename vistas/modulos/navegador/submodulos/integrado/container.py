@@ -150,6 +150,30 @@ class BrowserTabBar(QTabBar):
         self.setDrawBase(False)
         self.setElideMode(Qt.TextElideMode.ElideRight)
         self.setMovable(True)
+        self.setAcceptDrops(True)
+        self.setChangeCurrentOnDrag(True)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+            idx = self.tabAt(pos)
+            if idx != -1 and self.browser_parent and hasattr(self.browser_parent, "tabs"):
+                if self.browser_parent.tabs.currentIndex() != idx:
+                    self.browser_parent.tabs.setCurrentIndex(idx)
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+            idx = self.tabAt(pos)
+            if idx != -1 and self.browser_parent and hasattr(self.browser_parent, "tabs"):
+                if self.browser_parent.tabs.currentIndex() != idx:
+                    self.browser_parent.tabs.setCurrentIndex(idx)
+        else:
+            super().dragMoveEvent(event)
 
     def tabSizeHint(self, index):
         hint = super().tabSizeHint(index)

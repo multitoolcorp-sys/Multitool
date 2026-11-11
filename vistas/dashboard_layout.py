@@ -878,6 +878,7 @@ class DashboardSidebar(QFrame):
         self._mod_sub_items = {}
 
         self.setMouseTracking(True)
+        self.setAcceptDrops(True)
         self.init_ui()
 
     def init_ui(self):
@@ -1252,6 +1253,12 @@ class DashboardSidebar(QFrame):
             subs_names = [s["name"] for s in sub_items]
             header_btn.mouseDoubleClickEvent = lambda e, mn=mod_name, mi=mod_idx, sb=subs_names: self._on_mod_double_click(mn, mi, sb, e)
 
+            # Drag & Drop: al arrastrar un archivo sobre el módulo en modo IDE, expandir y cambiar a él
+            header_btn.setAcceptDrops(True)
+            header_btn.dragEnterEvent = lambda e, mn=mod_name, mi=mod_idx, sb=subs_names: self._on_mod_drag_enter(mn, mi, sb, e)
+            header_btn.dragMoveEvent = lambda e, mn=mod_name, mi=mod_idx, sb=subs_names: self._on_mod_drag_enter(mn, mi, sb, e)
+            header_btn.dropEvent = lambda e, mn=mod_name: self._on_mod_drop(mn, None, e)
+
             # Clic derecho: editar módulo
             header_btn.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             header_btn.customContextMenuRequested.connect(lambda pos, m=mod: self._mostrar_context_menu_modulo(m, pos))
@@ -1313,6 +1320,12 @@ class DashboardSidebar(QFrame):
                     btn_sub.mouseDoubleClickEvent = lambda e, mn=mod_name, sn=sub_name, mi=mod_idx, si=sub_idx: self._on_sub_double_click(mn, sn, mi, si, e)
                     # Clic simple marca selección visual
                     btn_sub.clicked.connect(lambda ch, mn=mod_name, sn=sub_name: self._on_sub_single_click(mn, sn))
+
+                    # Drag & Drop: al arrastrar un archivo sobre el submódulo en modo IDE, cambiar a esa pestaña
+                    btn_sub.setAcceptDrops(True)
+                    btn_sub.dragEnterEvent = lambda e, mn=mod_name, sn=sub_name, mi=mod_idx, si=sub_idx: self._on_sub_drag_enter(mn, sn, mi, si, e)
+                    btn_sub.dragMoveEvent = lambda e, mn=mod_name, sn=sub_name, mi=mod_idx, si=sub_idx: self._on_sub_drag_enter(mn, sn, mi, si, e)
+                    btn_sub.dropEvent = lambda e, mn=mod_name, sn=sub_name: self._on_mod_drop(mn, sn, e)
 
                     # Clic derecho para editar submódulo
                     btn_sub.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1621,6 +1634,101 @@ class DashboardSidebar(QFrame):
         self._active_sub_name = sub_name
         self._actualizar_seleccion_visual()
         self.submoduleSelected.emit(mod_name, sub_name, mod_idx, sub_idx)
+
+    def sincronizar_estado_activo(self, mod_name="", sub_name="", expandir=True):
+        """Sincroniza el módulo/submódulo activo en el sidebar sin destruir los widgets existentes."""
+        self._active_mod_name = mod_name or ""
+        self._active_sub_name = sub_name or ""
+        key = self._active_mod_name.lower()
+        if key and expandir:
+            self._secciones_expandidas.add(key)
+            if key in self._mod_sub_frames:
+                self._mod_sub_frames[key].setVisible(True)
+        if getattr(self, "_mod_header_buttons", None):
+            self._actualizar_seleccion_visual()
+            self._actualizar_badges()
+        else:
+            self.renderizar_arbol()
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            if self.is_collapsed:
+                self.toggle_collapse()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasUrls() or event.mimeData().hasText():
+            event.acceptProposedAction()
+            if self.is_collapsed:
+                self.toggle_collapse()
+        else:
+            event.ignore()
+
+    def _on_mod_drag_enter(self, mod_name, mod_idx, subs, event):
+        if not (event.mimeData().hasUrls() or event.mimeData().hasText()):
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        if self.is_collapsed:
+            self.toggle_collapse()
+
+        key = mod_name.lower()
+        # Expandir siempre el árbol de submódulos de este módulo al pasar con un archivo
+        if key not in self._secciones_expandidas:
+            self._secciones_expandidas.add(key)
+            if key in self._mod_sub_frames:
+                self._mod_sub_frames[key].setVisible(True)
+            if key in self._mod_header_buttons:
+                btn = self._mod_header_buttons[key][0]
+                txt = btn.text()
+                if "▶" in txt:
+                    btn.setText(txt.replace("▶", "▼", 1))
+
+        # Si aún no estamos posicionados en este módulo, cambiar a él automáticamente
+        if self._active_mod_name.lower() != key:
+            mw = self._get_main_window()
+            # 1. Si el módulo ya tiene una pestaña abierta en editor_tab_bar, activarla
+            if mw and hasattr(mw, "editor_tab_bar"):
+                for idx_t, t in enumerate(mw.editor_tab_bar.tabs):
+                    if t.get("mod_name", "").lower() == key:
+                        mw.editor_tab_bar.set_current_index(idx_t)
+                        return
+            # 2. Si el módulo tiene un QTabWidget con un submódulo activo, usar ese submódulo
+            sub_idx = 0
+            target_sub = subs[0] if subs else ""
+            if mw and hasattr(mw, "_resolver_tab_widget_submodulos"):
+                tw = mw._resolver_tab_widget_submodulos(mod_name)
+                if tw and tw.count() > 0:
+                    curr_si = tw.currentIndex()
+                    if 0 <= curr_si < len(subs):
+                        sub_idx = curr_si
+                        target_sub = subs[curr_si]
+            self._active_mod_name = mod_name
+            self._active_sub_name = target_sub
+            self._actualizar_seleccion_visual()
+            self.submoduleSelected.emit(mod_name, target_sub, mod_idx, sub_idx)
+
+    def _on_sub_drag_enter(self, mod_name, sub_name, mod_idx, sub_idx, event):
+        if not (event.mimeData().hasUrls() or event.mimeData().hasText()):
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        if (self._active_mod_name.lower(), self._active_sub_name.lower()) != (mod_name.lower(), sub_name.lower()):
+            self._on_sub_double_click(mod_name, sub_name, mod_idx, sub_idx, None)
+
+    def _on_mod_drop(self, mod_name, sub_name, event):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                f_path = urls[0].toLocalFile()
+                mw = self._get_main_window()
+                if mw and hasattr(mw, "abrir_en_modulo"):
+                    mw.abrir_en_modulo(mod_name, sub_name, ruta_archivo=f_path)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
     def _mostrar_context_menu_modulo(self, mod_data, pos):
         menu = QMenu(self)
@@ -2178,15 +2286,38 @@ class DashboardTabBar(QFrame):
         else:
             super().wheelEvent(event)
 
+    def _get_tab_index_at_pos(self, pos):
+        child = self.childAt(pos)
+        while child and child != self:
+            for idx, t in enumerate(self.tabs):
+                if child in (t.get("widget"), t.get("lbl"), t.get("btn_close"), t.get("frame"), t.get("btn_tab")):
+                    return idx
+            child = child.parent()
+        if hasattr(self, "tab_container") and self.tab_container:
+            mapped_pos = self.tab_container.mapFrom(self, pos)
+            for idx, t in enumerate(self.tabs):
+                w = t.get("widget")
+                if w and w.geometry().contains(mapped_pos):
+                    return idx
+        return -1
+
+    def _activar_tab_en_drag(self, event):
+        pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
+        idx = self._get_tab_index_at_pos(pos)
+        if 0 <= idx < len(self.tabs) and idx != self.current_index:
+            self.set_current_index(idx)
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() or event.mimeData().hasText():
             event.acceptProposedAction()
+            self._activar_tab_en_drag(event)
         else:
             event.ignore()
 
     def dragMoveEvent(self, event):
         if event.mimeData().hasUrls() or event.mimeData().hasText():
             event.acceptProposedAction()
+            self._activar_tab_en_drag(event)
         else:
             event.ignore()
 
@@ -2196,16 +2327,8 @@ class DashboardTabBar(QFrame):
             if urls:
                 f_path = urls[0].toLocalFile()
                 pos = event.position().toPoint() if hasattr(event, "position") else event.pos()
-                target_tab = None
-                child = self.childAt(pos)
-                while child and child != self:
-                    for t in self.tabs:
-                        if t.get("frame") == child or t.get("btn_tab") == child:
-                            target_tab = t
-                            break
-                    if target_tab:
-                        break
-                    child = child.parent()
+                idx = self._get_tab_index_at_pos(pos)
+                target_tab = self.tabs[idx] if 0 <= idx < len(self.tabs) else None
 
                 if not target_tab and 0 <= self.current_index < len(self.tabs):
                     target_tab = self.tabs[self.current_index]
@@ -2320,6 +2443,36 @@ class DashboardTabBar(QFrame):
         widget.mousePressEvent = _on_press
         widget.mouseMoveEvent = _on_move
         widget.mouseReleaseEvent = _on_release
+
+        # Soporte Drag & Drop sobre la pestaña individual para cambiar de pestaña automáticamente
+        widget.setAcceptDrops(True)
+
+        def _on_tab_drag_enter(event):
+            if event.mimeData().hasUrls() or event.mimeData().hasText():
+                event.acceptProposedAction()
+                curr_i = self._get_tab_index(tab_info)
+                if curr_i >= 0 and curr_i != self.current_index:
+                    self.set_current_index(curr_i)
+            else:
+                event.ignore()
+
+        def _on_tab_drop(event):
+            if event.mimeData().hasUrls():
+                urls = event.mimeData().urls()
+                if urls:
+                    f_path = urls[0].toLocalFile()
+                    mw = getattr(self, "parent", None)
+                    if not mw or not hasattr(mw, "abrir_en_modulo"):
+                        mw = self.window()
+                    if mw and hasattr(mw, "abrir_en_modulo"):
+                        mw.abrir_en_modulo(tab_info["mod_name"], tab_info["sub_name"], ruta_archivo=f_path)
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+
+        widget.dragEnterEvent = _on_tab_drag_enter
+        widget.dragMoveEvent = _on_tab_drag_enter
+        widget.dropEvent = _on_tab_drop
 
         # Menú contextual de clic derecho (Fijar / Cerrar / Cerrar demás)
         widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
