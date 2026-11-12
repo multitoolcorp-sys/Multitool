@@ -303,96 +303,133 @@ def obtener_modulos_dinamicos(base_dir=None):
     return modulos
 
 
-def detectar_cambios_automaticamente(base_dir=None):
+def _es_archivo_autogenerado(rel_path: Path) -> bool:
+    """Retorna True si el archivo es metadato autogenerado (version.json, .mtu, caché) que no debe ocultar cambios reales."""
+    parts_low = [p.lower() for p in rel_path.parts]
+    name_low = rel_path.name.lower()
+    if name_low == "version.json" and "utils" in parts_low:
+        return True
+    if name_low.endswith((".mtu", ".sha256", ".pyc", ".pyo", ".log")):
+        return True
+    if any(p in ("__pycache__", "actualizaciones", "updates", "dist", "build", ".git", "data") for p in parts_low):
+        return True
+    return False
+
+
+def detectar_cambios_automaticamente(base_dir=None, num_commits=1, incluir_mtime_horas=0):
     """
     Analiza mediante Git (o fechas de modificación recientes como respaldo) qué módulos,
     vistas de interfaz, controladores o archivos sueltos han sido modificados.
-    Retorna un diccionario con los elementos detectados y el mapa de archivos para Parches Delta.
+    Ignora archivos autogenerados como utils/version.json para no ocultar los cambios reales.
     """
     b_dir = Path(base_dir).resolve() if base_dir else Path(__file__).resolve().parent
     archivos_cambiados_rel = set()
 
-    # 1. Intentar detectar mediante git status --porcelain y git diff
-    try:
-        proc = subprocess.run(
-            ["git", "status", "--porcelain"],
-            cwd=str(b_dir),
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        if proc.returncode == 0 and proc.stdout.strip():
-            top_proc = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(b_dir),
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            git_root = Path(top_proc.stdout.strip()).resolve() if top_proc.returncode == 0 and top_proc.stdout.strip() else b_dir
-            for raw_line in proc.stdout.splitlines():
-                if len(raw_line) < 4:
-                    continue
-                path_part = raw_line[3:].strip().strip('"')
-                if " -> " in path_part:
-                    path_part = path_part.split(" -> ", 1)[1].strip().strip('"')
-                abs_cand = (git_root / path_part).resolve()
-                try:
-                    rel_to_base = abs_cand.relative_to(b_dir)
-                    if abs_cand.is_dir():
-                        for sub_f in abs_cand.rglob("*"):
-                            if sub_f.is_file() and "__pycache__" not in sub_f.parts:
-                                archivos_cambiados_rel.add(sub_f.relative_to(b_dir))
-                    elif abs_cand.exists():
-                        archivos_cambiados_rel.add(rel_to_base)
-                except ValueError:
-                    pass
-    except Exception:
-        pass
-
-    # 2. Si git status no devolvió cambios en working tree, revisar el último commit (git diff HEAD~1..HEAD)
-    if not archivos_cambiados_rel:
+    def _agregar_si_valido(cand_path: Path):
         try:
-            proc_last = subprocess.run(
-                ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
-                cwd=str(b_dir),
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            top_proc = subprocess.run(
-                ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(b_dir),
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            git_root = Path(top_proc.stdout.strip()).resolve() if top_proc.returncode == 0 and top_proc.stdout.strip() else b_dir
-            if proc_last.returncode == 0 and proc_last.stdout.strip():
-                for line in proc_last.stdout.splitlines():
-                    abs_cand = (git_root / line.strip()).resolve()
-                    try:
-                        rel_to_base = abs_cand.relative_to(b_dir)
-                        if abs_cand.exists() and abs_cand.is_file():
-                            archivos_cambiados_rel.add(rel_to_base)
-                    except ValueError:
-                        pass
-        except Exception:
+            rel_to_base = cand_path.relative_to(b_dir)
+            if cand_path.exists() and cand_path.is_file() and not _es_archivo_autogenerado(rel_to_base):
+                archivos_cambiados_rel.add(rel_to_base)
+        except ValueError:
             pass
 
-    # 3. Respaldo por timestamp (archivos modificados en las últimas 12 horas) si no hubo datos de git
-    if not archivos_cambiados_rel:
-        cutoff = time.time() - (12 * 3600)
+    if incluir_mtime_horas and incluir_mtime_horas > 0:
+        cutoff = time.time() - (incluir_mtime_horas * 3600)
         for folder in ("vistas", "controlador"):
             f_dir = b_dir / folder
             if f_dir.exists():
                 for sub_f in f_dir.rglob("*"):
-                    if sub_f.is_file() and "__pycache__" not in sub_f.parts and not sub_f.name.endswith(".pyc"):
+                    if sub_f.is_file():
                         try:
                             if sub_f.stat().st_mtime >= cutoff:
-                                archivos_cambiados_rel.add(sub_f.relative_to(b_dir))
+                                _agregar_si_valido(sub_f)
                         except Exception:
                             pass
+    else:
+        # Obtener raíz de git
+        git_root = b_dir
+        try:
+            top_proc = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(b_dir),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if top_proc.returncode == 0 and top_proc.stdout.strip():
+                git_root = Path(top_proc.stdout.strip()).resolve()
+        except Exception:
+            pass
+
+        # 1. Cambios sin commitear en working tree (git status --porcelain), ignorando version.json
+        try:
+            proc = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=str(b_dir),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if proc.returncode == 0 and proc.stdout.strip():
+                for raw_line in proc.stdout.splitlines():
+                    if len(raw_line) < 4:
+                        continue
+                    path_part = raw_line[3:].strip().strip('"')
+                    if " -> " in path_part:
+                        path_part = path_part.split(" -> ", 1)[1].strip().strip('"')
+                    abs_cand = (git_root / path_part).resolve()
+                    if abs_cand.is_dir():
+                        for sub_f in abs_cand.rglob("*"):
+                            _agregar_si_valido(sub_f)
+                    else:
+                        _agregar_si_valido(abs_cand)
+        except Exception:
+            pass
+
+        # 2. Si no hubo cambios reales en working tree, o si el usuario pidió múltiples commits (ej. últimos 2/3/5),
+        #    revisar el historial de commits saltando commits vacíos o que solo tocaron version.json
+        if not archivos_cambiados_rel or num_commits > 1:
+            try:
+                proc_log = subprocess.run(
+                    ["git", "log", "-n", str(max(10, num_commits * 3)), "--name-only", "--pretty=format:===COMMIT==="],
+                    cwd=str(b_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if proc_log.returncode == 0 and proc_log.stdout.strip():
+                    commits_validos = 0
+                    bloque_actual = []
+                    for raw_l in proc_log.stdout.splitlines() + ["===COMMIT==="]:
+                        line = raw_l.strip()
+                        if line == "===COMMIT===":
+                            if bloque_actual:
+                                archivos_antes = len(archivos_cambiados_rel)
+                                for f_line in bloque_actual:
+                                    _agregar_si_valido((git_root / f_line).resolve())
+                                if len(archivos_cambiados_rel) > archivos_antes:
+                                    commits_validos += 1
+                                    if commits_validos >= num_commits:
+                                        break
+                                bloque_actual = []
+                        elif line:
+                            bloque_actual.append(line)
+            except Exception:
+                pass
+
+        # 3. Respaldo por timestamp (últimas 24h) si no existe .git o no devolvió archivos válidos
+        if not archivos_cambiados_rel:
+            cutoff = time.time() - (24 * 3600)
+            for folder in ("vistas", "controlador"):
+                f_dir = b_dir / folder
+                if f_dir.exists():
+                    for sub_f in f_dir.rglob("*"):
+                        if sub_f.is_file():
+                            try:
+                                if sub_f.stat().st_mtime >= cutoff:
+                                    _agregar_si_valido(sub_f)
+                            except Exception:
+                                pass
 
     resultado = {
         "interfaz": False,
@@ -1400,13 +1437,27 @@ if HAS_PYQT:
             self.btn_deselect_all.clicked.connect(self.deselect_all)
             self.btn_deselect_all.setStyleSheet("background-color: #2D2D3D; color: #E2E2E2; padding: 6px 10px;")
 
-            self.btn_auto_detect = QPushButton("🔍 Auto-Detectar Cambios")
+            self.btn_auto_detect = QPushButton("🔍 Auto-Detectar")
             self.btn_auto_detect.clicked.connect(self.auto_detect_changes)
             self.btn_auto_detect.setStyleSheet("background-color: #059669; color: #FFFFFF; padding: 6px 10px;")
-            
+
+            from PyQt6.QtWidgets import QComboBox
+            self.combo_detect_scope = QComboBox()
+            self.combo_detect_scope.addItem("Última modif. / Commit", ("commits", 1))
+            self.combo_detect_scope.addItem("Últimos 2 commits", ("commits", 2))
+            self.combo_detect_scope.addItem("Últimos 3 commits", ("commits", 3))
+            self.combo_detect_scope.addItem("Últimos 5 commits", ("commits", 5))
+            self.combo_detect_scope.addItem("Modificados hoy (24h)", ("mtime", 24))
+            self.combo_detect_scope.setToolTip("Alcance para Auto-Detectar Cambios y Parches Delta")
+            self.combo_detect_scope.setStyleSheet(
+                "QComboBox { background-color: #1A1A24; color: #E2E2E2; border: 1px solid #334155; border-radius: 5px; padding: 4px 8px; }"
+                "QComboBox QAbstractItemView { background-color: #1E1E2E; color: #FFFFFF; selection-background-color: #6366F1; }"
+            )
+
             sel_btn_layout.addWidget(self.btn_select_all)
             sel_btn_layout.addWidget(self.btn_deselect_all)
-            sel_btn_layout.addWidget(self.btn_auto_detect, 1)
+            sel_btn_layout.addWidget(self.btn_auto_detect)
+            sel_btn_layout.addWidget(self.combo_detect_scope, 1)
             left_layout.addLayout(sel_btn_layout)
 
             # Selector de archivos / carpetas sueltas personalizadas
@@ -1594,9 +1645,16 @@ if HAS_PYQT:
             self._actualizar_label_custom()
             self.append_log("[*] Lista de archivos/carpetas sueltas limpiada.")
 
+        def _obtener_parametros_autodeteccion(self):
+            scope_kind, scope_val = self.combo_detect_scope.currentData() or ("commits", 1)
+            if scope_kind == "mtime":
+                return {"num_commits": 1, "incluir_mtime_horas": int(scope_val)}
+            return {"num_commits": int(scope_val), "incluir_mtime_horas": 0}
+
         def auto_detect_changes(self):
             self.deselect_all()
-            info = detectar_cambios_automaticamente(self.base_dir)
+            params = self._obtener_parametros_autodeteccion()
+            info = detectar_cambios_automaticamente(self.base_dir, **params)
             self._ultimo_delta_por_modulo = info.get("delta_por_modulo", {})
 
             if info.get("interfaz"):
@@ -1652,7 +1710,8 @@ if HAS_PYQT:
                 return
 
             if self.cb_delta.isChecked() and not self._ultimo_delta_por_modulo:
-                info = detectar_cambios_automaticamente(self.base_dir)
+                params = self._obtener_parametros_autodeteccion()
+                info = detectar_cambios_automaticamente(self.base_dir, **params)
                 self._ultimo_delta_por_modulo = info.get("delta_por_modulo", {})
 
             self.btn_compile.setEnabled(False)
