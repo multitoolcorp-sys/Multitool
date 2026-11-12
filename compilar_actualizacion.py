@@ -33,7 +33,8 @@ def calcular_y_guardar_sha256(archivo_path):
 try:
     from PyQt6.QtWidgets import (
         QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton,
-        QPlainTextEdit, QLabel, QProgressBar, QMessageBox, QFrame, QScrollArea, QLineEdit
+        QPlainTextEdit, QLabel, QProgressBar, QMessageBox, QFrame, QScrollArea, QLineEdit,
+        QFileDialog
     )
     from PyQt6.QtCore import Qt, QThread, pyqtSignal
     from PyQt6.QtGui import QFont, QIcon, QTextCursor
@@ -290,19 +291,171 @@ def obtener_o_actualizar_version_modulo(base_dir, mod_name, descripcion=""):
 
     return nueva_ver
 
-ALL_23_MODULES = [
-    "archivos", "calculadora", "calendario", "chat", "clipboard",
-    "cuaderno", "cuenta", "emulador", "extras", "general",
-    "grabadora", "minigames", "navegador", "notas", "proyectos",
-    "reproductor", "seguridad", "sistema", "terminal", "tiempo",
-    "traductor", "widgets", "basedatos"
-]
+def obtener_modulos_dinamicos(base_dir=None):
+    """Detecta dinámicamente todas las carpetas de módulos válidas en vistas/modulos/."""
+    b_dir = Path(base_dir) if base_dir else Path(__file__).resolve().parent
+    modulos_dir = b_dir / "vistas" / "modulos"
+    modulos = []
+    if modulos_dir.exists():
+        for item in sorted(modulos_dir.iterdir(), key=lambda p: p.name.lower()):
+            if item.is_dir() and not item.name.startswith("__") and not item.name.startswith("."):
+                modulos.append(item.name.lower())
+    return modulos
+
+
+def detectar_cambios_automaticamente(base_dir=None):
+    """
+    Analiza mediante Git (o fechas de modificación recientes como respaldo) qué módulos,
+    vistas de interfaz, controladores o archivos sueltos han sido modificados.
+    Retorna un diccionario con los elementos detectados y el mapa de archivos para Parches Delta.
+    """
+    b_dir = Path(base_dir).resolve() if base_dir else Path(__file__).resolve().parent
+    archivos_cambiados_rel = set()
+
+    # 1. Intentar detectar mediante git status --porcelain y git diff
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(b_dir),
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            top_proc = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(b_dir),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            git_root = Path(top_proc.stdout.strip()).resolve() if top_proc.returncode == 0 and top_proc.stdout.strip() else b_dir
+            for raw_line in proc.stdout.splitlines():
+                if len(raw_line) < 4:
+                    continue
+                path_part = raw_line[3:].strip().strip('"')
+                if " -> " in path_part:
+                    path_part = path_part.split(" -> ", 1)[1].strip().strip('"')
+                abs_cand = (git_root / path_part).resolve()
+                try:
+                    rel_to_base = abs_cand.relative_to(b_dir)
+                    if abs_cand.is_dir():
+                        for sub_f in abs_cand.rglob("*"):
+                            if sub_f.is_file() and "__pycache__" not in sub_f.parts:
+                                archivos_cambiados_rel.add(sub_f.relative_to(b_dir))
+                    elif abs_cand.exists():
+                        archivos_cambiados_rel.add(rel_to_base)
+                except ValueError:
+                    pass
+    except Exception:
+        pass
+
+    # 2. Si git status no devolvió cambios en working tree, revisar el último commit (git diff HEAD~1..HEAD)
+    if not archivos_cambiados_rel:
+        try:
+            proc_last = subprocess.run(
+                ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+                cwd=str(b_dir),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            top_proc = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(b_dir),
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            git_root = Path(top_proc.stdout.strip()).resolve() if top_proc.returncode == 0 and top_proc.stdout.strip() else b_dir
+            if proc_last.returncode == 0 and proc_last.stdout.strip():
+                for line in proc_last.stdout.splitlines():
+                    abs_cand = (git_root / line.strip()).resolve()
+                    try:
+                        rel_to_base = abs_cand.relative_to(b_dir)
+                        if abs_cand.exists() and abs_cand.is_file():
+                            archivos_cambiados_rel.add(rel_to_base)
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+
+    # 3. Respaldo por timestamp (archivos modificados en las últimas 12 horas) si no hubo datos de git
+    if not archivos_cambiados_rel:
+        cutoff = time.time() - (12 * 3600)
+        for folder in ("vistas", "controlador"):
+            f_dir = b_dir / folder
+            if f_dir.exists():
+                for sub_f in f_dir.rglob("*"):
+                    if sub_f.is_file() and "__pycache__" not in sub_f.parts and not sub_f.name.endswith(".pyc"):
+                        try:
+                            if sub_f.stat().st_mtime >= cutoff:
+                                archivos_cambiados_rel.add(sub_f.relative_to(b_dir))
+                        except Exception:
+                            pass
+
+    resultado = {
+        "interfaz": False,
+        "autenticacion": False,
+        "controlador": False,
+        "modulos": set(),
+        "delta_por_modulo": {},
+        "archivos_sueltos": [],
+        "resumen": ""
+    }
+
+    archivos_interfaz_set = {
+        ("vistas", "gui.py"),
+        ("vistas", "dashboard_layout.py"),
+        ("vistas", "scrollable.py"),
+        ("vistas", "command_palette.py"),
+        ("vistas", "cargar.py"),
+    }
+
+    for rel_p in sorted(archivos_cambiados_rel):
+        parts = tuple(p.lower() for p in rel_p.parts)
+        if not parts:
+            continue
+        if parts in archivos_interfaz_set:
+            resultado["interfaz"] = True
+        elif parts[:2] == ("controlador", "auth") or parts[:3] == ("vistas", "modulos", "cuenta") or parts[-1] == "oauth_manager.py":
+            resultado["autenticacion"] = True
+            if parts[:3] == ("vistas", "modulos", "cuenta"):
+                resultado["modulos"].add("cuenta")
+                resultado["delta_por_modulo"].setdefault("cuenta", []).append(rel_p)
+        elif parts[:2] == ("vistas", "modulos") and len(rel_p.parts) >= 3:
+            mod_name = rel_p.parts[2].lower()
+            resultado["modulos"].add(mod_name)
+            resultado["delta_por_modulo"].setdefault(mod_name, []).append(rel_p)
+        elif parts[0] == "controlador" or parts[:2] == ("vistas", "utils") or parts in {("vistas", "configurations.py"), ("vistas", "launcher.py"), ("vistas", "estilos.py")}:
+            resultado["controlador"] = True
+        elif parts[0] in ("vistas", "controlador") or rel_p.name in ("downloader.py", "updater.py", "main.py"):
+            resultado["archivos_sueltos"].append(rel_p)
+
+    lineas_resumen = []
+    if resultado["interfaz"]:
+        lineas_resumen.append("+ Actualización de Interfaz y Modo IDE (gui.py / dashboard_layout.py)")
+    if resultado["autenticacion"]:
+        lineas_resumen.append("+ Actualización de Sistema de Autenticación y Cuentas")
+    if resultado["controlador"]:
+        lineas_resumen.append("+ Actualización de Controlador, Utils y Cargador Dinámico")
+    for m in sorted(resultado["modulos"]):
+        n_files = len(resultado["delta_por_modulo"].get(m, []))
+        lineas_resumen.append(f"+ Módulo '{m.capitalize()}' actualizado ({n_files} archivo(s) modificado(s))")
+    if resultado["archivos_sueltos"]:
+        lineas_resumen.append(f"+ {len(resultado['archivos_sueltos'])} archivo(s) adicional(es) actualizado(s)")
+
+    resultado["resumen"] = "\n".join(lineas_resumen)
+    return resultado
+
 
 def copiar_y_registrar_actualizacion_web(base_dir, tipo, zip_filename, log_signal=None, descripcion="", mod_name=None, num_items=1, mod_version="21.0.0"):
     """
     Copia el archivo .mtu a la subcarpeta correspondiente en la página web:
       - 'core': pagina/public/updates/core/
       - 'auth': pagina/public/updates/auth/
+      - 'interfaz': pagina/public/updates/interfaz/
+      - 'controlador': pagina/public/updates/controlador/
       - 'modulo' (1 solo módulo): pagina/public/updates/modulos/<modulo>/
       - 'generales' / 'multimodulo' / num_items > 1: pagina/public/updates/generales/
     """
@@ -313,8 +466,9 @@ def copiar_y_registrar_actualizacion_web(base_dir, tipo, zip_filename, log_signa
         (public_updates / "core").mkdir(parents=True, exist_ok=True)
         (public_updates / "auth").mkdir(parents=True, exist_ok=True)
         (public_updates / "interfaz").mkdir(parents=True, exist_ok=True)
+        (public_updates / "controlador").mkdir(parents=True, exist_ok=True)
         (public_updates / "generales").mkdir(parents=True, exist_ok=True)
-        for mod in ALL_23_MODULES:
+        for mod in obtener_modulos_dinamicos(base_dir):
             (public_updates / "modulos" / mod).mkdir(parents=True, exist_ok=True)
 
         if num_items > 1 or tipo in ["multimodulo", "general", "generales"]:
@@ -329,6 +483,9 @@ def copiar_y_registrar_actualizacion_web(base_dir, tipo, zip_filename, log_signa
         elif tipo in ["interfaz", "ui", "vistas", "dashboard", "gui"]:
             sub_path = Path("interfaz")
             tipo_label = "Interfaz y Modo IDE (GUI & Dashboard)"
+        elif tipo in ["controlador", "utils", "loader"]:
+            sub_path = Path("controlador")
+            tipo_label = "Controlador y Cargador Base"
         elif tipo == "modulo" and mod_name:
             sub_path = Path("modulos") / mod_name.lower().strip()
             tipo_label = f"Módulo: {mod_name.title()}"
@@ -432,13 +589,34 @@ if HAS_PYQT:
         progress_signal = pyqtSignal(int, str)
         finished_signal = pyqtSignal(bool, str)
 
-        def __init__(self, base_dir, modulos_a_compilar, compilar_sistema, compilar_autenticacion=False, compilar_interfaz=False, unificar_modulos=False, nombre_personalizado="", descripcion="", copiar_a_web=True):
+        def __init__(
+            self,
+            base_dir,
+            modulos_a_compilar,
+            compilar_sistema,
+            compilar_autenticacion=False,
+            compilar_interfaz=False,
+            unificar_modulos=False,
+            nombre_personalizado="",
+            descripcion="",
+            copiar_a_web=True,
+            compilar_controlador=False,
+            archivos_personalizados=None,
+            modo_rapido=True,
+            solo_modificados=False,
+            delta_por_modulo=None
+        ):
             super().__init__()
             self.base_dir = base_dir
             self.modulos = modulos_a_compilar
             self.compilar_sistema = compilar_sistema
             self.compilar_autenticacion = compilar_autenticacion
             self.compilar_interfaz = compilar_interfaz
+            self.compilar_controlador = compilar_controlador
+            self.archivos_personalizados = list(archivos_personalizados or [])
+            self.modo_rapido = modo_rapido
+            self.solo_modificados = solo_modificados
+            self.delta_por_modulo = dict(delta_por_modulo or {})
             self.unificar = unificar_modulos
             self.nombre_personalizado = nombre_personalizado.strip()
             self.descripcion = descripcion.strip()
@@ -507,7 +685,9 @@ if HAS_PYQT:
                 (1 if self.compilar_sistema else 0)
                 + (1 if self.compilar_autenticacion else 0)
                 + (1 if self.compilar_interfaz else 0)
-                + (1 if (self.modulos and self.unificar) else len(self.modulos))
+                + (1 if self.compilar_controlador else 0)
+                + (1 if self.archivos_personalizados and not self.unificar else 0)
+                + (1 if ((self.modulos or self.archivos_personalizados) and self.unificar) else len(self.modulos))
             )
             
             # Limpiar directorio temporal antes de empezar
@@ -722,17 +902,132 @@ if HAS_PYQT:
                 else:
                     self.log_signal.emit(f"[WEB OMITIDO] No se copió a la web (guardado únicamente en UPDATES/{zip_filename.name}).")
 
-            # 2. COMPILAR MÓDULOS si hay solicitados
-            if self.modulos:
-                total_mods = len(self.modulos)
+            # 1.9. COMPILAR / EMPAQUETAR CONTROLADOR, UTILS Y CARGADOR BASE si está solicitado
+            if self.compilar_controlador:
+                self.progress_signal.emit(32, "Empaquetando Controlador, Utils y Cargador Base...")
+                self.log_signal.emit("\n=== INICIANDO EMPAQUETADO DE CONTROLADOR, UTILS Y CARGADOR BASE ===")
+
+                temp_ctrl_dir = temp_dir / "controlador_build"
+                if temp_ctrl_dir.exists():
+                    shutil.rmtree(temp_ctrl_dir, ignore_errors=True)
+                temp_ctrl_dir.mkdir(parents=True, exist_ok=True)
+
+                carpetas_ctrl = [
+                    Path("controlador"),
+                    Path("vistas") / "utils",
+                ]
+                for rel_folder in carpetas_ctrl:
+                    src_folder = self.base_dir / rel_folder
+                    if src_folder.exists():
+                        dest_folder = temp_ctrl_dir / rel_folder
+                        shutil.copytree(
+                            src_folder,
+                            dest_folder,
+                            dirs_exist_ok=True,
+                            ignore=shutil.ignore_patterns("*.pyc", "__pycache__")
+                        )
+                        self.log_signal.emit(f"[OK] Carpeta copiada: {rel_folder.as_posix()}/")
+
+                archivos_ctrl_sueltos = [
+                    Path("vistas") / "configurations.py",
+                    Path("vistas") / "cargar.py",
+                    Path("vistas") / "launcher.py",
+                    Path("vistas") / "estilos.py",
+                    Path("vistas") / "errors.py",
+                    Path("updater.py"),
+                ]
+                for rel_file in archivos_ctrl_sueltos:
+                    src_file = self.base_dir / rel_file
+                    if src_file.exists():
+                        dest_file = temp_ctrl_dir / rel_file
+                        dest_file.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_file, dest_file)
+                        self.log_signal.emit(f"[OK] Archivo base copiado: {rel_file.as_posix()}")
+
+                zip_filename = obtener_ruta_destino(updates_out, "update_controlador", self.nombre_personalizado, num_outputs, "controlador")
+                if zip_filename.exists():
+                    zip_filename.unlink()
+
+                self.log_signal.emit(f"Empaquetando {zip_filename.name}...")
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    manifest = generar_manifest_json("controlador", "controlador_utils", self.descripcion)
+                    zipf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+                    if self.descripcion:
+                        zipf.writestr("descripcion.txt", self.descripcion.encode("utf-8"))
+                    for root, dirs, files in os.walk(temp_ctrl_dir):
+                        for file in files:
+                            abs_path = Path(root) / file
+                            rel_path = abs_path.relative_to(temp_ctrl_dir)
+                            zipf.write(abs_path, rel_path)
+
+                calcular_y_guardar_sha256(zip_filename)
+                self.log_signal.emit(f"[ÉXITO] Actualización de Controlador y Cargador empaquetada en:\n -> {zip_filename.name}")
+                if self.copiar_a_web:
+                    copiar_y_registrar_actualizacion_web(self.base_dir, "controlador", zip_filename, self.log_signal, self.descripcion)
+                else:
+                    self.log_signal.emit(f"[WEB OMITIDO] No se copió a la web (guardado únicamente en UPDATES/{zip_filename.name}).")
+
+            # 1.95. ARCHIVOS / CARPETAS SUELTAS PERSONALIZADAS (cuando no se unifica con módulos)
+            if self.archivos_personalizados and not self.unificar:
+                self.progress_signal.emit(34, "Empaquetando archivos/carpetas personalizadas...")
+                self.log_signal.emit("\n=== INICIANDO EMPAQUETADO DE ARCHIVOS/CARPETAS SUELTAS ===")
+                temp_cust_dir = temp_dir / "custom_build"
+                temp_cust_dir.mkdir(parents=True, exist_ok=True)
+                for rel_item in self.archivos_personalizados:
+                    rel_p = Path(rel_item)
+                    src_p = self.base_dir / rel_p
+                    if not src_p.exists():
+                        continue
+                    dest_p = temp_cust_dir / rel_p
+                    if src_p.is_dir():
+                        shutil.copytree(src_p, dest_p, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.pyc", "__pycache__"))
+                    else:
+                        dest_p.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(src_p, dest_p)
+                    self.log_signal.emit(f"[OK] Incluido en parche personalizado: {rel_p.as_posix()}")
+
+                zip_filename = obtener_ruta_destino(updates_out, "update_personalizado", self.nombre_personalizado, num_outputs, "personalizado")
+                if zip_filename.exists():
+                    zip_filename.unlink()
+                with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    manifest = generar_manifest_json("custom", "archivos_personalizados", self.descripcion)
+                    zipf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+                    if self.descripcion:
+                        zipf.writestr("descripcion.txt", self.descripcion.encode("utf-8"))
+                    for root, dirs, files in os.walk(temp_cust_dir):
+                        for file in files:
+                            abs_path = Path(root) / file
+                            rel_path = abs_path.relative_to(temp_cust_dir)
+                            zipf.write(abs_path, rel_path)
+                calcular_y_guardar_sha256(zip_filename)
+                self.log_signal.emit(f"[ÉXITO] Parche personalizado empaquetado en:\n -> {zip_filename.name}")
+                if self.copiar_a_web:
+                    copiar_y_registrar_actualizacion_web(self.base_dir, "generales", zip_filename, self.log_signal, self.descripcion)
+
+            # 2. COMPILAR / EMPAQUETAR MÓDULOS (Y ARCHIVOS UNIFICADOS) si hay solicitados
+            if self.modulos or (self.archivos_personalizados and self.unificar):
+                total_mods = max(1, len(self.modulos))
                 unified_temp_dir = temp_dir / "unified"
                 if self.unificar:
                     unified_temp_dir.mkdir(parents=True, exist_ok=True)
+                    # Incluir archivos personalizados en el paquete unificado si los hay
+                    for rel_item in self.archivos_personalizados:
+                        rel_p = Path(rel_item)
+                        src_p = self.base_dir / rel_p
+                        if src_p.exists():
+                            dest_p = unified_temp_dir / rel_p
+                            if src_p.is_dir():
+                                shutil.copytree(src_p, dest_p, dirs_exist_ok=True, ignore=shutil.ignore_patterns("*.pyc", "__pycache__"))
+                            else:
+                                dest_p.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(src_p, dest_p)
+                            self.log_signal.emit(f"[OK] Archivo suelto agregado al paquete unificado: {rel_p.as_posix()}")
 
                 for index, mod_name in enumerate(self.modulos):
                     pct = 35 + int((index / total_mods) * 55)
-                    self.progress_signal.emit(pct, f"Compilando módulo: {mod_name}...")
-                    self.log_signal.emit(f"\n=== COMPILANDO MÓDULO: {mod_name.upper()} ===")
+                    modo_txt = "Empaquetando (Modo Rápido Dinámico)" if self.modo_rapido else "Compilando (Nuitka)"
+                    self.progress_signal.emit(pct, f"{modo_txt}: {mod_name}...")
+                    self.log_signal.emit(f"\n=== {modo_txt.upper()} MÓDULO: {mod_name.upper()} ===")
                     
                     mod_dir = self.base_dir / "vistas" / "modulos" / mod_name
                     if not mod_dir.exists():
@@ -768,7 +1063,7 @@ if HAS_PYQT:
                                 target_py = alt_path
                                 encontrado = True
                                 break
-                        if not encontrado:
+                        if not encontrado and not self.modo_rapido:
                             self.log_signal.emit(f"[!] Error: No se encontró el script de entrada {target_py}")
                             continue
                     
@@ -777,93 +1072,112 @@ if HAS_PYQT:
                     if temp_update_dir.exists():
                         shutil.rmtree(temp_update_dir, ignore_errors=True)
                     temp_update_dir.mkdir(parents=True, exist_ok=True)
-                    
-                    self.log_signal.emit(f"Compilando script de entrada: {target_py.name}...")
-                    
-                    cmd = [
-                        sys.executable, "-m", "nuitka",
-                        "--assume-yes-for-downloads",
-                        "--module",
-                        "--show-progress",
-                        f"--output-dir={temp_dir}",
-                        "--jobs=8",
-                        "--lto=no",
-                        str(target_py)
-                    ]
-                    
-                    try:
-                        process = subprocess.Popen(
-                            cmd,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            bufsize=0,
-                            shell=True if sys_os == "Windows" else False
-                        )
-                        self.read_process_output(process)
-                        rc = process.wait()
-                        if rc != 0:
-                            self.log_signal.emit(f"[!] Nuitka finalizó con código de error {rc}")
-                            continue
-                    except Exception as e:
-                        self.log_signal.emit(f"[!] Falló la ejecución de Nuitka: {e}")
-                        continue
-                    
-                    # Buscar binario compilado generado
-                    file_base_name = target_py.stem
-                    compiled_file = None
-                    for item in temp_dir.iterdir():
-                        if item.is_file() and item.name.startswith(file_base_name) and item.name.endswith(ext_bin):
-                            compiled_file = item
-                            break
-                            
-                    if not compiled_file:
-                        self.log_signal.emit(f"[!] Error: No se generó el archivo compilado {file_base_name}{ext_bin}")
-                        continue
-                        
-                    self.log_signal.emit(f"[OK] Módulo compilado con éxito: {compiled_file.name}")
-                    
-                    # Mover archivo a la estructura temporal con reintentos
-                    moved = False
-                    for attempt in range(5):
+
+                    if not self.modo_rapido:
+                        self.log_signal.emit(f"Compilando script de entrada con Nuitka: {target_py.name}...")
+                        cmd = [
+                            sys.executable, "-m", "nuitka",
+                            "--assume-yes-for-downloads",
+                            "--module",
+                            "--show-progress",
+                            f"--output-dir={temp_dir}",
+                            "--jobs=8",
+                            "--lto=no",
+                            str(target_py)
+                        ]
                         try:
-                            if (temp_update_dir / f"{file_base_name}{ext_bin}").exists():
-                                (temp_update_dir / f"{file_base_name}{ext_bin}").unlink()
-                            shutil.move(str(compiled_file), str(temp_update_dir / f"{file_base_name}{ext_bin}"))
-                            moved = True
-                            break
+                            process = subprocess.Popen(
+                                cmd,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                bufsize=0,
+                                shell=True if sys_os == "Windows" else False
+                            )
+                            self.read_process_output(process)
+                            rc = process.wait()
+                            if rc != 0:
+                                self.log_signal.emit(f"[!] Nuitka finalizó con código de error {rc}")
+                                continue
                         except Exception as e:
-                            self.log_signal.emit(f"[!] Intento {attempt + 1}: No se pudo mover el archivo. Reintentando en 1s... ({e})")
-                            time.sleep(1)
-                    
-                    if not moved:
-                        self.log_signal.emit("[!] Advertencia: Falló el movimiento directo. Intentando copia + eliminación diferida...")
-                        try:
-                            shutil.copy2(str(compiled_file), str(temp_update_dir / f"{file_base_name}{ext_bin}"))
+                            self.log_signal.emit(f"[!] Falló la ejecución de Nuitka: {e}")
+                            continue
+
+                        file_base_name = target_py.stem
+                        compiled_file = None
+                        for item in temp_dir.iterdir():
+                            if item.is_file() and item.name.startswith(file_base_name) and item.name.endswith(ext_bin):
+                                compiled_file = item
+                                break
+                        if not compiled_file:
+                            self.log_signal.emit(f"[!] Error: No se generó el archivo compilado {file_base_name}{ext_bin}")
+                            continue
+                        self.log_signal.emit(f"[OK] Módulo compilado con éxito: {compiled_file.name}")
+
+                        moved = False
+                        for attempt in range(5):
                             try:
-                                os.unlink(compiled_file)
-                            except: pass
-                        except Exception as e:
-                            self.log_signal.emit(f"[!] Error crítico al copiar el módulo: {e}")
-                            continue
-                    
-                    # Copiar recursos adicionales
-                    for root, dirs, files in os.walk(mod_dir):
-                        rel_path = Path(root).relative_to(mod_dir)
-                        if "__pycache__" in root or "browser_data" in root:
-                            continue
-                        dest_subdir = temp_update_dir / rel_path
-                        dest_subdir.mkdir(parents=True, exist_ok=True)
-                        
-                        for file in files:
-                            src_file = Path(root) / file
-                            dest_file = dest_subdir / file
-                            shutil.copy2(src_file, dest_file)
-                            
-                    self.log_signal.emit("Recursos copiados correctamente.")
-                    
+                                if (temp_update_dir / f"{file_base_name}{ext_bin}").exists():
+                                    (temp_update_dir / f"{file_base_name}{ext_bin}").unlink()
+                                shutil.move(str(compiled_file), str(temp_update_dir / f"{file_base_name}{ext_bin}"))
+                                moved = True
+                                break
+                            except Exception as e:
+                                self.log_signal.emit(f"[!] Intento {attempt + 1}: No se pudo mover el archivo. Reintentando en 1s... ({e})")
+                                time.sleep(1)
+                        if not moved:
+                            try:
+                                shutil.copy2(str(compiled_file), str(temp_update_dir / f"{file_base_name}{ext_bin}"))
+                                try:
+                                    os.unlink(compiled_file)
+                                except Exception:
+                                    pass
+                            except Exception as e:
+                                self.log_signal.emit(f"[!] Error crítico al copiar el módulo: {e}")
+                                continue
+                    else:
+                        self.log_signal.emit(f"[⚡ MODO RÁPIDO] Omitiendo compilación pesada de Nuitka para '{mod_name}' (código dinámico directo).")
+
                     # Actualizar versión SemVer del módulo según la descripción (+/-)
                     mod_ver = obtener_o_actualizar_version_modulo(self.base_dir, mod_name, self.descripcion)
                     self.log_signal.emit(f"Versión calculada del módulo '{mod_name}': v{mod_ver}")
+
+                    # Determinar si aplicamos Parche Delta (solo archivos modificados) o módulo completo
+                    delta_files = self.delta_por_modulo.get(mod_name.lower(), []) if self.solo_modificados else []
+                    if self.solo_modificados and delta_files:
+                        self.log_signal.emit(f"[🎯 PARCHE DELTA] Empaquetando únicamente {len(delta_files)} archivo(s) modificado(s) de '{mod_name}'...")
+                        for rel_f in delta_files:
+                            src_f = self.base_dir / rel_f
+                            if src_f.exists() and src_f.is_file():
+                                try:
+                                    in_mod_rel = src_f.relative_to(mod_dir)
+                                except ValueError:
+                                    continue
+                                dest_f = temp_update_dir / in_mod_rel
+                                dest_f.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(src_f, dest_f)
+                                self.log_signal.emit(f"  -> Delta: {in_mod_rel.as_posix()}")
+                        # Asegurar config.json y utils/version.json siempre presentes
+                        for essential in (Path("config.json"), Path("utils") / "version.json"):
+                            ess_src = mod_dir / essential
+                            if ess_src.exists():
+                                ess_dst = temp_update_dir / essential
+                                ess_dst.parent.mkdir(parents=True, exist_ok=True)
+                                shutil.copy2(ess_src, ess_dst)
+                    else:
+                        # Copiar todos los archivos del módulo
+                        for root, dirs, files in os.walk(mod_dir):
+                            rel_path = Path(root).relative_to(mod_dir)
+                            if "__pycache__" in root or "browser_data" in root:
+                                continue
+                            dest_subdir = temp_update_dir / rel_path
+                            dest_subdir.mkdir(parents=True, exist_ok=True)
+                            for file in files:
+                                if file.endswith(".pyc"):
+                                    continue
+                                src_file = Path(root) / file
+                                dest_file = dest_subdir / file
+                                shutil.copy2(src_file, dest_file)
+                        self.log_signal.emit("Archivos y recursos del módulo copiados correctamente.")
                     
                     # Empaquetamiento
                     if self.unificar:
@@ -1047,8 +1361,16 @@ if HAS_PYQT:
 
             # Checkbox especial de Interfaz y Modo IDE (vistas/gui.py & vistas/dashboard_layout.py)
             self.cb_interfaz = QCheckBox("🖥️ Interfaz y Modo IDE (gui.py & dashboard_layout.py)")
-            self.cb_interfaz.setStyleSheet("color: #F59E0B; font-weight: bold; font-size: 13px; padding-bottom: 5px;")
+            self.cb_interfaz.setStyleSheet("color: #F59E0B; font-weight: bold; font-size: 13px; padding-bottom: 3px;")
             self.scroll_layout.addWidget(self.cb_interfaz)
+
+            # Checkbox especial de Controlador, Utils y Cargador Base
+            self.cb_controlador = QCheckBox("⚙️ Controlador, Utils y Cargador Base")
+            self.cb_controlador.setStyleSheet("color: #38BDF8; font-weight: bold; font-size: 13px; padding-bottom: 5px;")
+            self.scroll_layout.addWidget(self.cb_controlador)
+
+            self.archivos_personalizados = []
+            self._ultimo_delta_por_modulo = {}
 
             # Separador visual
             line = QFrame()
@@ -1057,41 +1379,66 @@ if HAS_PYQT:
             line.setStyleSheet("background-color: #2D2D3D; max-height: 1px; margin-bottom: 5px;")
             self.scroll_layout.addWidget(line)
 
-            # Rellenar lista de módulos
+            # Rellenar lista de módulos dinámicamente desde vistas/modulos/
             self.checkboxes = {}
-            modulos_dir = self.base_dir / "vistas" / "modulos"
-            if modulos_dir.exists():
-                for item in modulos_dir.iterdir():
-                    if item.is_dir() and not item.name.startswith("__"):
-                        config_path = item / "config.json"
-                        if config_path.exists():
-                            cb = QCheckBox(item.name.capitalize())
-                            self.checkboxes[item.name] = cb
-                            self.scroll_layout.addWidget(cb)
+            for mod_name in obtener_modulos_dinamicos(self.base_dir):
+                cb = QCheckBox(mod_name.capitalize())
+                self.checkboxes[mod_name] = cb
+                self.scroll_layout.addWidget(cb)
 
             self.scroll_layout.addStretch()
             self.scroll_area.setWidget(scroll_widget)
             left_layout.addWidget(self.scroll_area)
 
-            # Botones de selección rápida
+            # Botones de selección rápida + Auto-Detección de Cambios
             sel_btn_layout = QHBoxLayout()
             self.btn_select_all = QPushButton("Todos")
             self.btn_select_all.clicked.connect(self.select_all)
-            self.btn_select_all.setStyleSheet("background-color: #2D2D3D; color: #E2E2E2;")
+            self.btn_select_all.setStyleSheet("background-color: #2D2D3D; color: #E2E2E2; padding: 6px 10px;")
             
             self.btn_deselect_all = QPushButton("Ninguno")
             self.btn_deselect_all.clicked.connect(self.deselect_all)
-            self.btn_deselect_all.setStyleSheet("background-color: #2D2D3D; color: #E2E2E2;")
+            self.btn_deselect_all.setStyleSheet("background-color: #2D2D3D; color: #E2E2E2; padding: 6px 10px;")
+
+            self.btn_auto_detect = QPushButton("🔍 Auto-Detectar Cambios")
+            self.btn_auto_detect.clicked.connect(self.auto_detect_changes)
+            self.btn_auto_detect.setStyleSheet("background-color: #059669; color: #FFFFFF; padding: 6px 10px;")
             
             sel_btn_layout.addWidget(self.btn_select_all)
             sel_btn_layout.addWidget(self.btn_deselect_all)
+            sel_btn_layout.addWidget(self.btn_auto_detect, 1)
             left_layout.addLayout(sel_btn_layout)
+
+            # Selector de archivos / carpetas sueltas personalizadas
+            cust_btn_layout = QHBoxLayout()
+            self.btn_add_custom_file = QPushButton("➕ Agregar Archivo Suelto...")
+            self.btn_add_custom_file.clicked.connect(self.add_custom_file)
+            self.btn_add_custom_file.setStyleSheet("background-color: #1E293B; color: #38BDF8; border: 1px solid #334155; padding: 5px 8px; font-size: 11px;")
+
+            self.btn_add_custom_folder = QPushButton("📁 Agregar Carpeta...")
+            self.btn_add_custom_folder.clicked.connect(self.add_custom_folder)
+            self.btn_add_custom_folder.setStyleSheet("background-color: #1E293B; color: #F59E0B; border: 1px solid #334155; padding: 5px 8px; font-size: 11px;")
+
+            self.btn_clear_custom = QPushButton("🗑️")
+            self.btn_clear_custom.setToolTip("Limpiar archivos/carpetas sueltas agregadas")
+            self.btn_clear_custom.clicked.connect(self.clear_custom_items)
+            self.btn_clear_custom.setFixedWidth(34)
+            self.btn_clear_custom.setStyleSheet("background-color: #2D2D3D; color: #F87171; padding: 5px;")
+
+            cust_btn_layout.addWidget(self.btn_add_custom_file)
+            cust_btn_layout.addWidget(self.btn_add_custom_folder)
+            cust_btn_layout.addWidget(self.btn_clear_custom)
+            left_layout.addLayout(cust_btn_layout)
+
+            self.lbl_custom_files = QLabel("Archivos sueltos adicionales: 0")
+            self.lbl_custom_files.setStyleSheet("color: #94A3B8; font-size: 10px;")
+            left_layout.addWidget(self.lbl_custom_files)
 
             content_layout.addLayout(left_layout, 1)
 
             # Panel Derecho: Terminal de compilación
             right_layout = QVBoxLayout()
-            right_layout.addWidget(QLabel("Terminal de Compilación (Nuitka Logs):"))
+            right_layout.addWidget(QLabel("Terminal de Compilación (Logs):"))
             
             self.console = QPlainTextEdit()
             self.console.setReadOnly(True)
@@ -1102,9 +1449,19 @@ if HAS_PYQT:
 
             # Fila de Opciones
             options_layout = QVBoxLayout()
-            options_layout.setSpacing(6)
+            options_layout.setSpacing(4)
+
+            self.cb_modo_rapido = QCheckBox("⚡ Modo Rápido Dinámico (.py instantáneo sin Nuitka — Ideal para actualizaciones en caliente / Hot-Reload)")
+            self.cb_modo_rapido.setChecked(True)
+            self.cb_modo_rapido.setStyleSheet("color: #34D399; font-size: 11px; font-weight: bold;")
+            options_layout.addWidget(self.cb_modo_rapido)
+
+            self.cb_delta = QCheckBox("🎯 Parche Delta Inteligente (Empaquetar únicamente los archivos modificados de cada módulo)")
+            self.cb_delta.setChecked(False)
+            self.cb_delta.setStyleSheet("color: #FBBF24; font-size: 11px; font-weight: bold;")
+            options_layout.addWidget(self.cb_delta)
             
-            self.cb_unificar = QCheckBox("📦 Unificar módulos seleccionados en un archivo único de actualización (.mtu)")
+            self.cb_unificar = QCheckBox("📦 Unificar módulos y archivos seleccionados en un archivo único de actualización (.mtu)")
             self.cb_unificar.setChecked(True)
             self.cb_unificar.setStyleSheet("color: #AAB0B8; font-size: 11px; font-weight: normal;")
             options_layout.addWidget(self.cb_unificar)
@@ -1188,25 +1545,129 @@ if HAS_PYQT:
                 cb.setChecked(True)
 
         def deselect_all(self):
+            self.cb_sistema.setChecked(False)
+            self.cb_autenticacion.setChecked(False)
+            self.cb_interfaz.setChecked(False)
+            self.cb_controlador.setChecked(False)
             for cb in self.checkboxes.values():
                 cb.setChecked(False)
+
+        def _actualizar_label_custom(self):
+            n = len(self.archivos_personalizados)
+            if n == 0:
+                self.lbl_custom_files.setText("Archivos sueltos adicionales: 0")
+            else:
+                nombres = ", ".join(Path(p).name for p in self.archivos_personalizados[:3])
+                extra = f" (+{n - 3} más)" if n > 3 else ""
+                self.lbl_custom_files.setText(f"Archivos sueltos ({n}): {nombres}{extra}")
+
+        def add_custom_file(self):
+            files, _ = QFileDialog.getOpenFileNames(
+                self, "Seleccionar Archivo(s) del Proyecto", str(self.base_dir), "Todos los archivos (*.*)"
+            )
+            for f in files:
+                try:
+                    rel = Path(f).resolve().relative_to(self.base_dir)
+                    if rel not in self.archivos_personalizados:
+                        self.archivos_personalizados.append(rel)
+                        self.append_log(f"[+] Archivo suelto agregado: {rel.as_posix()}")
+                except ValueError:
+                    QMessageBox.warning(self, "Ruta fuera del proyecto", f"El archivo debe estar dentro de:\n{self.base_dir}")
+            self._actualizar_label_custom()
+
+        def add_custom_folder(self):
+            folder = QFileDialog.getExistingDirectory(
+                self, "Seleccionar Carpeta del Proyecto", str(self.base_dir)
+            )
+            if folder:
+                try:
+                    rel = Path(folder).resolve().relative_to(self.base_dir)
+                    if str(rel) != "." and rel not in self.archivos_personalizados:
+                        self.archivos_personalizados.append(rel)
+                        self.append_log(f"[+] Carpeta agregada: {rel.as_posix()}/")
+                except ValueError:
+                    QMessageBox.warning(self, "Ruta fuera del proyecto", f"La carpeta debe estar dentro de:\n{self.base_dir}")
+            self._actualizar_label_custom()
+
+        def clear_custom_items(self):
+            self.archivos_personalizados.clear()
+            self._actualizar_label_custom()
+            self.append_log("[*] Lista de archivos/carpetas sueltas limpiada.")
+
+        def auto_detect_changes(self):
+            self.deselect_all()
+            info = detectar_cambios_automaticamente(self.base_dir)
+            self._ultimo_delta_por_modulo = info.get("delta_por_modulo", {})
+
+            if info.get("interfaz"):
+                self.cb_interfaz.setChecked(True)
+            if info.get("autenticacion"):
+                self.cb_autenticacion.setChecked(True)
+            if info.get("controlador"):
+                self.cb_controlador.setChecked(True)
+
+            for mod_name in info.get("modulos", set()):
+                if mod_name in self.checkboxes:
+                    self.checkboxes[mod_name].setChecked(True)
+
+            for rel_f in info.get("archivos_sueltos", []):
+                if rel_f not in self.archivos_personalizados:
+                    self.archivos_personalizados.append(rel_f)
+            self._actualizar_label_custom()
+
+            resumen = info.get("resumen", "").strip()
+            self.console.clear()
+            if resumen:
+                self.append_log("=== 🔍 DETECCIÓN AUTOMÁTICA DE CAMBIOS ===")
+                self.append_log(resumen)
+                for mod_name, files in sorted(self._ultimo_delta_por_modulo.items()):
+                    self.append_log(f"\nArchivos modificados en '{mod_name}':")
+                    for rf in files:
+                        self.append_log(f"  • {rf.as_posix()}")
+                if not self.txt_descripcion.toPlainText().strip():
+                    self.txt_descripcion.setPlainText(resumen)
+            else:
+                self.append_log("[🔍 Auto-Detectar] No se detectaron archivos modificados recientemente.")
 
         def start_compilation(self):
             modulos_seleccionados = [name for name, cb in self.checkboxes.items() if cb.isChecked()]
             compilar_sistema = self.cb_sistema.isChecked()
             compilar_autenticacion = self.cb_autenticacion.isChecked()
             compilar_interfaz = self.cb_interfaz.isChecked()
+            compilar_controlador = self.cb_controlador.isChecked()
             
-            if not modulos_seleccionados and not compilar_sistema and not compilar_autenticacion and not compilar_interfaz:
-                QMessageBox.warning(self, "Advertencia", "Por favor, seleccione al menos un módulo, el Sistema, el Sistema de Autenticación o la Interfaz (gui.py & dashboard_layout.py).")
+            if (
+                not modulos_seleccionados
+                and not compilar_sistema
+                and not compilar_autenticacion
+                and not compilar_interfaz
+                and not compilar_controlador
+                and not self.archivos_personalizados
+            ):
+                QMessageBox.warning(
+                    self,
+                    "Advertencia",
+                    "Por favor, seleccione al menos un módulo, Sistema, Autenticación, Interfaz, Controlador o agregue archivos sueltos."
+                )
                 return
+
+            if self.cb_delta.isChecked() and not self._ultimo_delta_por_modulo:
+                info = detectar_cambios_automaticamente(self.base_dir)
+                self._ultimo_delta_por_modulo = info.get("delta_por_modulo", {})
 
             self.btn_compile.setEnabled(False)
             self.btn_select_all.setEnabled(False)
             self.btn_deselect_all.setEnabled(False)
+            self.btn_auto_detect.setEnabled(False)
+            self.btn_add_custom_file.setEnabled(False)
+            self.btn_add_custom_folder.setEnabled(False)
+            self.btn_clear_custom.setEnabled(False)
             self.cb_sistema.setEnabled(False)
             self.cb_autenticacion.setEnabled(False)
             self.cb_interfaz.setEnabled(False)
+            self.cb_controlador.setEnabled(False)
+            self.cb_modo_rapido.setEnabled(False)
+            self.cb_delta.setEnabled(False)
             self.cb_unificar.setEnabled(False)
             self.cb_copiar_web.setEnabled(False)
             self.txt_custom_name.setEnabled(False)
@@ -1227,7 +1688,12 @@ if HAS_PYQT:
                 self.cb_unificar.isChecked(),
                 self.txt_custom_name.text(),
                 self.txt_descripcion.toPlainText(),
-                self.cb_copiar_web.isChecked()
+                self.cb_copiar_web.isChecked(),
+                compilar_controlador=compilar_controlador,
+                archivos_personalizados=self.archivos_personalizados,
+                modo_rapido=self.cb_modo_rapido.isChecked(),
+                solo_modificados=self.cb_delta.isChecked(),
+                delta_por_modulo=self._ultimo_delta_por_modulo
             )
             self.worker.log_signal.connect(self.append_log)
             self.worker.progress_signal.connect(self.update_progress)
@@ -1254,9 +1720,16 @@ if HAS_PYQT:
             self.btn_compile.setEnabled(True)
             self.btn_select_all.setEnabled(True)
             self.btn_deselect_all.setEnabled(True)
+            self.btn_auto_detect.setEnabled(True)
+            self.btn_add_custom_file.setEnabled(True)
+            self.btn_add_custom_folder.setEnabled(True)
+            self.btn_clear_custom.setEnabled(True)
             self.cb_sistema.setEnabled(True)
             self.cb_autenticacion.setEnabled(True)
             self.cb_interfaz.setEnabled(True)
+            self.cb_controlador.setEnabled(True)
+            self.cb_modo_rapido.setEnabled(True)
+            self.cb_delta.setEnabled(True)
             self.cb_unificar.setEnabled(True)
             self.cb_copiar_web.setEnabled(True)
             self.txt_custom_name.setEnabled(True)

@@ -1162,7 +1162,7 @@ class BaseAppGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo abrir el compilador de actualizaciones:\n{e}")
 
-    def instalar_actualizacion_mtu(self):
+    def instalar_actualizacion_mtu(self, archivo_zip=None):
         from PyQt6.QtWidgets import QFileDialog, QMessageBox, QApplication
         import zipfile
         import os
@@ -1171,9 +1171,10 @@ class BaseAppGUI(QMainWindow):
         from pathlib import Path
         from controlador.utils.paths import get_resource_path
 
-        archivo_zip, _ = QFileDialog.getOpenFileName(
-            self, "Seleccionar Actualización (.mtu)", "", "Archivos de Actualización Multitool (*.mtu)"
-        )
+        if not archivo_zip:
+            archivo_zip, _ = QFileDialog.getOpenFileName(
+                self, "Seleccionar Actualización (.mtu)", "", "Archivos de Actualización Multitool (*.mtu)"
+            )
         if not archivo_zip:
             return
 
@@ -1181,6 +1182,7 @@ class BaseAppGUI(QMainWindow):
         mtu_path = Path(archivo_zip).resolve()
 
         # Validaciones previas de seguridad y contenido
+        requiere_reinicio_binario = False
         try:
             with zipfile.ZipFile(mtu_path, 'r') as zip_ref:
                 lista_archivos = zip_ref.namelist()
@@ -1188,6 +1190,7 @@ class BaseAppGUI(QMainWindow):
                     "manifest.json" in lista_archivos or
                     any(name.startswith("vistas/modulos/") for name in lista_archivos) or
                     any(name.startswith("vistas/") for name in lista_archivos) or
+                    any(name.startswith("controlador/") for name in lista_archivos) or
                     any(name.startswith("plugins/") for name in lista_archivos) or
                     any(name.endswith("Multitool.exe") or name.endswith("main.py") or name.endswith("Multitool") for name in lista_archivos)
                 )
@@ -1197,6 +1200,11 @@ class BaseAppGUI(QMainWindow):
                         "El archivo seleccionado no parece ser una actualización válida (.mtu) para Multitool."
                     )
                     return
+
+                requiere_reinicio_binario = any(
+                    name.endswith(".exe") or name.endswith(".dll")
+                    for name in lista_archivos
+                )
 
                 # Verificación de integridad SHA-256 si existe archivo de firma .sha256
                 sha_file = mtu_path.with_suffix(mtu_path.suffix + ".sha256")
@@ -1232,6 +1240,37 @@ class BaseAppGUI(QMainWindow):
             QMessageBox.critical(self, "Error de Archivo", f"No se pudo leer el archivo .mtu:\n{e}")
             return
 
+        # Si el paquete no reemplaza ejecutables/DLLs bloqueadas, ofrecer Instalación en Caliente (Hot-Reload)
+        if not requiere_reinicio_binario:
+            resp_hot = QMessageBox.question(
+                self,
+                "🔥 Instalación Dinámica en Caliente (Hot-Reload)",
+                f"Paquete detectado: {mtu_path.name}\n\n"
+                "Esta actualización puede aplicarse EN CALIENTE sin cerrar ni reiniciar Multitool.\n\n"
+                "• Sí (Yes): Aplicar ahora en caliente (recarga instantánea + Backup automático)\n"
+                "• No: Usar el actualizador externo y reiniciar Multitool\n"
+                "• Cancel: Cancelar instalación",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Yes
+            )
+            if resp_hot == QMessageBox.StandardButton.Cancel:
+                return
+            if resp_hot == QMessageBox.StandardButton.Yes:
+                ok_hot, msg_hot = self._aplicar_mtu_en_caliente(mtu_path, base_dir)
+                if ok_hot:
+                    self.mostrar_notificacion("Actualización en Caliente", msg_hot, "info")
+                    QMessageBox.information(self, "Actualización Completada", msg_hot)
+                    return
+                else:
+                    resp_fallback = QMessageBox.question(
+                        self,
+                        "Reinicio Requerido",
+                        f"No se pudo completar en caliente ({msg_hot}).\n\n¿Desea aplicar la actualización reiniciando con el actualizador externo?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+                    if resp_fallback != QMessageBox.StandardButton.Yes:
+                        return
+
         # Buscar el ejecutable o script del Updater externo
         updater_exe = base_dir / "Updater.exe"
         updater_py = base_dir / "updater.py"
@@ -1251,7 +1290,7 @@ class BaseAppGUI(QMainWindow):
 
         # Confirmar con el usuario antes de reiniciar
         resp = QMessageBox.question(
-            self, "Confirmar Actualización",
+            self, "Confirmar Actualización con Reinicio",
             "La actualización se instalará mediante el actualizador externo.\n\n"
             "Multitool se cerrará ahora para proceder con la instalación y se reiniciará automáticamente al terminar.\n\n"
             "¿Desea continuar?",
@@ -1271,6 +1310,180 @@ class BaseAppGUI(QMainWindow):
             QApplication.quit()
         except Exception as e:
             QMessageBox.critical(self, "Error al lanzar actualizador", f"No se pudo iniciar el proceso de actualización:\n{e}")
+
+    def _aplicar_mtu_en_caliente(self, mtu_path, base_dir):
+        """
+        Aplica un paquete .mtu directamente en caliente sin cerrar Multitool,
+        creando copia de seguridad para Rollback y recargando los módulos/vistas afectados.
+        """
+        import shutil
+        import zipfile
+        from controlador.utils.paths import get_data_path
+
+        updates_dir = base_dir / "updates"
+        temp_extract = updates_dir / "temp_extract_hot"
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = updates_dir / "backup" / f"backup_{timestamp}"
+
+        if temp_extract.exists():
+            shutil.rmtree(temp_extract, ignore_errors=True)
+        temp_extract.mkdir(parents=True, exist_ok=True)
+
+        manifest_data = {}
+        archivos_respaldados = []
+        archivos_nuevos = []
+        todos_afectados = []
+
+        try:
+            with zipfile.ZipFile(mtu_path, "r") as zip_ref:
+                if "manifest.json" in zip_ref.namelist():
+                    zip_ref.extract("manifest.json", temp_extract)
+                    with open(temp_extract / "manifest.json", "r", encoding="utf-8") as fm:
+                        manifest_data = json.load(fm)
+
+                resolved_temp = temp_extract.resolve()
+                for member in zip_ref.infolist():
+                    target = (temp_extract / member.filename).resolve()
+                    if not str(target).startswith(str(resolved_temp)):
+                        raise ValueError(f"Ruta insegura en paquete .mtu: {member.filename}")
+                    zip_ref.extract(member, temp_extract)
+
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            for root, dirs, files in os.walk(temp_extract):
+                for file in files:
+                    if file in ("manifest.json", "descripcion.txt"):
+                        continue
+                    rel_path = Path(root).relative_to(temp_extract) / file
+                    existing_file = base_dir / rel_path
+                    todos_afectados.append(rel_path.as_posix())
+                    if existing_file.exists():
+                        dest_backup = backup_dir / rel_path
+                        dest_backup.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(existing_file, dest_backup)
+                        archivos_respaldados.append(rel_path)
+                    else:
+                        archivos_nuevos.append(rel_path.as_posix())
+
+            with open(backup_dir / "backup_meta.json", "w", encoding="utf-8") as fmeta:
+                json.dump({
+                    "overwritten_files": [p.as_posix() for p in archivos_respaldados],
+                    "created_files": archivos_nuevos,
+                    "timestamp": timestamp,
+                    "mtu_name": mtu_path.name
+                }, fmeta, indent=2, ensure_ascii=False)
+
+            # Copiar archivos actualizados a base_dir
+            for root, dirs, files in os.walk(temp_extract):
+                for file in files:
+                    if file in ("manifest.json", "descripcion.txt"):
+                        continue
+                    rel_path = Path(root).relative_to(temp_extract) / file
+                    src_file = Path(root) / file
+                    target_file = base_dir / rel_path
+                    target_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_file, target_file)
+
+            shutil.rmtree(temp_extract, ignore_errors=True)
+
+            # Registrar en actualizaciones.json (unificado en data_path y base_dir/data)
+            registro_log = {
+                "id": f"upd_{timestamp}",
+                "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "archivo": mtu_path.name,
+                "tipo": manifest_data.get("type", "modulo"),
+                "version": manifest_data.get("version", "N/A"),
+                "descripcion": manifest_data.get("description", ""),
+                "estado": "exito",
+                "modo": "caliente",
+                "rollback": False,
+                "backup_dir": str(backup_dir),
+                "archivos_afectados": todos_afectados[:35]
+            }
+            self._guardar_registro_actualizacion(registro_log, base_dir)
+
+            # Recargar en caliente los módulos y vistas afectados
+            resumen_recarga = self._recargar_componentes_actualizados(todos_afectados)
+            return True, f"✅ Actualización '{mtu_path.name}' instalada en caliente.\n{resumen_recarga}"
+
+        except Exception as e:
+            # Rollback inmediato si falló a mitad de camino
+            if backup_dir.exists() and archivos_respaldados:
+                for rel_p in archivos_respaldados:
+                    try:
+                        b_file = backup_dir / rel_p
+                        t_file = base_dir / rel_p
+                        if b_file.exists():
+                            shutil.copy2(b_file, t_file)
+                    except Exception:
+                        pass
+            shutil.rmtree(temp_extract, ignore_errors=True)
+            return False, str(e)
+
+    def _guardar_registro_actualizacion(self, registro, base_dir=None):
+        from controlador.utils.paths import get_data_path, get_resource_path
+        b_dir = Path(base_dir) if base_dir else get_resource_path()
+        rutas_log = [
+            get_data_path() / "actualizaciones.json",
+            b_dir / "data" / "actualizaciones.json",
+        ]
+        vistas_unicas = set()
+        for log_path in rutas_log:
+            try:
+                resolved = str(log_path.resolve())
+                if resolved in vistas_unicas:
+                    continue
+                vistas_unicas.add(resolved)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                historial = []
+                if log_path.exists():
+                    try:
+                        with open(log_path, "r", encoding="utf-8") as f:
+                            historial = json.load(f)
+                    except Exception:
+                        historial = []
+                historial.append(registro)
+                with open(log_path, "w", encoding="utf-8") as f:
+                    json.dump(historial, f, indent=4, ensure_ascii=False)
+            except Exception:
+                pass
+
+    def _recargar_componentes_actualizados(self, archivos_afectados):
+        """Recarga dinámicamente en caliente los módulos, controladores o vistas modificados."""
+        import sys
+        import importlib
+        import importlib.util
+        from controlador.utils.paths import get_resource_path
+
+        base_dir = get_resource_path()
+        modulos_tocados = set()
+        interfaz_tocada = False
+
+        for rel_str in archivos_afectados:
+            parts = Path(rel_str).parts
+            if len(parts) >= 3 and parts[0] == "vistas" and parts[1] == "modulos":
+                modulos_tocados.add(parts[2].lower())
+            elif len(parts) >= 2 and parts[0] == "vistas" and parts[1] in ("gui.py", "dashboard_layout.py", "scrollable.py", "command_palette.py"):
+                interfaz_tocada = True
+
+        if interfaz_tocada:
+            try:
+                _asegurar_dashboard_layout_desde_disco()
+                if hasattr(self, "sidebar") and self.sidebar:
+                    self.sidebar.renderizar_arbol()
+            except Exception as e_ui:
+                print(f"[HotReload] Aviso recargando interfaz: {e_ui}")
+
+        recargados = []
+        if hasattr(self, "recargar_modulo_en_caliente"):
+            for mod_name in sorted(modulos_tocados):
+                if self.recargar_modulo_en_caliente(mod_name):
+                    recargados.append(mod_name.capitalize())
+
+        if recargados:
+            return f"Módulos recargados en vivo: {', '.join(recargados)}"
+        if interfaz_tocada:
+            return "Interfaz y Layout IDE actualizados en disco y sincronizados."
+        return f"Archivos actualizados: {len(archivos_afectados)}"
 
     def mostrar_log_actualizaciones(self):
         dialog = UpdatesLogDialog(self)
@@ -1810,7 +2023,9 @@ class BaseAppGUI(QMainWindow):
 
         self.set_status(f"📂 Archivo recibido: {fname}")
 
-        if ext in (".mp3", ".wav", ".ogg", ".flac", ".mp4", ".mkv", ".avi", ".mov"):
+        if ext == ".mtu":
+            self.instalar_actualizacion_mtu(file_path)
+        elif ext in (".mp3", ".wav", ".ogg", ".flac", ".mp4", ".mkv", ".avi", ".mov"):
             self._abrir_en_reproductor(file_path)
         elif ext in (".txt", ".md", ".json", ".csv", ".py", ".log"):
             self._abrir_en_notas(file_path)

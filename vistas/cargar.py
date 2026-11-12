@@ -459,6 +459,76 @@ class AppMultitareasGUI(BaseAppGUI):
         self.logger.log("INFO", f"Módulo '{mod_name}' puesto en reposo y memoria liberada.", modulo="Cargador")
         return True
 
+    def recargar_modulo_en_caliente(self, mod_name):
+        """
+        Recarga dinámicamente en caliente un módulo desde disco (tras instalar un parche .mtu o rollback),
+        purgando su caché en sys.modules y reinstanciando su interfaz si estaba abierto.
+        """
+        import importlib
+        from vistas.configurations import load_class_dynamically
+
+        target_mod = None
+        for mod in getattr(self, "modulos_cargados", []):
+            if mod.get("name", "").lower() == mod_name.lower() or mod.get("folder", "").lower() == mod_name.lower():
+                target_mod = mod
+                break
+
+        if not target_mod:
+            return False
+
+        estaba_cargado = bool(target_mod.get("loaded", False))
+        folder_key = target_mod.get("folder", target_mod.get("name", mod_name)).lower()
+
+        # 1. Purgar módulos en caché dentro de sys.modules para este módulo
+        prefijos = (
+            f"vistas.modulos.{folder_key}",
+            f"vistas.modulos.{mod_name.lower()}",
+        )
+        for k in list(sys.modules.keys()):
+            if k in prefijos or any(k.startswith(p + ".") for p in prefijos):
+                sys.modules.pop(k, None)
+        importlib.invalidate_caches()
+
+        # 2. Volver a cargar las clases de cada submódulo desde los archivos actualizados en disco
+        for sub in target_mod.get("submodules", []):
+            sub["cls"] = None
+            try:
+                sub["cls"] = load_class_dynamically(sub)
+            except Exception as e_sub:
+                print(f"[HotReload] Error recargando clase de submódulo {sub.get('name')}: {e_sub}")
+
+        # 3. Si el módulo estaba cargado en pantalla, reemplazar su contenedor en vivo
+        if estaba_cargado:
+            parent_frame = self._frames_modulos.get(target_mod["name"]) or target_mod.get("dummy_frame")
+            if parent_frame and parent_frame.layout():
+                while parent_frame.layout().count():
+                    item = parent_frame.layout().takeAt(0)
+                    widget = item.widget()
+                    if widget:
+                        if hasattr(widget, "cleanup"):
+                            try:
+                                widget.cleanup()
+                            except Exception:
+                                pass
+                        widget.deleteLater()
+
+            target_mod["loaded"] = False
+            name = target_mod["name"]
+            if hasattr(self, f"tab_{name}"):
+                delattr(self, f"tab_{name}")
+            for k in (name, name.lower(), name.capitalize()):
+                self.clases_modulos.pop(k, None)
+
+            self._instanciar_modulo(target_mod)
+
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.renderizar_arbol()
+
+        import gc
+        gc.collect()
+        self.logger.log("INFO", f"Módulo '{mod_name}' recargado en caliente desde disco.", modulo="HotReload")
+        return True
+
     def _mostrar_error_modulo(self, mod, error_msg):
         """Muestra error en el placeholder del módulo fallido."""
         parent_frame = self._frames_modulos.get(mod["name"])

@@ -64,25 +64,22 @@ def es_ruta_segura(base_dir: Path, target_path: Path) -> bool:
         return False
 
 def registrar_historial_actualizacion(base_dir: Path, registro: dict):
-    """Guarda el log detallado de actualización en actualizaciones.json."""
-    try:
-        log_path = base_dir / "data" / "actualizaciones.json"
-        if not log_path.parent.exists():
+    """Guarda el log detallado de actualización en actualizaciones.json (en data/ y raíz de datos)."""
+    for log_path in (base_dir / "data" / "actualizaciones.json", base_dir / "actualizaciones.json"):
+        try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            
-        historial = []
-        if log_path.exists():
-            try:
-                with open(log_path, "r", encoding="utf-8") as f:
-                    historial = json.load(f)
-            except Exception:
-                historial = []
-                
-        historial.append(registro)
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(historial, f, indent=4, ensure_ascii=False)
-    except Exception as e:
-        log_msg(f"No se pudo registrar historial en JSON: {e}", is_error=True)
+            historial = []
+            if log_path.exists():
+                try:
+                    with open(log_path, "r", encoding="utf-8") as f:
+                        historial = json.load(f)
+                except Exception:
+                    historial = []
+            historial.append(registro)
+            with open(log_path, "w", encoding="utf-8") as f:
+                json.dump(historial, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            log_msg(f"No se pudo registrar historial en {log_path}: {e}", is_error=True)
 
 def ejecutar_actualizacion(mtu_path: Path, app_dir: Path, pid: int = 0):
     log_msg(f"=== INICIANDO PROCESO DE ACTUALIZACIÓN EXTERNO ===")
@@ -139,6 +136,8 @@ def ejecutar_actualizacion(mtu_path: Path, app_dir: Path, pid: int = 0):
         # 3. Crear Backup de archivos afectados antes de sobrescribir
         log_msg("Creando copia de seguridad (backup)...")
         backup_dir.mkdir(parents=True, exist_ok=True)
+        archivos_nuevos = []
+        todos_afectados = []
         
         for root, dirs, files in os.walk(temp_extract):
             for file in files:
@@ -146,12 +145,26 @@ def ejecutar_actualizacion(mtu_path: Path, app_dir: Path, pid: int = 0):
                     continue
                 rel_path = Path(root).relative_to(temp_extract) / file
                 existing_file = app_dir / rel_path
+                todos_afectados.append(rel_path.as_posix())
                 
                 if existing_file.exists():
                     dest_backup = backup_dir / rel_path
                     dest_backup.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(existing_file, dest_backup)
                     archivos_respaldados.append(rel_path)
+                else:
+                    archivos_nuevos.append(rel_path.as_posix())
+
+        try:
+            with open(backup_dir / "backup_meta.json", "w", encoding="utf-8") as fm:
+                json.dump({
+                    "overwritten_files": [p.as_posix() for p in archivos_respaldados],
+                    "created_files": archivos_nuevos,
+                    "timestamp": timestamp,
+                    "mtu_name": mtu_path.name
+                }, fm, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
                     
         log_msg(f"Backup creado exitosamente. Archivos respaldados: {len(archivos_respaldados)}")
         
@@ -172,13 +185,17 @@ def ejecutar_actualizacion(mtu_path: Path, app_dir: Path, pid: int = 0):
         
         # 5. Registrar Historial Éxito
         registro_log = {
+            "id": f"upd_{timestamp}",
             "fecha": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "archivo": mtu_path.name,
             "tipo": manifest_data.get("type", "desconocido"),
             "version": manifest_data.get("version", "N/A"),
+            "descripcion": manifest_data.get("description", ""),
             "estado": "exito",
+            "modo": "reinicio",
             "rollback": False,
-            "archivos_afectados": [str(a) for a in archivos_respaldados[:10]]
+            "backup_dir": str(backup_dir),
+            "archivos_afectados": todos_afectados[:25]
         }
         registrar_historial_actualizacion(app_dir, registro_log)
         
