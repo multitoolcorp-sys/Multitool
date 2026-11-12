@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QScrollArea, QSizePolicy, QApplication
 )
 from PyQt6.QtGui import QGuiApplication, QFont, QColor, QAction, QTextCursor, QKeySequence, QShortcut
-from PyQt6.QtCore import Qt, QTimer, QProcess, pyqtSignal, QUrl
+from PyQt6.QtCore import Qt, QTimer, QProcess, QProcessEnvironment, pyqtSignal, QUrl
 
 from controlador.utils.paths import get_data_path
 
@@ -28,8 +28,129 @@ try:
     from vistas.modulos.terminal.submodulos.terminal_session import SingleTerminalSession
     TERMINAL_MODULE_AVAILABLE = True
 except ImportError:
-    SingleTerminalSession = None
+    SingleTerminalSession = QWidget
     TERMINAL_MODULE_AVAILABLE = False
+
+
+def _asegurar_script_ssh_askpass() -> str:
+    """
+    Crea un script auxiliar SSH_ASKPASS para Windows/Linux/macOS de modo que OpenSSH (ssh.exe / sftp.exe)
+    pueda autenticar dentro de QProcess sin requerir CONIN$ nativo:
+    1) Si MULTITOOL_SSH_PASS está definida (campo Clave), la inyecta automáticamente sin diálogos.
+    2) Si está vacía y el servidor pide contraseña o confirmación, abre un cuadro de entrada para el usuario.
+    """
+    helper_dir = get_data_path() / "ssh_helpers"
+    helper_dir.mkdir(parents=True, exist_ok=True)
+
+    if platform.system() == "Windows":
+        bat_path = helper_dir / "multitool_askpass.bat"
+        ps1_path = helper_dir / "multitool_askpass.ps1"
+        ps1_code = (
+            "param([string]$PromptText = 'SSH Password:')\r\n"
+            "if ($env:MULTITOOL_SSH_PASS -and $env:MULTITOOL_SSH_PASS.Length -gt 0) {\r\n"
+            "    [Console]::Out.WriteLine($env:MULTITOOL_SSH_PASS)\r\n"
+            "    exit 0\r\n"
+            "}\r\n"
+            "Add-Type -AssemblyName Microsoft.VisualBasic\r\n"
+            "$ans = [Microsoft.VisualBasic.Interaction]::InputBox($PromptText, 'Multitool mRemoteNG - Autenticacion SSH', '')\r\n"
+            "[Console]::Out.WriteLine($ans)\r\n"
+        )
+        bat_code = f'@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "{ps1_path}" %*\r\n'
+        try:
+            ps1_path.write_text(ps1_code, encoding="utf-8")
+            bat_path.write_text(bat_code, encoding="utf-8")
+        except Exception:
+            pass
+        return str(bat_path)
+    else:
+        sh_path = helper_dir / "multitool_askpass.sh"
+        sh_code = '#!/bin/sh\nif [ -n "$MULTITOOL_SSH_PASS" ]; then\n  echo "$MULTITOOL_SSH_PASS"\nfi\n'
+        try:
+            sh_path.write_text(sh_code, encoding="utf-8")
+            os.chmod(sh_path, 0o755)
+        except Exception:
+            pass
+        return str(sh_path)
+
+
+if TERMINAL_MODULE_AVAILABLE:
+    class RemoteSingleTerminalSession(SingleTerminalSession):
+        """
+        Extiende SingleTerminalSession (de terminal_main.py) para sesiones remotas SSH / SFTP / Telnet / WinRM:
+        - Ejecuta ssh -tt directamente en QProcess con SSH_ASKPASS_REQUIRE=force (sin el error 'stdin is not a terminal')
+        - Envía saltos de línea '\\n' puros en sesiones PTY remotas Linux para evitar doble eco de prompt
+        """
+
+        def __init__(self, parent, context, shell_cmd=None, shell_args=None, cwd=None, tema_dict=None, ssh_password="", is_remote_pty=False):
+            self.ssh_password = ssh_password or ""
+            self.is_remote_pty = bool(is_remote_pty)
+            super().__init__(parent, context, shell_cmd=shell_cmd, shell_args=shell_args, cwd=cwd, tema_dict=tema_dict)
+
+        def iniciar_proceso(self):
+            self.process = QProcess(self)
+            self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+            self.process.readyReadStandardOutput.connect(self.leer_salida)
+            self.process.finished.connect(self.on_process_finished)
+
+            env = QProcessEnvironment.systemEnvironment()
+            env.insert("PYTHONIOENCODING", "UTF-8")
+            env.insert("TERM", "xterm-256color")
+
+            if self.is_remote_pty:
+                askpass_script = _asegurar_script_ssh_askpass()
+                env.insert("SSH_ASKPASS", askpass_script)
+                env.insert("SSH_ASKPASS_REQUIRE", "force")
+                env.insert("DISPLAY", "1")
+                if self.ssh_password:
+                    env.insert("MULTITOOL_SSH_PASS", self.ssh_password)
+
+            self.process.setProcessEnvironment(env)
+            self.process.setWorkingDirectory(self.cwd)
+
+            if not self.shell_cmd:
+                if platform.system() == "Windows":
+                    self.shell_cmd = "powershell.exe"
+                    self.shell_args = ["-NoLogo", "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass"]
+                else:
+                    self.shell_cmd = "bash"
+                    self.shell_args = ["-i"]
+
+            self.process.start(self.shell_cmd, self.shell_args)
+            self.lbl_status.setText("🟢 Conectado / En Ejecución" if self.is_remote_pty else "🟢 En Ejecución")
+            self.lbl_status.setStyleSheet("color: #10B981;")
+
+        def enviar_comando(self, cmd_text=None, desde_teclado=False):
+            if not self.is_remote_pty:
+                return super().enviar_comando(cmd_text=cmd_text, desde_teclado=desde_teclado)
+
+            cmd = cmd_text if cmd_text is not None else self.terminal.get_current_input()
+            cmd_clean = cmd.strip()
+            if not cmd_clean:
+                if self.process and self.process.state() == QProcess.ProcessState.Running:
+                    self._pending_empty_enter = True
+                    self.process.write(b"\n")
+                return
+
+            self.history.append(cmd_clean)
+            self.history_index = len(self.history)
+
+            if not desde_teclado and cmd_clean:
+                cursor = self.terminal.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.End)
+                cursor.insertText(cmd_clean + "\n")
+                self.terminal.setTextCursor(cursor)
+                self.terminal._prompt_pos = self.terminal.textCursor().position()
+
+            if cmd_clean.lower() in ("cls", "clear"):
+                self.limpiar_consola()
+                if self.process and self.process.state() == QProcess.ProcessState.Running:
+                    self._pending_echo = cmd_clean
+                    self.process.write((cmd_clean + "\n").encode("utf-8"))
+                return
+
+            if self.process and self.process.state() == QProcess.ProcessState.Running:
+                self._pending_echo = cmd_clean
+                self.process.write((cmd_clean + "\n").encode("utf-8", errors="replace"))
 
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
@@ -232,16 +353,21 @@ class MRemoteTerminalSession(QWidget):
 
         lay.addWidget(ctrl_bar)
 
-        # Instanciar SingleTerminalSession de terminal_main.py
+        # Instanciar RemoteSingleTerminalSession (basada en SingleTerminalSession de terminal_main.py)
         t_dict = TERMINAL_THEMES.get(self.theme_name, TERMINAL_THEMES["🟢 Hacker Esmeralda"])
         if TERMINAL_MODULE_AVAILABLE and SingleTerminalSession is not None:
             class _DummyCtx:
                 app = None
             ctx = self.context or _DummyCtx()
-            self.session = SingleTerminalSession(
+            shell_cmd, shell_args, is_remote_pty = self._resolver_proceso_directo()
+            self.session = RemoteSingleTerminalSession(
                 parent=self,
                 context=ctx,
-                tema_dict=t_dict
+                shell_cmd=shell_cmd,
+                shell_args=shell_args,
+                tema_dict=t_dict,
+                ssh_password=self.conn_data.get("pass", ""),
+                is_remote_pty=is_remote_pty,
             )
             f_size = int(self.conn_data.get("font", 11) or 11)
             f = self.session.terminal.font()
@@ -253,7 +379,11 @@ class MRemoteTerminalSession(QWidget):
             self.fallback_box = QPlainTextEdit(self)
             lay.addWidget(self.fallback_box, 1)
 
-    def _construir_comando_remoto(self) -> str:
+    def _resolver_proceso_directo(self) -> tuple[str | None, list[str], bool]:
+        """
+        Determina el ejecutable y argumentos directos para iniciar dentro de QProcess
+        evitando abrir una sub-shell intermedia cuando es SSH/SFTP/Telnet.
+        """
         proto = self.conn_data.get("proto", "SSH")
         ip = self.conn_data.get("ip", "").strip()
         port = int(self.conn_data.get("port", DEFAULT_PORTS.get(proto, 22)) or 22)
@@ -262,42 +392,49 @@ class MRemoteTerminalSession(QWidget):
         tunnel = (self.conn_data.get("ssh_tunnel") or "").strip()
 
         if not ip:
-            return ""
+            return None, [], False
 
         if proto == "SSH":
-            parts = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new"]
+            args = ["-tt", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new"]
             if ssh_key and os.path.exists(ssh_key):
-                parts.extend(["-i", f'"{ssh_key}"'])
+                args.extend(["-i", ssh_key])
             if tunnel:
-                parts.append(tunnel)
-            parts.append(f"{user}@{ip}" if user else ip)
-            return " ".join(parts)
-        elif proto == "SFTP":
-            parts = ["sftp", "-P", str(port)]
+                args.extend(tunnel.split())
+            args.append(f"{user}@{ip}" if user else ip)
+            return "ssh", args, True
+
+        if proto == "SFTP":
+            args = ["-P", str(port), "-o", "StrictHostKeyChecking=accept-new"]
             if ssh_key and os.path.exists(ssh_key):
-                parts.extend(["-i", f'"{ssh_key}"'])
-            parts.append(f"{user}@{ip}" if user else ip)
-            return " ".join(parts)
-        elif proto == "FTP":
-            return f"ftp {ip}"
-        elif proto == "Telnet":
-            return f"telnet {ip} {port}"
-        elif proto == "WinRM":
-            return f"Enter-PSSession -ComputerName {ip} -Port {port}" + (f" -Credential {user}" if user else "")
-        else:
-            return f"ping {ip}"
+                args.extend(["-i", ssh_key])
+            args.append(f"{user}@{ip}" if user else ip)
+            return "sftp", args, True
+
+        if proto == "Telnet":
+            return "telnet", [ip, str(port)], True
+
+        if proto == "FTP":
+            return "ftp", [ip], True
+
+        return None, [], False
 
     def _lanzar_comando_conexion_inicial(self):
         pwd = self.conn_data.get("pass", "")
         if pwd:
             QGuiApplication.clipboard().setText(pwd)
 
-        cmd = self._construir_comando_remoto()
-        if cmd:
+        proto = self.conn_data.get("proto", "SSH")
+        ip = self.conn_data.get("ip", "").strip()
+        port = int(self.conn_data.get("port", DEFAULT_PORTS.get(proto, 22)) or 22)
+        user = self.conn_data.get("user", "").strip()
+
+        if ip and proto == "WinRM":
+            cmd = f"Enter-PSSession -ComputerName {ip} -Port {port}" + (f" -Credential {user}" if user else "")
             self.enviar_comando(cmd)
-            post_cmd = (self.conn_data.get("post_cmd") or "").strip()
-            if post_cmd:
-                QTimer.singleShot(1800, lambda: self.enviar_comando(post_cmd))
+
+        post_cmd = (self.conn_data.get("post_cmd") or "").strip()
+        if post_cmd:
+            QTimer.singleShot(1500, lambda: self.enviar_comando(post_cmd))
 
     def enviar_comando(self, cmd: str):
         if self.session and hasattr(self.session, "enviar_comando"):
