@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import csv
 import json
 import time
@@ -115,7 +116,13 @@ if TERMINAL_MODULE_AVAILABLE:
             if not text:
                 return
 
-            text = self.ansi_parser.limpiar_secuencias_control(text)
+            if hasattr(self.ansi_parser, "limpiar_secuencias_control"):
+                text = self.ansi_parser.limpiar_secuencias_control(text)
+            else:
+                text = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", text)
+                text = re.sub(r"\x1b[PX^_][^\x07\x1b]*(?:\x07|\x1b\\)", "", text)
+                text = re.sub(r"\x1b\[[0-9;:<=>?]*[ -/]*[@-ln-zA-LN-Z~]", "", text)
+                text = re.sub(r"\x1b[@-Z\\-_]|\x1b[()#][A-Za-z0-9]|\x07", "", text)
             if not text:
                 return
 
