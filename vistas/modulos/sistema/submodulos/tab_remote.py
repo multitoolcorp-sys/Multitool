@@ -84,7 +84,75 @@ if TERMINAL_MODULE_AVAILABLE:
         def __init__(self, parent, context, shell_cmd=None, shell_args=None, cwd=None, tema_dict=None, ssh_password="", is_remote_pty=False):
             self.ssh_password = ssh_password or ""
             self.is_remote_pty = bool(is_remote_pty)
+            self._esc_tail_buffer = ""
             super().__init__(parent, context, shell_cmd=shell_cmd, shell_args=shell_args, cwd=cwd, tema_dict=tema_dict)
+
+        def leer_salida(self):
+            """Pre-limpia secuencias OSC/CSI fragmentadas entre paquetes TCP antes de pasarlas a AnsiParser."""
+            data_bytes = self.process.readAllStandardOutput().data()
+            if not data_bytes:
+                return
+            try:
+                text = data_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                text = data_bytes.decode("latin-1", errors="replace")
+
+            if self._esc_tail_buffer:
+                text = self._esc_tail_buffer + text
+                self._esc_tail_buffer = ""
+
+            # Si el bloque termina con una secuencia ESC/OSC/CSI incompleta, retenerla hasta el siguiente chunk
+            last_esc = text.rfind("\x1b")
+            if last_esc != -1 and last_esc >= len(text) - 512:
+                tail = text[last_esc:]
+                if tail.startswith("\x1b]") and ("\x07" not in tail and "\x1b\\" not in tail):
+                    self._esc_tail_buffer = tail
+                    text = text[:last_esc]
+                elif tail == "\x1b" or (tail.startswith("\x1b[") and not any(c.isalpha() or c == "~" for c in tail[2:])):
+                    self._esc_tail_buffer = tail
+                    text = text[:last_esc]
+
+            if not text:
+                return
+
+            text = self.ansi_parser.limpiar_secuencias_control(text)
+            if not text:
+                return
+
+            # Inyectar el texto limpio reutilizando el flujo de SingleTerminalSession sin volver a leer del QProcess
+            if self._pending_echo:
+                trimmed = text.lstrip("\r\n")
+                if trimmed.startswith(self._pending_echo):
+                    remainder = trimmed[len(self._pending_echo):]
+                    if remainder.startswith("\r\n"):
+                        remainder = remainder[2:]
+                    elif remainder.startswith("\n") or remainder.startswith("\r"):
+                        remainder = remainder[1:]
+                    text = remainder
+                    self._pending_echo = None
+                elif self._pending_echo.startswith(trimmed) and trimmed:
+                    self._pending_echo = self._pending_echo[len(trimmed):]
+                    text = ""
+                else:
+                    self._pending_echo = None
+            elif self._pending_empty_enter:
+                if text.startswith("\r\n"):
+                    text = text[2:]
+                elif text.startswith("\n") or text.startswith("\r"):
+                    text = text[1:]
+                self._pending_empty_enter = False
+
+            if not text:
+                return
+
+            if "\x1b[2J" in text or "\x1b[3J" in text or "\x1b[H\x1b[2J" in text:
+                self.terminal.clear()
+                self.terminal._prompt_pos = 0
+                text = text.replace("\x1b[2J", "").replace("\x1b[3J", "").replace("\x1b[H", "")
+
+            self.ansi_parser.append_ansi_text(self.terminal, text, default_fg=self.tema_dict["fg"])
+            self.terminal._prompt_pos = self.terminal.textCursor().position()
+            self.terminal.moveCursor(QTextCursor.MoveOperation.End)
 
         def iniciar_proceso(self):
             self.process = QProcess(self)

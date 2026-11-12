@@ -47,8 +47,29 @@ class AnsiParser:
             pass
         return self.default_fg
 
+    _RE_OSC = re.compile(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)')
+    _RE_DCS = re.compile(r'\x1b[PX^_][^\x07\x1b]*(?:\x07|\x1b\\)')
+    _RE_CSI_NON_SGR = re.compile(r'\x1b\[[0-9;:<=>?]*[ -/]*[@-ln-zA-LN-Z~]')
+    _RE_ESC_MISC = re.compile(r'\x1b[@-Z\\-_]|\x1b[()#][A-Za-z0-9]|\x07')
+
+    @classmethod
+    def limpiar_secuencias_control(cls, text: str) -> str:
+        """Elimina secuencias OSC (3008, título de ventana), CSI no-SGR (?2004h/l) y caracteres de control manteniendo los colores SGR (m)."""
+        if not text:
+            return text
+        text = cls._RE_OSC.sub('', text)
+        text = cls._RE_DCS.sub('', text)
+        text = cls._RE_CSI_NON_SGR.sub('', text)
+        text = cls._RE_ESC_MISC.sub('', text)
+        return text
+
     def append_ansi_text(self, textbrowser, text, default_fg=None):
         """Procesa y añade texto codificado en ANSI al QTextBrowser en la posición del cursor actual"""
+        if not text:
+            return
+        text = self.limpiar_secuencias_control(text)
+        if not text:
+            return
         if default_fg:
             fg_color = QColor(default_fg)
         else:
