@@ -52,7 +52,10 @@ class TabSistema(QWidget):
             "escanear_seguridad": self.escanear_seguridad,
             "limpiar_temp": self.limpiar_temp,
             "flush_dns": self.flush_dns,
-            "restart_shell": self.restart_shell
+            "restart_shell": self.restart_shell,
+            "escanear_puertos_remotos": self.escanear_puertos_remotos,
+            "verificar_host_remoto": self.verificar_host_remoto,
+            "abrir_rdp_nativo": self.abrir_rdp_nativo
         }
         
         # Manager
@@ -318,6 +321,86 @@ class TabSistema(QWidget):
         btn = QMessageBox.question(self, "Confirmar", f"¿Reiniciar la interfaz gráfica? (La pantalla parpadeará)", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if btn == QMessageBox.StandardButton.Yes:
             self.manager.restart_shell()
+
+    def verificar_host_remoto(self, host: str, port: int = 0, timeout: float = 0.8) -> dict:
+        """Verifica conectividad TCP y/o ICMP Ping de un host remoto estilo mRemoteNG."""
+        import socket
+        import time
+        host = (host or "").strip()
+        if not host:
+            return {"online": False, "latency_ms": None, "method": "none"}
+
+        t0 = time.perf_counter()
+        if port and int(port) > 0:
+            try:
+                with socket.create_connection((host, int(port)), timeout=timeout):
+                    ms = int((time.perf_counter() - t0) * 1000)
+                    return {"online": True, "latency_ms": max(1, ms), "method": f"TCP:{port}"}
+            except Exception:
+                pass
+
+        cmd_args = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), host] if platform.system() == "Windows" else ["ping", "-c", "1", "-W", "1", host]
+        kwargs = {"creationflags": 0x08000000} if platform.system() == "Windows" else {}
+        t0 = time.perf_counter()
+        try:
+            res = subprocess.run(cmd_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+            if res.returncode == 0:
+                ms = int((time.perf_counter() - t0) * 1000)
+                return {"online": True, "latency_ms": max(1, ms), "method": "ICMP"}
+        except Exception:
+            pass
+        return {"online": False, "latency_ms": None, "method": "timeout"}
+
+    def escanear_puertos_remotos(self, host: str, puertos=None, timeout: float = 0.45) -> list[dict]:
+        """Escanea concurrentemente los puertos más comunes de administración remota en un host."""
+        import socket
+        import time
+        from concurrent.futures import ThreadPoolExecutor
+
+        catalogo = puertos or [
+            (21, "FTP"), (22, "SSH / SFTP"), (23, "Telnet"), (80, "HTTP"),
+            (139, "NetBIOS"), (443, "HTTPS"), (445, "SMB"), (3306, "MySQL"),
+            (3389, "RDP"), (5432, "PostgreSQL"), (5900, "VNC"),
+            (5985, "WinRM HTTP"), (5986, "WinRM HTTPS"), (8006, "Proxmox"),
+            (8080, "HTTP Alt"), (8443, "HTTPS Alt")
+        ]
+
+        def _probe(item):
+            p, srv = item if isinstance(item, tuple) else (int(item), "TCP")
+            t0 = time.perf_counter()
+            try:
+                with socket.create_connection((host, p), timeout=timeout):
+                    ms = int((time.perf_counter() - t0) * 1000)
+                    return {"port": p, "service": srv, "open": True, "latency_ms": max(1, ms)}
+            except Exception:
+                return {"port": p, "service": srv, "open": False, "latency_ms": None}
+
+        with ThreadPoolExecutor(max_workers=12) as ex:
+            return list(ex.map(_probe, catalogo))
+
+    def abrir_rdp_nativo(self, rdp_file_path: str = None, host: str = None, admin: bool = False, fullscreen: bool = False):
+        """Lanza el cliente nativo de Escritorio Remoto (mstsc / xfreerdp) con parámetros."""
+        sys_name = platform.system()
+        if sys_name == "Windows":
+            args = ["mstsc.exe"]
+            if rdp_file_path and os.path.exists(rdp_file_path):
+                args.append(str(rdp_file_path))
+            elif host:
+                args.append(f"/v:{host}")
+            if admin:
+                args.append("/admin")
+            if fullscreen:
+                args.append("/f")
+            subprocess.Popen(args)
+        elif sys_name == "Linux":
+            for client in ["xfreerdp", "rdesktop", "remmina"]:
+                try:
+                    subprocess.Popen([client, host or rdp_file_path])
+                    break
+                except Exception:
+                    continue
+        elif sys_name == "Darwin":
+            subprocess.Popen(["open", rdp_file_path] if rdp_file_path else ["open", f"rdp://{host}"])
 
     def _setup_graficos(self):
         self.fig, self.ax = plt.subplots(figsize=(5, 3))

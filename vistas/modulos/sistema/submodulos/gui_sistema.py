@@ -74,7 +74,7 @@ class SistemaGUI(QWidget):
             self.tab_limpiador = TabLimpiador(self.tabs, self.colores, self.callbacks)
             self.tab_seguridad = TabSeguridad(self.tabs, self.colores, self.callbacks)
             self.tab_antivirus = TabAntivirus(self.tabs, self.colores, self.callbacks, self.context)
-            self.tab_remote = TabRemote(self.tabs, self.colores, self.callbacks)
+            self.tab_remote = TabRemote(self.tabs, self.colores, self.callbacks, self.context)
             self.tab_avanzado = TabAvanzado(self.tabs, self.colores, self.callbacks)
             
             self.tabs.addTab(self.tab_resumen, "📊 Resumen")
