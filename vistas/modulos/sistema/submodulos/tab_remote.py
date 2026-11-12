@@ -12,20 +12,27 @@ from pathlib import Path
 from datetime import datetime
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QTreeWidget, QTreeWidgetItem,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QSplitter, QTreeWidget, QTreeWidgetItem,
     QPushButton, QLabel, QLineEdit, QFormLayout, QComboBox, QMessageBox, QFrame,
-    QSpinBox, QHeaderView, QStackedWidget, QTabWidget, QTextEdit, QPlainTextEdit,
-    QCheckBox, QFileDialog, QMenu, QTableWidget, QTableWidgetItem, QInputDialog,
-    QAbstractItemView, QToolButton, QApplication
+    QSpinBox, QHeaderView, QTabWidget, QPlainTextEdit, QCheckBox, QFileDialog,
+    QMenu, QTableWidget, QTableWidgetItem, QInputDialog, QAbstractItemView,
+    QScrollArea, QSizePolicy, QApplication
 )
-from PyQt6.QtGui import QGuiApplication, QFont, QColor, QAction, QTextCursor
+from PyQt6.QtGui import QGuiApplication, QFont, QColor, QAction, QTextCursor, QKeySequence, QShortcut
 from PyQt6.QtCore import Qt, QTimer, QProcess, pyqtSignal, QUrl
 
 from controlador.utils.paths import get_data_path
 
+# Reutilizar la consola interactiva real de terminal_main.py (SingleTerminalSession)
+try:
+    from vistas.modulos.terminal.submodulos.terminal_session import SingleTerminalSession
+    TERMINAL_MODULE_AVAILABLE = True
+except ImportError:
+    SingleTerminalSession = None
+    TERMINAL_MODULE_AVAILABLE = False
+
 try:
     from PyQt6.QtWebEngineWidgets import QWebEngineView
-    from PyQt6.QtWebEngineCore import QWebEngineSettings
     WEBENGINE_AVAILABLE = True
 except ImportError:
     WEBENGINE_AVAILABLE = False
@@ -57,373 +64,245 @@ PROTO_ICONS = {
     "Raw": "🔌",
 }
 
+# Mismos temas que vistas/modulos/terminal/terminal_main.py
 TERMINAL_THEMES = {
-    "Matrix Green": {"bg": "#070B0E", "fg": "#10B981", "accent": "#059669", "cmd": "#34D399"},
-    "Cyberpunk Cyan": {"bg": "#080B14", "fg": "#38BDF8", "accent": "#0284C7", "cmd": "#7DD3FC"},
-    "Dracula": {"bg": "#1E1F29", "fg": "#F8F8F2", "accent": "#BD93F9", "cmd": "#50FA7B"},
-    "Amber Retro": {"bg": "#120D05", "fg": "#F59E0B", "accent": "#D97706", "cmd": "#FBBF24"},
-    "Classic White": {"bg": "#0C0C0C", "fg": "#E5E7EB", "accent": "#6366F1", "cmd": "#FFFFFF"},
+    "🟢 Hacker Esmeralda": {"bg": "#07090e", "fg": "#10B981", "accent": "#059669"},
+    "🟦 Cyberpunk Neón": {"bg": "#090d16", "fg": "#06B6D4", "accent": "#0891B2"},
+    "🟡 Matrix Ámbar": {"bg": "#0c0a07", "fg": "#F59E0B", "accent": "#D97706"},
+    "🫥 Consola Clásica": {"bg": "#0f0f15", "fg": "#F3F4F6", "accent": "#9CA3AF"},
 }
 
 SSH_MACROS = [
-    ("⚡ Seleccionar Macro / Snippet...", ""),
-    ("📊 Recursos en Vivo (top -b -n 1)", "top -b -n 1 | head -n 25"),
-    ("💾 Espacio en Disco (df -h)", "df -h"),
-    ("🧠 Uso de Memoria RAM (free -m)", "free -m"),
-    ("🐳 Contenedores Docker (docker ps -a)", "docker ps -a"),
-    ("⚙️ Servicios Fallidos (systemctl --failed)", "systemctl --failed"),
-    ("🔌 Puertos Escuchando (ss -tulpn)", "ss -tulpn"),
-    ("📜 Últimos Logs del Sistema (journalctl)", "journalctl -n 40 --no-pager"),
-    ("🌐 Interfaces e IPs (ip -br a)", "ip -br a"),
-    ("⏱️ Uptime y Usuarios Conectados (w)", "uptime && w"),
+    ("⚡ Snippets...", ""),
+    ("📊 top (Recursos)", "top -b -n 1 | head -n 20"),
+    ("💾 df -h (Disco)", "df -h"),
+    ("🧠 free -m (RAM)", "free -m"),
+    ("🐳 docker ps", "docker ps -a"),
+    ("⚙️ systemctl --failed", "systemctl --failed"),
+    ("🔌 ss -tulpn (Puertos)", "ss -tulpn"),
+    ("📜 journalctl (Logs)", "journalctl -n 30 --no-pager"),
+    ("🌐 ip -br a (Red)", "ip -br a"),
+    ("⏱️ uptime & w", "uptime && w"),
 ]
 
 
 class MRemoteTerminalSession(QWidget):
-    """Pestaña de consola interactiva estilo mRemoteNG / MobaXterm para SSH, Telnet, SFTP, FTP, WinRM y Raw."""
+    """
+    Sesión de terminal remota e interactiva basada exactamente en el motor de
+    vistas/modulos/terminal/terminal_main.py (SingleTerminalSession / InteractiveTerminalScreen).
+    Se escribe directamente en la pantalla de consola, soporta ANSI, Tab, historial ↑/↓, Zoom y Ctrl+F.
+    """
 
-    def __init__(self, parent, conn_data: dict, colores: dict, open_native_cb=None):
+    def __init__(self, parent, conn_data: dict, colores: dict, context=None, open_native_cb=None):
         super().__init__(parent)
         self.conn_data = dict(conn_data)
         self.colores = colores
+        self.context = context
         self.open_native_cb = open_native_cb
-        self.process = None
-        self.raw_socket = None
-        self.history = []
-        self.history_idx = -1
-        self.font_size = int(self.conn_data.get("font", 12))
-        self.theme_name = self.conn_data.get("theme", "Matrix Green")
-        self.connected_at = datetime.now()
-        self._password_injected = False
-        self._post_cmd_sent = False
+        self.theme_name = self.conn_data.get("theme", "🟢 Hacker Esmeralda")
+        if self.theme_name not in TERMINAL_THEMES:
+            self.theme_name = "🟢 Hacker Esmeralda"
 
         self._build_ui()
-        self.iniciar_sesion()
+        QTimer.singleShot(250, self._lanzar_comando_conexion_inicial)
 
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(8, 8, 8, 8)
-        lay.setSpacing(6)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(4)
 
-        # Barra de herramientas de la sesión activa
-        bar = QFrame()
-        bar.setStyleSheet(f"""
+        # Barra de Controles Compacta (idéntica en estilo a terminal_main.py)
+        ctrl_bar = QFrame()
+        ctrl_bar.setFixedHeight(32)
+        ctrl_bar.setStyleSheet(f"""
             QFrame {{
-                background: {self.colores['bg_terciario']};
-                border-radius: 8px;
-                border: 1px solid rgba(255,255,255,0.07);
+                background-color: {self.colores['bg_secundario']};
+                border-radius: 6px;
+                border: 1px solid rgba(255,255,255,0.06);
             }}
         """)
-        bar_lay = QHBoxLayout(bar)
-        bar_lay.setContentsMargins(10, 6, 10, 6)
-        bar_lay.setSpacing(8)
+        c_lay = QHBoxLayout(ctrl_bar)
+        c_lay.setContentsMargins(8, 2, 8, 2)
+        c_lay.setSpacing(5)
 
         proto = self.conn_data.get("proto", "SSH")
-        ip = self.conn_data.get("ip", "")
+        ip = self.conn_data.get("ip", "127.0.0.1")
         port = self.conn_data.get("port", DEFAULT_PORTS.get(proto, 22))
         user = self.conn_data.get("user", "")
         target_str = f"{user}@{ip}:{port}" if user else f"{ip}:{port}"
 
-        self.lbl_status = QLabel(f"🟢 [{proto}] {target_str}")
-        self.lbl_status.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
-        self.lbl_status.setStyleSheet("color: #34D399; border: none; background: transparent;")
-        bar_lay.addWidget(self.lbl_status)
+        self.lbl_title = QLabel(f"📟 {proto} › {target_str}")
+        self.lbl_title.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
+        self.lbl_title.setStyleSheet("color: #10B981; border: none; background: transparent;")
+        c_lay.addWidget(self.lbl_title)
 
-        bar_lay.addStretch()
+        c_lay.addStretch()
 
-        # Selector de Macros / Snippets
-        self.combo_macros = QComboBox()
-        for label, cmd in SSH_MACROS:
-            self.combo_macros.addItem(label, cmd)
-        self.combo_macros.setFixedWidth(230)
-        self.combo_macros.setStyleSheet(f"""
+        combo_style = f"""
             QComboBox {{
-                background: {self.colores['bg_principal']};
+                background-color: {self.colores['bg_principal']};
                 color: white;
-                border: 1px solid rgba(255,255,255,0.12);
-                border-radius: 5px;
-                padding: 3px 8px;
-                font-size: 9pt;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 8pt;
             }}
             QComboBox QAbstractItemView {{
-                background: {self.colores['bg_secundario']};
+                background-color: {self.colores['bg_secundario']};
                 color: white;
                 selection-background-color: {self.colores['acento']};
             }}
-        """)
-        self.combo_macros.currentIndexChanged.connect(self._ejecutar_macro_seleccionada)
-        bar_lay.addWidget(self.combo_macros)
+        """
 
-        # Selector de tema visual en vivo
-        self.combo_theme = QComboBox()
-        self.combo_theme.addItems(list(TERMINAL_THEMES.keys()))
-        if self.theme_name in TERMINAL_THEMES:
-            self.combo_theme.setCurrentText(self.theme_name)
-        self.combo_theme.setFixedWidth(130)
-        self.combo_theme.setStyleSheet(self.combo_macros.styleSheet())
-        self.combo_theme.currentTextChanged.connect(self._aplicar_tema_consola)
-        bar_lay.addWidget(self.combo_theme)
+        # Selector de Snippets / Macros remotas
+        self.combo_macros = QComboBox()
+        for label, cmd in SSH_MACROS:
+            self.combo_macros.addItem(label, cmd)
+        self.combo_macros.setFixedWidth(125)
+        self.combo_macros.setStyleSheet(combo_style)
+        self.combo_macros.currentIndexChanged.connect(self._ejecutar_snippet_combo)
+        c_lay.addWidget(self.combo_macros)
+
+        # Selector de Tema igual a terminal_main.py
+        self.combo_tema = QComboBox()
+        self.combo_tema.addItems(list(TERMINAL_THEMES.keys()))
+        self.combo_tema.setCurrentText(self.theme_name)
+        self.combo_tema.setFixedWidth(135)
+        self.combo_tema.setStyleSheet(combo_style)
+        self.combo_tema.currentTextChanged.connect(self.cambiar_tema)
+        c_lay.addWidget(self.combo_tema)
 
         btn_style = f"""
             QPushButton {{
-                background: {self.colores['bg_principal']};
-                color: {self.colores['fg_principal']};
-                border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 5px;
-                padding: 4px 9px;
-                font-size: 8.5pt;
+                background-color: {self.colores['bg_principal']};
+                color: white;
+                padding: 2px 7px;
+                border-radius: 4px;
+                border: 1px solid rgba(255,255,255,0.08);
+                font-size: 8pt;
                 font-weight: bold;
             }}
             QPushButton:hover {{
-                background: {self.colores['acento']};
+                background-color: {self.colores['acento']};
                 color: white;
             }}
         """
 
-        btn_inject = QPushButton("🔑 Clave")
-        btn_inject.setToolTip("Inyectar contraseña guardada o copiarla al portapapeles")
-        btn_inject.setStyleSheet(btn_style)
-        btn_inject.clicked.connect(self.inyectar_password)
-        bar_lay.addWidget(btn_inject)
+        btn_key = QPushButton("🔑 Clave")
+        btn_key.setToolTip("Inyectar contraseña en la consola y copiar al portapapeles")
+        btn_key.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_key.setStyleSheet(btn_style)
+        btn_key.clicked.connect(self.inyectar_password)
+        c_lay.addWidget(btn_key)
 
-        btn_ctrlc = QPushButton("🛑 Ctrl+C")
-        btn_ctrlc.setToolTip("Enviar señal de interrupción SIGINT (Ctrl+C)")
-        btn_ctrlc.setStyleSheet(btn_style)
-        btn_ctrlc.clicked.connect(self.enviar_ctrl_c)
-        bar_lay.addWidget(btn_ctrlc)
+        btn_find = QPushButton("🔍")
+        btn_find.setToolTip("Buscar en consola (Ctrl+F)")
+        btn_find.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_find.setStyleSheet(btn_style)
+        btn_find.clicked.connect(lambda: self.session.toggle_buscador() if hasattr(self, "session") else None)
+        c_lay.addWidget(btn_find)
 
-        btn_clear = QPushButton("🧹 Limpiar")
-        btn_clear.setStyleSheet(btn_style)
-        btn_clear.clicked.connect(lambda: self.console.clear())
-        bar_lay.addWidget(btn_clear)
-
-        btn_log = QPushButton("💾 Log")
-        btn_log.setToolTip("Exportar historial de esta sesión a archivo .log")
+        btn_log = QPushButton("💾")
+        btn_log.setToolTip("Exportar Log de consola")
+        btn_log.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_log.setStyleSheet(btn_style)
-        btn_log.clicked.connect(self.exportar_log)
-        bar_lay.addWidget(btn_log)
+        btn_log.clicked.connect(lambda: self.session.exportar_log() if hasattr(self, "session") else None)
+        c_lay.addWidget(btn_log)
 
-        btn_reconnect = QPushButton("🔄 Reconectar")
-        btn_reconnect.setStyleSheet(btn_style)
-        btn_reconnect.clicked.connect(self.iniciar_sesion)
-        bar_lay.addWidget(btn_reconnect)
+        btn_clear = QPushButton("🗑️")
+        btn_clear.setToolTip("Limpiar consola (Ctrl+L)")
+        btn_clear.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_clear.setStyleSheet(btn_style)
+        btn_clear.clicked.connect(lambda: self.session.limpiar_consola() if hasattr(self, "session") else None)
+        c_lay.addWidget(btn_clear)
 
-        btn_native = QPushButton("🪟 Nativa")
-        btn_native.setToolTip("Desacoplar y abrir en ventana de terminal nativa del SO (para nano/vim/htop interactivo)")
+        btn_restart = QPushButton("🔄")
+        btn_restart.setToolTip("Reconectar / Reiniciar sesión")
+        btn_restart.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_restart.setStyleSheet(btn_style)
+        btn_restart.clicked.connect(self.reconectar)
+        c_lay.addWidget(btn_restart)
+
+        btn_native = QPushButton("🪟")
+        btn_native.setToolTip("Abrir en ventana de terminal nativa del SO")
+        btn_native.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_native.setStyleSheet(btn_style)
-        btn_native.clicked.connect(self._abrir_nativa)
-        bar_lay.addWidget(btn_native)
+        btn_native.clicked.connect(lambda: self.open_native_cb(self.conn_data) if callable(self.open_native_cb) else None)
+        c_lay.addWidget(btn_native)
 
-        lay.addWidget(bar)
+        lay.addWidget(ctrl_bar)
 
-        # Pantalla de salida de terminal
-        self.console = QPlainTextEdit()
-        self.console.setReadOnly(True)
-        self.console.setMaximumBlockCount(5000)
-        lay.addWidget(self.console, 1)
+        # Instanciar SingleTerminalSession de terminal_main.py
+        t_dict = TERMINAL_THEMES.get(self.theme_name, TERMINAL_THEMES["🟢 Hacker Esmeralda"])
+        if TERMINAL_MODULE_AVAILABLE and SingleTerminalSession is not None:
+            class _DummyCtx:
+                app = None
+            ctx = self.context or _DummyCtx()
+            self.session = SingleTerminalSession(
+                parent=self,
+                context=ctx,
+                tema_dict=t_dict
+            )
+            f_size = int(self.conn_data.get("font", 11) or 11)
+            f = self.session.terminal.font()
+            f.setPointSize(f_size)
+            self.session.terminal.setFont(f)
+            lay.addWidget(self.session, 1)
+        else:
+            self.session = None
+            self.fallback_box = QPlainTextEdit(self)
+            lay.addWidget(self.fallback_box, 1)
 
-        # Barra de entrada de comandos interactiva
-        cmd_frame = QFrame()
-        cmd_frame.setStyleSheet(f"""
-            QFrame {{
-                background: {self.colores['bg_terciario']};
-                border-radius: 7px;
-                border: 1px solid rgba(255,255,255,0.08);
-            }}
-        """)
-        cmd_lay = QHBoxLayout(cmd_frame)
-        cmd_lay.setContentsMargins(10, 4, 6, 4)
-        cmd_lay.setSpacing(8)
-
-        lbl_prompt = QLabel("❯")
-        lbl_prompt.setFont(QFont("Consolas", 12, QFont.Weight.Bold))
-        lbl_prompt.setStyleSheet(f"color: {self.colores['acento']}; border: none; background: transparent;")
-        cmd_lay.addWidget(lbl_prompt)
-
-        self.txt_cmd = QLineEdit()
-        self.txt_cmd.setPlaceholderText("Escribe un comando y presiona Enter (Usa ↑/↓ para historial, o escribe 'yes' / contraseña cuando lo solicite)...")
-        self.txt_cmd.setFont(QFont("Consolas", 10))
-        self.txt_cmd.setStyleSheet("background: transparent; color: white; border: none; padding: 4px;")
-        self.txt_cmd.returnPressed.connect(self._on_enter_cmd)
-        self.txt_cmd.installEventFilter(self)
-        cmd_lay.addWidget(self.txt_cmd, 1)
-
-        btn_send = QPushButton("Enviar ↵")
-        btn_send.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_send.setStyleSheet(f"""
-            QPushButton {{
-                background: {self.colores['acento']};
-                color: white;
-                border-radius: 5px;
-                padding: 5px 12px;
-                font-weight: bold;
-                border: none;
-            }}
-            QPushButton:hover {{ background: {self.colores['acento_hover']}; }}
-        """)
-        btn_send.clicked.connect(self._on_enter_cmd)
-        cmd_lay.addWidget(btn_send)
-
-        lay.addWidget(cmd_frame)
-        self._aplicar_tema_consola(self.theme_name)
-
-    def eventFilter(self, obj, event):
-        if obj == self.txt_cmd and event.type() == event.Type.KeyPress:
-            if event.key() == Qt.Key.Key_Up:
-                if self.history and self.history_idx > 0:
-                    self.history_idx -= 1
-                    self.txt_cmd.setText(self.history[self.history_idx])
-                return True
-            elif event.key() == Qt.Key.Key_Down:
-                if self.history and self.history_idx < len(self.history) - 1:
-                    self.history_idx += 1
-                    self.txt_cmd.setText(self.history[self.history_idx])
-                else:
-                    self.history_idx = len(self.history)
-                    self.txt_cmd.clear()
-                return True
-        return super().eventFilter(obj, event)
-
-    def _aplicar_tema_consola(self, theme_name: str):
-        self.theme_name = theme_name
-        t = TERMINAL_THEMES.get(theme_name, TERMINAL_THEMES["Matrix Green"])
-        self.console.setFont(QFont("Consolas", self.font_size))
-        self.console.setStyleSheet(f"""
-            QPlainTextEdit {{
-                background-color: {t['bg']};
-                color: {t['fg']};
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 8px;
-                padding: 10px;
-                selection-background-color: {t['accent']};
-            }}
-        """)
-
-    def append_output(self, text: str):
-        if not text:
-            return
-        # Limpiar secuencias ANSI básicas para legibilidad limpia en QPlainTextEdit
-        import re
-        clean = re.sub(r"\x1B\[[0-?]*[ -/]*[@-~]", "", text)
-        self.console.moveCursor(QTextCursor.MoveOperation.End)
-        self.console.insertPlainText(clean)
-        self.console.moveCursor(QTextCursor.MoveOperation.End)
-
-        low = clean.lower()
-        if ("password:" in low or "contraseña:" in low) and not self._password_injected:
-            pwd = self.conn_data.get("pass", "")
-            if pwd:
-                self._password_injected = True
-                QTimer.singleShot(250, lambda: self.enviar_comando(pwd, ocultar_eco=True))
-
-        if not self._post_cmd_sent and any(prompt in clean for prompt in ["$ ", "# ", "> "]):
-            post_cmd = (self.conn_data.get("post_cmd") or "").strip()
-            if post_cmd:
-                self._post_cmd_sent = True
-                QTimer.singleShot(400, lambda: self.enviar_comando(post_cmd))
-
-    def iniciar_sesion(self):
-        self.cerrar_sesion()
-        self._password_injected = False
-        self._post_cmd_sent = False
-
+    def _construir_comando_remoto(self) -> str:
         proto = self.conn_data.get("proto", "SSH")
         ip = self.conn_data.get("ip", "").strip()
-        port = int(self.conn_data.get("port", DEFAULT_PORTS.get(proto, 22)) or DEFAULT_PORTS.get(proto, 22))
+        port = int(self.conn_data.get("port", DEFAULT_PORTS.get(proto, 22)) or 22)
         user = self.conn_data.get("user", "").strip()
         ssh_key = (self.conn_data.get("ssh_key") or "").strip()
         tunnel = (self.conn_data.get("ssh_tunnel") or "").strip()
 
-        self.console.clear()
-        self.append_output(f"═══ mRemoteNG Session [{proto}] → {ip}:{port} ({datetime.now().strftime('%H:%M:%S')}) ═══\n")
-
-        if self.conn_data.get("pass"):
-            QGuiApplication.clipboard().setText(self.conn_data.get("pass"))
-            self.append_output("🔑 Contraseña cargada en portapapeles y lista para auto-inyección.\n")
-
-        self.process = QProcess(self)
-        self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
-        self.process.readyReadStandardOutput.connect(self._on_ready_read)
-        self.process.finished.connect(self._on_finished)
+        if not ip:
+            return ""
 
         if proto == "SSH":
-            args = ["-tt", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new"]
+            parts = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new"]
             if ssh_key and os.path.exists(ssh_key):
-                args.extend(["-i", ssh_key])
+                parts.extend(["-i", f'"{ssh_key}"'])
             if tunnel:
-                args.extend(tunnel.split())
-            target = f"{user}@{ip}" if user else ip
-            args.append(target)
-            self.append_output(f"$ ssh {' '.join(args)}\n\n")
-            self.process.start("ssh", args)
+                parts.append(tunnel)
+            parts.append(f"{user}@{ip}" if user else ip)
+            return " ".join(parts)
         elif proto == "SFTP":
-            args = ["-P", str(port), "-o", "StrictHostKeyChecking=accept-new"]
+            parts = ["sftp", "-P", str(port)]
             if ssh_key and os.path.exists(ssh_key):
-                args.extend(["-i", ssh_key])
-            target = f"{user}@{ip}" if user else ip
-            args.append(target)
-            self.append_output(f"$ sftp {' '.join(args)}\n\n")
-            self.process.start("sftp", args)
+                parts.extend(["-i", f'"{ssh_key}"'])
+            parts.append(f"{user}@{ip}" if user else ip)
+            return " ".join(parts)
         elif proto == "FTP":
-            self.append_output(f"$ ftp {ip} {port}\n\n")
-            self.process.start("ftp", [ip])
+            return f"ftp {ip}"
         elif proto == "Telnet":
-            self.append_output(f"$ telnet {ip} {port}\n\n")
-            self.process.start("telnet", [ip, str(port)])
+            return f"telnet {ip} {port}"
         elif proto == "WinRM":
-            ps_cmd = f"Enter-PSSession -ComputerName {ip} -Port {port}"
-            if user:
-                ps_cmd += f" -Credential {user}"
-            self.append_output(f"PS> {ps_cmd}\n\n")
-            self.process.start("powershell", ["-NoLogo", "-NoExit", "-Command", ps_cmd])
+            return f"Enter-PSSession -ComputerName {ip} -Port {port}" + (f" -Credential {user}" if user else "")
         else:
-            # Raw TCP o fallback interactivo con PowerShell/Python socket bridge
-            py_bridge = (
-                f"import socket, sys, threading; "
-                f"s = socket.create_connection(('{ip}', {port}), timeout=5); "
-                f"print('Conectado a socket TCP {ip}:{port}'); "
-                f"t = threading.Thread(target=lambda: [sys.stdout.write(s.recv(4096).decode('utf-8','replace')) or sys.stdout.flush() for _ in iter(int, 1)], daemon=True); "
-                f"t.start(); "
-                f"[s.sendall((line).encode('utf-8')) for line in sys.stdin]"
-            )
-            self.process.start(sys.executable, ["-u", "-c", py_bridge])
+            return f"ping {ip}"
 
-        self.lbl_status.setText(f"🟢 [{proto}] {user + '@' if user else ''}{ip}:{port}")
-        self.lbl_status.setStyleSheet("color: #34D399; border: none; background: transparent;")
-        self.txt_cmd.setFocus()
+    def _lanzar_comando_conexion_inicial(self):
+        pwd = self.conn_data.get("pass", "")
+        if pwd:
+            QGuiApplication.clipboard().setText(pwd)
 
-    def _on_ready_read(self):
-        if not self.process:
-            return
-        data = bytes(self.process.readAllStandardOutput()).decode("utf-8", errors="replace")
-        self.append_output(data)
+        cmd = self._construir_comando_remoto()
+        if cmd:
+            self.enviar_comando(cmd)
+            post_cmd = (self.conn_data.get("post_cmd") or "").strip()
+            if post_cmd:
+                QTimer.singleShot(1800, lambda: self.enviar_comando(post_cmd))
 
-    def _on_finished(self, code, status):
-        self.append_output(f"\n─── Sesión finalizada (código: {code}) ───\n")
-        self.lbl_status.setText(f"🔴 [{self.conn_data.get('proto', 'SSH')}] Desconectado ({ self.conn_data.get('ip', '') })")
-        self.lbl_status.setStyleSheet("color: #F87171; border: none; background: transparent;")
-
-    def _on_enter_cmd(self):
-        cmd = self.txt_cmd.text()
-        self.txt_cmd.clear()
-        if cmd.strip():
-            self.history.append(cmd)
-            self.history_idx = len(self.history)
-        self.enviar_comando(cmd)
-
-    def enviar_comando(self, cmd: str, ocultar_eco: bool = False):
-        if not ocultar_eco:
-            self.append_output(f"{cmd}\n")
-        if self.process and self.process.state() == QProcess.ProcessState.Running:
-            payload = (cmd + "\n").encode("utf-8")
-            self.process.write(payload)
-        else:
-            self.append_output("⚠️ El proceso no está activo. Usa '🔄 Reconectar'.\n")
-
-    def enviar_ctrl_c(self):
-        if self.process and self.process.state() == QProcess.ProcessState.Running:
-            self.process.write(b"\x03")
-            self.append_output("^C\n")
+    def enviar_comando(self, cmd: str):
+        if self.session and hasattr(self.session, "enviar_comando"):
+            self.session.enviar_comando(cmd)
+            self.session.terminal.setFocus()
 
     def inyectar_password(self):
         pwd = self.conn_data.get("pass", "")
@@ -431,13 +310,18 @@ class MRemoteTerminalSession(QWidget):
             QMessageBox.information(self, "Sin Clave", "Esta conexión no tiene una contraseña guardada.")
             return
         QGuiApplication.clipboard().setText(pwd)
-        if self.process and self.process.state() == QProcess.ProcessState.Running:
-            self.enviar_comando(pwd, ocultar_eco=True)
-            self.append_output("🔐 [Contraseña inyectada en sesión y copiada al portapapeles]\n")
-        else:
-            self.append_output("📋 [Contraseña copiada al portapapeles]\n")
+        if self.session and self.session.process and self.session.process.state() == QProcess.ProcessState.Running:
+            line_end = "\r\n" if platform.system() == "Windows" else "\n"
+            self.session.process.write((pwd + line_end).encode("utf-8"))
+            self.session.lbl_status.setText("🔑 Clave inyectada y copiada")
+            self.session.terminal.setFocus()
 
-    def _ejecutar_macro_seleccionada(self, idx: int):
+    def cambiar_tema(self, nombre_tema: str):
+        if nombre_tema in TERMINAL_THEMES and self.session:
+            self.theme_name = nombre_tema
+            self.session.aplicar_tema(TERMINAL_THEMES[nombre_tema])
+
+    def _ejecutar_snippet_combo(self, idx: int):
         if idx <= 0:
             return
         cmd = self.combo_macros.itemData(idx)
@@ -445,55 +329,51 @@ class MRemoteTerminalSession(QWidget):
             self.enviar_comando(cmd)
         self.combo_macros.setCurrentIndex(0)
 
-    def exportar_log(self):
-        nombre = self.conn_data.get("name", "sesion").replace(" ", "_")
-        ruta, _ = QFileDialog.getSaveFileName(
-            self, "Guardar Log de Sesión mRemoteNG", f"log_{nombre}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log", "Log Files (*.log *.txt)"
-        )
-        if ruta:
-            with open(ruta, "w", encoding="utf-8") as f:
-                f.write(self.console.toPlainText())
-            QMessageBox.information(self, "Log Exportado", f"Historial guardado en:\n{ruta}")
-
-    def _abrir_nativa(self):
-        if callable(self.open_native_cb):
-            self.open_native_cb(self.conn_data)
+    def reconectar(self):
+        if self.session:
+            self.session.reiniciar_proceso()
+            QTimer.singleShot(400, self._lanzar_comando_conexion_inicial)
 
     def cerrar_sesion(self):
-        if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
-            self.process.kill()
-            self.process.waitForFinished(500)
+        if self.session and hasattr(self.session, "cleanup"):
+            self.session.cleanup()
 
 
 class MRemoteRDPSession(QWidget):
-    """Pestaña de control y lanzamiento directo de sesiones RDP / VNC estilo mRemoteNG con SSO (cmdkey)."""
+    """Pestaña compacta de control y lanzamiento directo de sesiones RDP / VNC con Single Sign-On (cmdkey)."""
+
+    status_updated = pyqtSignal(str, str)
 
     def __init__(self, parent, conn_data: dict, colores: dict, launch_cb=None):
         super().__init__(parent)
         self.conn_data = dict(conn_data)
         self.colores = colores
         self.launch_cb = launch_cb
+        self.status_updated.connect(self._on_status_ui)
         self._build_ui()
-        # Lanzar automáticamente al abrir la pestaña
-        QTimer.singleShot(250, lambda: self.lanzar_cliente(fullscreen=False))
+        QTimer.singleShot(200, lambda: self.lanzar_cliente(fullscreen=False))
         self._iniciar_monitor_puerto()
+
+    def _on_status_ui(self, text: str, color: str):
+        self.lbl_status.setText(text)
+        self.lbl_status.setStyleSheet(f"color: {color}; border: none; background: transparent; font-weight: bold;")
 
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(20, 20, 20, 20)
-        lay.setSpacing(14)
+        lay.setContentsMargins(10, 10, 10, 10)
+        lay.setSpacing(8)
 
         card = QFrame()
         card.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_terciario']};
-                border-radius: 12px;
-                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 8px;
+                border: 1px solid rgba(255,255,255,0.07);
             }}
         """)
         c_lay = QVBoxLayout(card)
-        c_lay.setContentsMargins(22, 18, 22, 18)
-        c_lay.setSpacing(10)
+        c_lay.setContentsMargins(14, 10, 14, 10)
+        c_lay.setSpacing(6)
 
         proto = self.conn_data.get("proto", "RDP")
         name = self.conn_data.get("name", "Servidor Remoto")
@@ -503,47 +383,44 @@ class MRemoteRDPSession(QWidget):
         domain = self.conn_data.get("domain", "")
         res = self.conn_data.get("resolution", "Smart Sizing (Ajustar)")
 
-        lbl_title = QLabel(f"🖥️  Sesión {proto}: {name}")
-        lbl_title.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+        top_r = QHBoxLayout()
+        lbl_title = QLabel(f"🖥️ {proto}: {name} ({ip}:{port})")
+        lbl_title.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
         lbl_title.setStyleSheet("color: white; border: none; background: transparent;")
-        c_lay.addWidget(lbl_title)
+        top_r.addWidget(lbl_title)
+        top_r.addStretch()
 
-        self.lbl_status = QLabel(f"📡 Verificando disponibilidad de {ip}:{port}...")
-        self.lbl_status.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        self.lbl_status.setStyleSheet("color: #34D399; border: none; background: transparent;")
-        c_lay.addWidget(self.lbl_status)
+        self.lbl_status = QLabel("🟡 Verificando puerto...")
+        self.lbl_status.setFont(QFont("Segoe UI", 8.5, QFont.Weight.Bold))
+        self.lbl_status.setStyleSheet("color: #FBBF24; border: none; background: transparent;")
+        top_r.addWidget(self.lbl_status)
+        c_lay.addLayout(top_r)
 
-        resumen_html = (
-            f"<b>Host / IP:</b> {ip}:{port} &nbsp;&nbsp;|&nbsp;&nbsp; "
-            f"<b>Usuario:</b> {domain + '\\' if domain else ''}{user} &nbsp;&nbsp;|&nbsp;&nbsp; "
-            f"<b>Resolución:</b> {res}<br>"
-            f"<b>Redirecciones:</b> "
+        lbl_info = QLabel(
+            f"Usuario: <b>{domain + '\\' if domain else ''}{user}</b> | Resolución: <b>{res}</b> | "
+            f"{'🔑 SSO Activo ' if self.conn_data.get('rdp_sso', True) else ''}"
             f"{'📋 Portapapeles ' if self.conn_data.get('rdp_clipboard', True) else ''}"
-            f"{'💾 Discos Locales ' if self.conn_data.get('rdp_drives', False) else ''}"
-            f"{'🔊 Audio ' if self.conn_data.get('rdp_audio', True) else ''}"
-            f"{'🛡️ Consola /admin ' if self.conn_data.get('rdp_admin', False) else ''}"
-            f"{'🔑 Auto-Login SSO (cmdkey)' if self.conn_data.get('rdp_sso', True) else ''}"
+            f"{'💾 Discos ' if self.conn_data.get('rdp_drives', False) else ''}"
         )
-        lbl_info = QLabel(resumen_html)
         lbl_info.setWordWrap(True)
-        lbl_info.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 9.5pt; border: none; background: transparent;")
+        lbl_info.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 8.5pt; border: none; background: transparent;")
         c_lay.addWidget(lbl_info)
 
-        # Botonera de control RDP estilo mRemoteNG
         row_btns = QHBoxLayout()
-        row_btns.setSpacing(10)
+        row_btns.setSpacing(6)
 
         def _mk_btn(txt, bg, fn):
             b = QPushButton(txt)
-            b.setFixedHeight(38)
+            b.setFixedHeight(28)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
             b.setStyleSheet(f"""
                 QPushButton {{
                     background: {bg};
                     color: white;
                     font-weight: bold;
-                    border-radius: 8px;
-                    padding: 0 14px;
+                    border-radius: 5px;
+                    padding: 0 10px;
+                    font-size: 8pt;
                     border: none;
                 }}
                 QPushButton:hover {{ opacity: 0.9; }}
@@ -551,12 +428,13 @@ class MRemoteRDPSession(QWidget):
             b.clicked.connect(fn)
             return b
 
-        row_btns.addWidget(_mk_btn("🚀 Reconectar Ventana RDP", self.colores['acento'], lambda: self.lanzar_cliente(fullscreen=False)))
-        row_btns.addWidget(_mk_btn("📺 Pantalla Completa (/f)", "#0284C7", lambda: self.lanzar_cliente(fullscreen=True)))
-        row_btns.addWidget(_mk_btn("🛡️ Sesión Admin (/admin)", "#7C3AED", lambda: self.lanzar_cliente(admin=True)))
+        row_btns.addWidget(_mk_btn("🚀 Reconectar RDP", self.colores['acento'], lambda: self.lanzar_cliente(fullscreen=False)))
+        row_btns.addWidget(_mk_btn("📺 Pantalla Completa", "#0284C7", lambda: self.lanzar_cliente(fullscreen=True)))
+        row_btns.addWidget(_mk_btn("🛡️ /admin", "#7C3AED", lambda: self.lanzar_cliente(admin=True)))
         row_btns.addWidget(_mk_btn("📄 Exportar .rdp", "#059669", self.exportar_archivo_rdp))
         if platform.system() == "Windows":
-            row_btns.addWidget(_mk_btn("🧹 Limpiar Credencial SSO", "#DC2626", self.limpiar_credencial_sso))
+            row_btns.addWidget(_mk_btn("🧹 Limpiar SSO", "#DC2626", self.limpiar_credencial_sso))
+        row_btns.addStretch()
         c_lay.addLayout(row_btns)
 
         lay.addWidget(card)
@@ -567,11 +445,11 @@ class MRemoteRDPSession(QWidget):
             QPlainTextEdit {{
                 background: {self.colores['bg_principal']};
                 color: {self.colores['fg_principal']};
-                border: 1px solid rgba(255,255,255,0.07);
-                border-radius: 8px;
-                padding: 10px;
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 6px;
+                padding: 8px;
                 font-family: Consolas;
-                font-size: 9.5pt;
+                font-size: 8.5pt;
             }}
         """)
         lay.addWidget(self.log_box, 1)
@@ -627,18 +505,17 @@ class MRemoteRDPSession(QWidget):
             QGuiApplication.clipboard().setText(pwd)
 
         if proto == "VNC":
-            self._log(f"Iniciando cliente VNC hacia {ip}:{port}...")
+            self._log(f"Iniciando visor VNC hacia {ip}:{port}...")
             for client in ["tvnviewer", "vncviewer"]:
                 try:
                     subprocess.Popen([client, f"{ip}:{port}"])
-                    self._log(f"Cliente {client} lanzado correctamente.")
+                    self._log(f"Cliente {client} lanzado.")
                     return
                 except Exception:
                     continue
-            self._log("⚠️ No se detectó visor VNC externo (tvnviewer/vncviewer) en PATH. Clave copiada al portapapeles.")
+            self._log("⚠️ Visor VNC externo no detectado en PATH. Clave copiada al portapapeles.")
             return
 
-        # RDP con Single Sign-On vía cmdkey en Windows
         if platform.system() == "Windows":
             if self.conn_data.get("rdp_sso", True) and user and pwd:
                 full_user = f"{domain}\\{user}" if domain else user
@@ -649,7 +526,7 @@ class MRemoteRDPSession(QWidget):
                         stderr=subprocess.DEVNULL,
                         creationflags=0x08000000
                     )
-                self._log(f"🔑 Credencial SSO inyectada en Windows Vault (TERMSRV/{ip}) para usuario '{full_user}'.")
+                self._log(f"🔑 Credencial SSO registrada en Windows Vault (TERMSRV/{ip}).")
 
             rdp_dir = get_data_path() / "rdp_profiles"
             rdp_dir.mkdir(parents=True, exist_ok=True)
@@ -673,7 +550,7 @@ class MRemoteRDPSession(QWidget):
         ruta, _ = QFileDialog.getSaveFileName(self, "Exportar perfil .rdp", f"{nombre}.rdp", "Remote Desktop (*.rdp)")
         if ruta:
             Path(ruta).write_text(self._generar_contenido_rdp(), encoding="utf-8")
-            self._log(f"✅ Perfil .rdp exportado a: {ruta}")
+            self._log(f"✅ Exportado a: {ruta}")
 
     def limpiar_credencial_sso(self):
         ip = self.conn_data.get("ip", "").strip()
@@ -681,7 +558,7 @@ class MRemoteRDPSession(QWidget):
         if platform.system() == "Windows" and ip:
             for target in (f"TERMSRV/{ip}", f"TERMSRV/{ip}:{port}"):
                 subprocess.run(["cmdkey", f"/delete:{target}"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=0x08000000)
-            self._log(f"🧹 Credenciales SSO eliminadas de Windows Credential Manager para {ip}.")
+            self._log(f"🧹 Credencial SSO eliminada para {ip}.")
 
     def _iniciar_monitor_puerto(self):
         self._timer_mon = QTimer(self)
@@ -698,9 +575,9 @@ class MRemoteRDPSession(QWidget):
             try:
                 with socket.create_connection((ip, port), timeout=1.0):
                     ms = max(1, int((time.perf_counter() - t0) * 1000))
-                    QTimer.singleShot(0, lambda: self.lbl_status.setText(f"🟢 Puerto TCP {port} Abierto y Activo ({ms} ms)"))
+                    self.status_updated.emit(f"🟢 TCP {port} Activo ({ms} ms)", "#34D399")
             except Exception:
-                QTimer.singleShot(0, lambda: self.lbl_status.setText(f"🔴 Puerto TCP {port} sin respuesta directa en {ip}"))
+                self.status_updated.emit(f"🔴 TCP {port} Sin respuesta", "#F87171")
 
         threading.Thread(target=_probe, daemon=True).start()
 
@@ -710,7 +587,7 @@ class MRemoteRDPSession(QWidget):
 
 
 class MRemoteWebSession(QWidget):
-    """Pestaña de administración web embebida (HTTP/HTTPS para Proxmox, Routers, Portainer, Grafana, Webmin)."""
+    """Pestaña de administración web embebida (HTTP/HTTPS)."""
 
     def __init__(self, parent, conn_data: dict, colores: dict):
         super().__init__(parent)
@@ -720,8 +597,8 @@ class MRemoteWebSession(QWidget):
 
     def _build_ui(self):
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setSpacing(6)
+        lay.setContentsMargins(4, 4, 4, 4)
+        lay.setSpacing(4)
 
         proto = self.conn_data.get("proto", "HTTPS").lower()
         ip = self.conn_data.get("ip", "localhost").strip()
@@ -733,21 +610,22 @@ class MRemoteWebSession(QWidget):
             url = f"{proto}://{ip}" if int(port) == default_p else f"{proto}://{ip}:{port}"
 
         nav = QFrame()
-        nav.setStyleSheet(f"background: {self.colores['bg_terciario']}; border-radius: 7px;")
+        nav.setFixedHeight(30)
+        nav.setStyleSheet(f"background: {self.colores['bg_terciario']}; border-radius: 5px;")
         nav_lay = QHBoxLayout(nav)
-        nav_lay.setContentsMargins(8, 4, 8, 4)
-        nav_lay.setSpacing(6)
+        nav_lay.setContentsMargins(6, 2, 6, 2)
+        nav_lay.setSpacing(4)
 
         self.txt_url = QLineEdit(url)
-        self.txt_url.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 5px; padding: 4px 8px;")
+        self.txt_url.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 4px; padding: 2px 6px; font-size: 8.5pt;")
         nav_lay.addWidget(self.txt_url, 1)
 
-        btn_go = QPushButton("Ir / Recargar 🔄")
-        btn_go.setStyleSheet(f"background: {self.colores['acento']}; color: white; border-radius: 5px; padding: 4px 10px; font-weight: bold;")
+        btn_go = QPushButton("🔄 Ir")
+        btn_go.setStyleSheet(f"background: {self.colores['acento']}; color: white; border-radius: 4px; padding: 2px 8px; font-size: 8pt; font-weight: bold;")
         nav_lay.addWidget(btn_go)
 
-        btn_ext = QPushButton("🌐 Abrir en Navegador")
-        btn_ext.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 5px; padding: 4px 10px;")
+        btn_ext = QPushButton("🌐 Externo")
+        btn_ext.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 4px; padding: 2px 8px; font-size: 8pt;")
         btn_ext.clicked.connect(lambda: subprocess.Popen(["cmd", "/c", "start", self.txt_url.text()] if platform.system() == "Windows" else ["xdg-open", self.txt_url.text()]))
         nav_lay.addWidget(btn_ext)
 
@@ -760,7 +638,7 @@ class MRemoteWebSession(QWidget):
             self.txt_url.returnPressed.connect(lambda: self.web.load(QUrl(self.txt_url.text())))
             lay.addWidget(self.web, 1)
         else:
-            lbl = QLabel(f"Panel Web listo en: <a href='{url}' style='color:{self.colores['acento']};'>{url}</a>")
+            lbl = QLabel(f"Panel Web: <a href='{url}' style='color:{self.colores['acento']};'>{url}</a>")
             lbl.setOpenExternalLinks(True)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lay.addWidget(lbl, 1)
@@ -771,13 +649,15 @@ class MRemoteWebSession(QWidget):
 
 class TabRemote(QWidget):
     """
-    Submódulo avanzado de Conexiones Remotas estilo mRemoteNG:
-    - Árbol jerárquico con carpetas anidadas, Drag & Drop y herencia de credenciales
-    - Barra superior Quick Connect + Escáner de puertos + Ping masivo + Import/Export (JSON, CSV, XML mRemoteNG)
-    - Inspector de propiedades multi-categoría (General, Auth & Herencia, Pantalla/RDP/SSH)
-    - Workspace multi-pestaña en vivo (SSH, Telnet, RDP con SSO cmdkey, VNC, HTTP/HTTPS, SFTP, FTP, WinRM, Raw)
-    - Barra inferior Multi-Execution / Broadcast para enviar comandos a todas las terminales abiertas a la vez
+    Submódulo compacto y 100% responsivo de Conexiones Remotas estilo mRemoteNG:
+    - Señales Qt thread-safe (host_status_signal / port_scan_signal) para que el indicador 🟢/🔴 registre siempre al instante
+    - Consola integrada usando exactamente SingleTerminalSession de terminal_main.py
+    - Diseño compacto y scrollable que no colisiona al reducir el tamaño de la ventana
     """
+
+    # Señales thread-safe hacia el hilo principal de Qt
+    host_status_signal = pyqtSignal(str, bool, object, str)  # ip, online, latency_ms, method
+    port_scan_signal = pyqtSignal(str, list)                  # host, lista_resultados
 
     def __init__(self, parent, colores, callbacks, context=None):
         super().__init__(parent)
@@ -790,23 +670,26 @@ class TabRemote(QWidget):
         else:
             self.archivo_datos = get_data_path() / "conexiones_remotas.json"
 
-        self._status_cache = {}  # ip -> {"online": bool, "latency_ms": int}
+        self._status_cache = {}
         self._updating_form = False
+
+        # Conectar señales de hilos secundarios al hilo principal GUI
+        self.host_status_signal.connect(self._on_host_status_received)
+        self.port_scan_signal.connect(self._mostrar_resultados_escaneo)
+
         self.inicializar_ui()
 
-    # ──────────────────────────────────────────────────────────────────────────
-    #  CONSTRUCCIÓN DE LA INTERFAZ ESTILO mRemoteNG
-    # ──────────────────────────────────────────────────────────────────────────
     def inicializar_ui(self):
         self.layout_principal = QVBoxLayout(self)
-        self.layout_principal.setContentsMargins(12, 10, 12, 10)
-        self.layout_principal.setSpacing(8)
+        self.layout_principal.setContentsMargins(6, 6, 6, 6)
+        self.layout_principal.setSpacing(5)
 
-        # 1. Barra Superior mRemoteNG (Quick Connect + Herramientas Globales)
+        # 1. Barra Superior Compacta Quick Connect (32px)
         self._build_top_quick_bar()
 
-        # 2. Splitter Central: Izquierda (Árbol + Inspector Config) | Derecha (Workspace Multi-Pestaña + Broadcast)
+        # 2. Splitter Central Responsivo
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter.setChildrenCollapsible(False)
         self.splitter.setStyleSheet("""
             QSplitter::handle {
                 background: rgba(255,255,255,0.06);
@@ -819,42 +702,46 @@ class TabRemote(QWidget):
 
         self.splitter.addWidget(self.panel_izq)
         self.splitter.addWidget(self.panel_der_container)
-        self.splitter.setSizes([340, 760])
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 3)
+        self.splitter.setSizes([270, 680])
 
         self.layout_principal.addWidget(self.splitter, 1)
 
-        # Cargar árbol y poblar matriz inicial
         self.cargar_conexiones()
         self.actualizar_matriz_hosts()
 
     def _build_top_quick_bar(self):
         top_bar = QFrame()
+        top_bar.setFixedHeight(34)
         top_bar.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_secundario']};
-                border-radius: 10px;
+                border-radius: 7px;
                 border: 1px solid rgba(255,255,255,0.06);
             }}
         """)
         t_lay = QHBoxLayout(top_bar)
-        t_lay.setContentsMargins(12, 7, 12, 7)
-        t_lay.setSpacing(8)
+        t_lay.setContentsMargins(8, 3, 8, 3)
+        t_lay.setSpacing(5)
 
-        lbl_qc = QLabel("⚡ Quick Connect:")
-        lbl_qc.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+        lbl_qc = QLabel("⚡ Quick:")
+        lbl_qc.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
         lbl_qc.setStyleSheet(f"color: {self.colores['acento']}; border: none; background: transparent;")
         t_lay.addWidget(lbl_qc)
 
         self.txt_quick_host = QLineEdit()
-        self.txt_quick_host.setPlaceholderText("usuario@host:puerto o IP (ej. root@192.168.1.10 o 10.0.0.5)")
-        self.txt_quick_host.setMinimumWidth(220)
+        self.txt_quick_host.setPlaceholderText("user@host:port o IP...")
+        self.txt_quick_host.setMinimumWidth(80)
+        self.txt_quick_host.setFixedHeight(24)
         self.txt_quick_host.setStyleSheet(f"""
             QLineEdit {{
                 background: {self.colores['bg_principal']};
                 color: white;
                 border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 6px;
-                padding: 5px 10px;
+                border-radius: 4px;
+                padding: 2px 7px;
+                font-size: 8.5pt;
             }}
             QLineEdit:focus {{ border: 1px solid {self.colores['acento']}; }}
         """)
@@ -863,14 +750,15 @@ class TabRemote(QWidget):
 
         self.combo_quick_proto = QComboBox()
         self.combo_quick_proto.addItems(list(DEFAULT_PORTS.keys()))
-        self.combo_quick_proto.setFixedWidth(95)
+        self.combo_quick_proto.setFixedSize(76, 24)
         self.combo_quick_proto.setStyleSheet(f"""
             QComboBox {{
                 background: {self.colores['bg_principal']};
                 color: white;
                 border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 6px;
-                padding: 4px 8px;
+                border-radius: 4px;
+                padding: 1px 5px;
+                font-size: 8pt;
                 font-weight: bold;
             }}
             QComboBox QAbstractItemView {{
@@ -888,20 +776,22 @@ class TabRemote(QWidget):
         self.spin_quick_port.setRange(1, 65535)
         self.spin_quick_port.setValue(22)
         self.spin_quick_port.setPrefix(":")
-        self.spin_quick_port.setFixedWidth(78)
+        self.spin_quick_port.setFixedSize(64, 24)
         self.spin_quick_port.setStyleSheet(self.txt_quick_host.styleSheet())
         t_lay.addWidget(self.spin_quick_port)
 
-        btn_qc_go = QPushButton("🚀 Conectar")
+        btn_qc_go = QPushButton("🚀 Ir")
+        btn_qc_go.setToolTip("Conectar inmediatamente en una pestaña")
         btn_qc_go.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_qc_go.setFixedHeight(30)
+        btn_qc_go.setFixedHeight(24)
         btn_qc_go.setStyleSheet(f"""
             QPushButton {{
                 background: {self.colores['acento']};
                 color: white;
                 font-weight: bold;
-                border-radius: 6px;
-                padding: 0 12px;
+                border-radius: 4px;
+                padding: 0 9px;
+                font-size: 8pt;
                 border: none;
             }}
             QPushButton:hover {{ background: {self.colores['acento_hover']}; }}
@@ -914,9 +804,9 @@ class TabRemote(QWidget):
                 background: {self.colores['bg_terciario']};
                 color: {self.colores['fg_principal']};
                 border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 6px;
-                padding: 0 10px;
-                font-size: 8.5pt;
+                border-radius: 4px;
+                padding: 0 7px;
+                font-size: 8pt;
                 font-weight: bold;
             }}
             QPushButton:hover {{
@@ -925,23 +815,30 @@ class TabRemote(QWidget):
             }}
         """
 
-        btn_ping_all = QPushButton("📡 Ping Todos")
-        btn_ping_all.setFixedHeight(30)
-        btn_ping_all.setToolTip("Comprobar estado Online/Offline y latencia de todos los servidores guardados")
+        btn_local_term = QPushButton("📟 Consola Local")
+        btn_local_term.setFixedHeight(24)
+        btn_local_term.setToolTip("Abrir pestaña de Terminal Interactiva Local (PowerShell/Bash)")
+        btn_local_term.setStyleSheet(btn_tool_style)
+        btn_local_term.clicked.connect(self.abrir_terminal_local)
+        t_lay.addWidget(btn_local_term)
+
+        btn_ping_all = QPushButton("📡 Ping")
+        btn_ping_all.setFixedHeight(24)
+        btn_ping_all.setToolTip("Comprobar estado Online/Offline de todos los hosts")
         btn_ping_all.setStyleSheet(btn_tool_style)
         btn_ping_all.clicked.connect(self.ping_todos_los_hosts)
         t_lay.addWidget(btn_ping_all)
 
-        btn_import = QPushButton("📥 Importar")
-        btn_import.setFixedHeight(30)
-        btn_import.setToolTip("Importar conexiones desde mRemoteNG XML (confCons.xml), JSON o CSV")
+        btn_import = QPushButton("📥")
+        btn_import.setFixedSize(26, 24)
+        btn_import.setToolTip("Importar conexiones (mRemoteNG XML, JSON, CSV)")
         btn_import.setStyleSheet(btn_tool_style)
         btn_import.clicked.connect(self.importar_conexiones_dialogo)
         t_lay.addWidget(btn_import)
 
-        btn_export = QPushButton("📤 Exportar")
-        btn_export.setFixedHeight(30)
-        btn_export.setToolTip("Exportar árbol de conexiones a mRemoteNG XML, JSON o CSV")
+        btn_export = QPushButton("📤")
+        btn_export.setFixedSize(26, 24)
+        btn_export.setToolTip("Exportar conexiones (mRemoteNG XML, JSON, CSV)")
         btn_export.setStyleSheet(btn_tool_style)
         btn_export.clicked.connect(self.exportar_conexiones_dialogo)
         t_lay.addWidget(btn_export)
@@ -950,31 +847,33 @@ class TabRemote(QWidget):
 
     def _build_left_panel(self):
         self.panel_izq = QFrame()
+        self.panel_izq.setMinimumWidth(215)
         self.panel_izq.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_secundario']};
-                border-radius: 10px;
+                border-radius: 8px;
                 border: 1px solid rgba(255,255,255,0.05);
             }}
         """)
         layout_izq = QVBoxLayout(self.panel_izq)
-        layout_izq.setContentsMargins(10, 10, 10, 10)
-        layout_izq.setSpacing(8)
+        layout_izq.setContentsMargins(6, 6, 6, 6)
+        layout_izq.setSpacing(4)
 
-        # Splitter vertical izquierdo: Arriba = Árbol de Conexiones | Abajo = Inspector Config mRemoteNG
         self.left_vsplitter = QSplitter(Qt.Orientation.Vertical)
+        self.left_vsplitter.setChildrenCollapsible(False)
         self.left_vsplitter.setStyleSheet("QSplitter::handle { background: rgba(255,255,255,0.08); height: 2px; }")
 
-        # ── Parte Superior Izquierda: Explorador de Conexiones ──
+        # ── Parte Superior Izquierda: Árbol de Conexiones ──
         tree_container = QWidget()
         tree_lay = QVBoxLayout(tree_container)
-        tree_lay.setContentsMargins(0, 0, 0, 4)
-        tree_lay.setSpacing(6)
+        tree_lay.setContentsMargins(0, 0, 0, 2)
+        tree_lay.setSpacing(4)
 
         hdr_lay = QHBoxLayout()
-        lbl_titulo_izq = QLabel("🖧 CONEXIONES & CARPETAS")
+        hdr_lay.setSpacing(3)
+        lbl_titulo_izq = QLabel("🖧 CONEXIONES")
         lbl_titulo_izq.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        lbl_titulo_izq.setStyleSheet(f"color: {self.colores['fg_secundario']}; letter-spacing: 1px; border: none;")
+        lbl_titulo_izq.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none;")
         hdr_lay.addWidget(lbl_titulo_izq)
         hdr_lay.addStretch()
 
@@ -983,44 +882,54 @@ class TabRemote(QWidget):
                 background: {self.colores['bg_terciario']};
                 color: white;
                 border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 5px;
-                padding: 2px 7px;
-                font-size: 8pt;
+                border-radius: 4px;
+                padding: 1px 5px;
+                font-size: 7.5pt;
                 font-weight: bold;
             }}
             QPushButton:hover {{ background: {self.colores['acento']}; }}
         """
-        btn_add_folder = QPushButton("📂+ Carpeta")
-        btn_add_folder.setToolTip("Crear nueva carpeta/contenedor (soporta herencia de credenciales)")
+        btn_add_folder = QPushButton("📂+")
+        btn_add_folder.setFixedHeight(22)
+        btn_add_folder.setToolTip("Nueva carpeta/contenedor")
         btn_add_folder.setStyleSheet(btn_mini_style)
         btn_add_folder.clicked.connect(self.nueva_carpeta)
         hdr_lay.addWidget(btn_add_folder)
 
         btn_add_host = QPushButton("➕ Host")
-        btn_add_host.setToolTip("Crear nueva conexión remota")
+        btn_add_host.setFixedHeight(22)
+        btn_add_host.setToolTip("Nueva conexión remota")
         btn_add_host.setStyleSheet(btn_mini_style)
         btn_add_host.clicked.connect(self.nueva_conexion)
         hdr_lay.addWidget(btn_add_host)
 
+        btn_dup = QPushButton("📋")
+        btn_dup.setFixedHeight(22)
+        btn_dup.setToolTip("Duplicar conexión seleccionada")
+        btn_dup.setStyleSheet(btn_mini_style)
+        btn_dup.clicked.connect(self.duplicar_conexion_seleccionada)
+        hdr_lay.addWidget(btn_dup)
+
         btn_del_node = QPushButton("🗑️")
-        btn_del_node.setToolTip("Eliminar conexión o carpeta seleccionada")
+        btn_del_node.setFixedHeight(22)
+        btn_del_node.setToolTip("Eliminar seleccionado")
         btn_del_node.setStyleSheet(btn_mini_style.replace(self.colores['acento'], self.colores.get('error', '#E53935')))
         btn_del_node.clicked.connect(self.eliminar_conexion)
         hdr_lay.addWidget(btn_del_node)
 
         tree_lay.addLayout(hdr_lay)
 
-        # Buscador / Filtro del árbol
         self.txt_filtro_arbol = QLineEdit()
-        self.txt_filtro_arbol.setPlaceholderText("🔍 Filtrar por nombre, IP, protocolo o etiqueta...")
+        self.txt_filtro_arbol.setPlaceholderText("🔍 Filtrar árbol...")
+        self.txt_filtro_arbol.setFixedHeight(22)
         self.txt_filtro_arbol.setStyleSheet(f"""
             QLineEdit {{
                 background: {self.colores['bg_principal']};
                 color: white;
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 6px;
-                padding: 4px 8px;
-                font-size: 8.5pt;
+                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 4px;
+                padding: 1px 6px;
+                font-size: 8pt;
             }}
         """)
         self.txt_filtro_arbol.textChanged.connect(self._filtrar_arbol)
@@ -1028,6 +937,7 @@ class TabRemote(QWidget):
 
         self.arbol_conexiones = QTreeWidget()
         self.arbol_conexiones.setHeaderHidden(True)
+        self.arbol_conexiones.setIndentation(14)
         self.arbol_conexiones.setDragEnabled(True)
         self.arbol_conexiones.setAcceptDrops(True)
         self.arbol_conexiones.setDropIndicatorShown(True)
@@ -1040,15 +950,15 @@ class TabRemote(QWidget):
             QTreeWidget {{
                 background: {self.colores['bg_principal']};
                 color: {self.colores['fg_principal']};
-                border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 7px;
+                border: 1px solid rgba(255,255,255,0.05);
+                border-radius: 5px;
                 outline: none;
-                padding: 4px;
-                font-size: 9pt;
+                padding: 2px;
+                font-size: 8.5pt;
             }}
             QTreeWidget::item {{
-                padding: 5px 8px;
-                border-radius: 4px;
+                padding: 3px 5px;
+                border-radius: 3px;
             }}
             QTreeWidget::item:hover {{
                 background: rgba(255,255,255,0.06);
@@ -1062,32 +972,27 @@ class TabRemote(QWidget):
         tree_lay.addWidget(self.arbol_conexiones, 1)
         self.left_vsplitter.addWidget(tree_container)
 
-        # ── Parte Inferior Izquierda: Inspector Config mRemoteNG ──
+        # ── Parte Inferior Izquierda: Inspector Config mRemoteNG Compacto y Scrollable ──
         config_container = QWidget()
         cfg_lay = QVBoxLayout(config_container)
-        cfg_lay.setContentsMargins(0, 4, 0, 0)
-        cfg_lay.setSpacing(6)
-
-        lbl_cfg = QLabel("⚙️ PROPIEDADES & CONFIGURACIÓN (mRemoteNG Inspector)")
-        lbl_cfg.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        lbl_cfg.setStyleSheet(f"color: {self.colores['fg_secundario']}; letter-spacing: 0.8px; border: none;")
-        cfg_lay.addWidget(lbl_cfg)
+        cfg_lay.setContentsMargins(0, 2, 0, 0)
+        cfg_lay.setSpacing(4)
 
         self.tabs_inspector = QTabWidget()
         self.tabs_inspector.setStyleSheet(f"""
             QTabWidget::pane {{
                 background: {self.colores['bg_terciario']};
-                border-radius: 7px;
+                border-radius: 5px;
                 border: 1px solid rgba(255,255,255,0.06);
             }}
             QTabBar::tab {{
                 background: {self.colores['bg_principal']};
                 color: {self.colores['fg_secundario']};
-                padding: 5px 10px;
-                font-size: 8pt;
-                border-top-left-radius: 5px;
-                border-top-right-radius: 5px;
-                margin-right: 2px;
+                padding: 3px 7px;
+                font-size: 7.5pt;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+                margin-right: 1px;
             }}
             QTabBar::tab:selected {{
                 background: {self.colores['bg_terciario']};
@@ -1101,10 +1006,10 @@ class TabRemote(QWidget):
                 background: {self.colores['bg_principal']};
                 color: white;
                 border: 1px solid rgba(255,255,255,0.09);
-                border-radius: 5px;
-                padding: 4px 8px;
-                min-height: 22px;
-                font-size: 8.5pt;
+                border-radius: 4px;
+                padding: 2px 5px;
+                height: 20px;
+                font-size: 8pt;
             }}
             QLineEdit:focus, QComboBox:focus, QSpinBox:focus {{
                 border: 1px solid {self.colores['acento']};
@@ -1115,38 +1020,51 @@ class TabRemote(QWidget):
                 selection-background-color: {self.colores['acento']};
             }}
         """
-        estilo_lbl = f"color: {self.colores['fg_secundario']}; font-size: 8.5pt; font-weight: bold; border: none;"
+        estilo_lbl = f"color: {self.colores['fg_secundario']}; font-size: 7.8pt; font-weight: bold; border: none;"
 
         def _lbl(t):
             l = QLabel(t)
             l.setStyleSheet(estilo_lbl)
             return l
 
-        # Tab 1: General & Destino
+        def _wrap_scroll(w: QWidget) -> QScrollArea:
+            sa = QScrollArea()
+            sa.setWidgetResizable(True)
+            sa.setFrameShape(QFrame.Shape.NoFrame)
+            sa.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            sa.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            sa.setWidget(w)
+            return sa
+
+        # Tab 1: General
         tab_gen = QWidget()
         f_gen = QFormLayout(tab_gen)
-        f_gen.setContentsMargins(10, 8, 10, 8)
-        f_gen.setSpacing(6)
+        f_gen.setContentsMargins(6, 6, 6, 6)
+        f_gen.setSpacing(4)
 
         self.txt_nombre = QLineEdit()
         self.txt_nombre.setStyleSheet(estilo_input)
 
         lay_ip = QHBoxLayout()
         lay_ip.setContentsMargins(0, 0, 0, 0)
-        lay_ip.setSpacing(5)
+        lay_ip.setSpacing(4)
         self.txt_ip = QLineEdit()
-        self.txt_ip.setPlaceholderText("IP o dominio (ej. 192.168.1.50)")
+        self.txt_ip.setPlaceholderText("IP o Host (ej. 127.0.0.1)")
         self.txt_ip.setStyleSheet(estilo_input)
         self.txt_ip.textChanged.connect(self._iniciar_chequeo_ping)
-        self.lbl_estado = QLabel("⚫")
-        self.lbl_estado.setToolTip("Indicador de respuesta Ping / Puerto TCP en tiempo real")
-        self.lbl_estado.setStyleSheet("font-size: 13px; border: none; background: transparent;")
+
+        self.lbl_estado = QPushButton("⚫")
+        self.lbl_estado.setFixedSize(22, 22)
+        self.lbl_estado.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.lbl_estado.setToolTip("Clic para comprobar conectividad ahora mismo")
+        self.lbl_estado.setStyleSheet("background: transparent; border: none; font-size: 11px;")
+        self.lbl_estado.clicked.connect(self._forzar_chequeo_ip_actual)
         lay_ip.addWidget(self.txt_ip, 1)
         lay_ip.addWidget(self.lbl_estado)
 
         lay_proto_port = QHBoxLayout()
         lay_proto_port.setContentsMargins(0, 0, 0, 0)
-        lay_proto_port.setSpacing(6)
+        lay_proto_port.setSpacing(4)
         self.combo_proto = QComboBox()
         self.combo_proto.addItems(list(DEFAULT_PORTS.keys()))
         self.combo_proto.setStyleSheet(estilo_input)
@@ -1155,9 +1073,10 @@ class TabRemote(QWidget):
         self.spin_port = QSpinBox()
         self.spin_port.setRange(1, 65535)
         self.spin_port.setValue(22)
+        self.spin_port.setFixedWidth(58)
         self.spin_port.setStyleSheet(estilo_input)
+        self.spin_port.valueChanged.connect(lambda _: self._iniciar_chequeo_ping(self.txt_ip.text()))
         lay_proto_port.addWidget(self.combo_proto, 1)
-        lay_proto_port.addWidget(_lbl("Puerto:"))
         lay_proto_port.addWidget(self.spin_port)
 
         self.combo_tag = QComboBox()
@@ -1165,41 +1084,40 @@ class TabRemote(QWidget):
         self.combo_tag.setStyleSheet(estilo_input)
 
         self.txt_notas = QLineEdit()
-        self.txt_notas.setPlaceholderText("Descripción, SO o notas del servidor...")
+        self.txt_notas.setPlaceholderText("Notas...")
         self.txt_notas.setStyleSheet(estilo_input)
 
         f_gen.addRow(_lbl("Nombre:"), self.txt_nombre)
-        f_gen.addRow(_lbl("Host / IP:"), lay_ip)
-        f_gen.addRow(_lbl("Protocolo:"), lay_proto_port)
+        f_gen.addRow(_lbl("Host/IP:"), lay_ip)
+        f_gen.addRow(_lbl("Proto/Pto:"), lay_proto_port)
         f_gen.addRow(_lbl("Entorno:"), self.combo_tag)
         f_gen.addRow(_lbl("Notas:"), self.txt_notas)
-        self.tabs_inspector.addTab(tab_gen, "🌐 Conexión")
+        self.tabs_inspector.addTab(_wrap_scroll(tab_gen), "🌐 General")
 
-        # Tab 2: Autenticación & Herencia
+        # Tab 2: Auth & Herencia
         tab_auth = QWidget()
         f_auth = QFormLayout(tab_auth)
-        f_auth.setContentsMargins(10, 8, 10, 8)
-        f_auth.setSpacing(6)
+        f_auth.setContentsMargins(6, 6, 6, 6)
+        f_auth.setSpacing(4)
 
-        self.chk_heredar_auth = QCheckBox("🔗 Heredar credenciales de la carpeta padre")
-        self.chk_heredar_auth.setStyleSheet("color: #60A5FA; font-size: 8.5pt; font-weight: bold;")
+        self.chk_heredar_auth = QCheckBox("🔗 Heredar de carpeta padre")
+        self.chk_heredar_auth.setStyleSheet("color: #60A5FA; font-size: 7.8pt; font-weight: bold;")
         f_auth.addRow(self.chk_heredar_auth)
 
         self.txt_usuario = QLineEdit()
-        self.txt_usuario.setPlaceholderText("root / administrator / ubuntu")
+        self.txt_usuario.setPlaceholderText("root / admin")
         self.txt_usuario.setStyleSheet(estilo_input)
 
         lay_pass = QHBoxLayout()
         lay_pass.setContentsMargins(0, 0, 0, 0)
-        lay_pass.setSpacing(4)
+        lay_pass.setSpacing(3)
         self.txt_pass = QLineEdit()
         self.txt_pass.setEchoMode(QLineEdit.EchoMode.Password)
-        self.txt_pass.setPlaceholderText("Auto-inyección SSH y SSO en RDP")
+        self.txt_pass.setPlaceholderText("Clave SSH / RDP SSO")
         self.txt_pass.setStyleSheet(estilo_input)
 
         btn_eye = QPushButton("👁️")
-        btn_eye.setFixedSize(26, 26)
-        btn_eye.setToolTip("Mostrar / Ocultar contraseña")
+        btn_eye.setFixedSize(22, 22)
         btn_eye.setStyleSheet(btn_mini_style)
         btn_eye.clicked.connect(
             lambda: self.txt_pass.setEchoMode(
@@ -1210,17 +1128,17 @@ class TabRemote(QWidget):
         lay_pass.addWidget(btn_eye)
 
         self.txt_dominio = QLineEdit()
-        self.txt_dominio.setPlaceholderText("Opcional (ej. WORKGROUP o CORP)")
+        self.txt_dominio.setPlaceholderText("Dominio AD / WORKGROUP")
         self.txt_dominio.setStyleSheet(estilo_input)
 
         lay_key = QHBoxLayout()
         lay_key.setContentsMargins(0, 0, 0, 0)
-        lay_key.setSpacing(4)
+        lay_key.setSpacing(3)
         self.txt_ssh_key = QLineEdit()
-        self.txt_ssh_key.setPlaceholderText("Ruta a clave privada (.pem / id_rsa)")
+        self.txt_ssh_key.setPlaceholderText("Clave .pem / id_rsa")
         self.txt_ssh_key.setStyleSheet(estilo_input)
         btn_key = QPushButton("📂")
-        btn_key.setFixedSize(26, 26)
+        btn_key.setFixedSize(22, 22)
         btn_key.setStyleSheet(btn_mini_style)
         btn_key.clicked.connect(self._seleccionar_clave_ssh)
         lay_key.addWidget(self.txt_ssh_key, 1)
@@ -1230,13 +1148,13 @@ class TabRemote(QWidget):
         f_auth.addRow(_lbl("Clave:"), lay_pass)
         f_auth.addRow(_lbl("Dominio:"), self.txt_dominio)
         f_auth.addRow(_lbl("SSH Key:"), lay_key)
-        self.tabs_inspector.addTab(tab_auth, "🔐 Auth")
+        self.tabs_inspector.addTab(_wrap_scroll(tab_auth), "🔐 Auth")
 
-        # Tab 3: Pantalla, Recursos RDP y Avanzado SSH
+        # Tab 3: Recursos RDP & Consola
         tab_adv = QWidget()
         f_adv = QFormLayout(tab_adv)
-        f_adv.setContentsMargins(10, 8, 10, 8)
-        f_adv.setSpacing(5)
+        f_adv.setContentsMargins(6, 6, 6, 6)
+        f_adv.setSpacing(4)
 
         self.combo_resolucion = QComboBox()
         self.combo_resolucion.addItems(["Smart Sizing (Ajustar)", "Pantalla Completa (/f)", "1920x1080", "1600x900", "1366x768", "1280x720"])
@@ -1244,99 +1162,102 @@ class TabRemote(QWidget):
 
         lay_theme_font = QHBoxLayout()
         lay_theme_font.setContentsMargins(0, 0, 0, 0)
-        lay_theme_font.setSpacing(5)
+        lay_theme_font.setSpacing(3)
         self.combo_tema_term = QComboBox()
         self.combo_tema_term.addItems(list(TERMINAL_THEMES.keys()))
         self.combo_tema_term.setStyleSheet(estilo_input)
 
         self.spin_font = QSpinBox()
-        self.spin_font.setRange(8, 36)
-        self.spin_font.setValue(12)
-        self.spin_font.setSuffix(" pt")
+        self.spin_font.setRange(8, 28)
+        self.spin_font.setValue(11)
+        self.spin_font.setFixedWidth(48)
         self.spin_font.setStyleSheet(estilo_input)
         lay_theme_font.addWidget(self.combo_tema_term, 1)
         lay_theme_font.addWidget(self.spin_font)
 
         self.txt_ssh_tunnel = QLineEdit()
-        self.txt_ssh_tunnel.setPlaceholderText("Ej: -L 8080:127.0.0.1:80")
+        self.txt_ssh_tunnel.setPlaceholderText("-L 8080:127.0.0.1:80")
         self.txt_ssh_tunnel.setStyleSheet(estilo_input)
 
         self.txt_post_cmd = QLineEdit()
-        self.txt_post_cmd.setPlaceholderText("Comando auto-ejecutado al conectar (ej. htop)")
+        self.txt_post_cmd.setPlaceholderText("Comando inicial (ej. htop)")
         self.txt_post_cmd.setStyleSheet(estilo_input)
 
-        chk_row1 = QHBoxLayout()
+        # Grid 2x2 para que las casillas nunca choquen en paneles estrechos
+        chk_grid = QGridLayout()
+        chk_grid.setContentsMargins(0, 0, 0, 0)
+        chk_grid.setSpacing(3)
         self.chk_rdp_sso = QCheckBox("🔑 SSO")
         self.chk_rdp_sso.setChecked(True)
-        self.chk_rdp_sso.setToolTip("Inyectar credenciales automáticamente en Windows (cmdkey) para no pedir clave en RDP")
         self.chk_rdp_admin = QCheckBox("🛡️ /admin")
         self.chk_rdp_clipboard = QCheckBox("📋 Portapapeles")
         self.chk_rdp_clipboard.setChecked(True)
         self.chk_rdp_drives = QCheckBox("💾 Discos")
         self.chk_rdp_audio = QCheckBox("🔊 Audio")
         self.chk_rdp_audio.setChecked(True)
-        for c in (self.chk_rdp_sso, self.chk_rdp_admin, self.chk_rdp_clipboard, self.chk_rdp_drives):
-            c.setStyleSheet("color: #D1D5DB; font-size: 8pt;")
-            chk_row1.addWidget(c)
+        for idx_c, c in enumerate((self.chk_rdp_sso, self.chk_rdp_admin, self.chk_rdp_clipboard, self.chk_rdp_drives)):
+            c.setStyleSheet("color: #D1D5DB; font-size: 7.5pt;")
+            chk_grid.addWidget(c, idx_c // 2, idx_c % 2)
 
-        f_adv.addRow(_lbl("Resolución:"), self.combo_resolucion)
+        f_adv.addRow(_lbl("RDP Res:"), self.combo_resolucion)
         f_adv.addRow(_lbl("Consola:"), lay_theme_font)
-        f_adv.addRow(_lbl("Túnel SSH:"), self.txt_ssh_tunnel)
-        f_adv.addRow(_lbl("Post-Cmd:"), self.txt_post_cmd)
-        f_adv.addRow(_lbl("Opciones RDP:"), chk_row1)
-        self.tabs_inspector.addTab(tab_adv, "🖥️ Recursos")
+        f_adv.addRow(_lbl("Túnel:"), self.txt_ssh_tunnel)
+        f_adv.addRow(_lbl("PostCmd:"), self.txt_post_cmd)
+        f_adv.addRow(_lbl("RDP Opt:"), chk_grid)
+        self.tabs_inspector.addTab(_wrap_scroll(tab_adv), "🖥️ Avanzado")
 
-        cfg_lay.addWidget(self.tabs_inspector)
+        cfg_lay.addWidget(self.tabs_inspector, 1)
 
-        # Botones de acción del Inspector
+        # Botonera compacta del Inspector
         btn_accion_layout = QHBoxLayout()
-        btn_accion_layout.setSpacing(6)
+        btn_accion_layout.setSpacing(4)
 
         self.btn_guardar = QPushButton("💾 Guardar")
-        self.btn_guardar.setFixedHeight(32)
+        self.btn_guardar.setFixedHeight(26)
         self.btn_guardar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_guardar.setStyleSheet(f"""
             QPushButton {{
                 background: {self.colores.get('exito', '#22c55e')};
                 color: white;
                 font-weight: bold;
-                border-radius: 6px;
+                border-radius: 5px;
                 border: none;
-                font-size: 9pt;
+                font-size: 8pt;
+                padding: 0 8px;
             }}
             QPushButton:hover {{ background: #16a34a; }}
         """)
         self.btn_guardar.clicked.connect(self.guardar_perfil)
 
-        self.btn_conectar = QPushButton("🚀 Conectar (Pestaña)")
-        self.btn_conectar.setFixedHeight(32)
+        self.btn_conectar = QPushButton("🚀 Conectar")
+        self.btn_conectar.setFixedHeight(26)
         self.btn_conectar.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_conectar.setStyleSheet(f"""
             QPushButton {{
                 background: {self.colores['acento']};
                 color: white;
                 font-weight: bold;
-                border-radius: 6px;
+                border-radius: 5px;
                 border: none;
-                font-size: 9pt;
+                font-size: 8pt;
+                padding: 0 8px;
             }}
             QPushButton:hover {{ background: {self.colores['acento_hover']}; }}
         """)
         self.btn_conectar.clicked.connect(self.conectar)
 
-        self.btn_conectar_ext = QPushButton("🪟 Nativa")
-        self.btn_conectar_ext.setFixedHeight(32)
-        self.btn_conectar_ext.setToolTip("Abrir en ventana externa nativa del sistema operativo")
+        self.btn_conectar_ext = QPushButton("🪟")
+        self.btn_conectar_ext.setFixedSize(28, 26)
+        self.btn_conectar_ext.setToolTip("Abrir en ventana nativa externa del SO")
         self.btn_conectar_ext.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_conectar_ext.setStyleSheet(f"""
             QPushButton {{
                 background: {self.colores['bg_terciario']};
                 color: white;
                 font-weight: bold;
-                border-radius: 6px;
+                border-radius: 5px;
                 border: 1px solid rgba(255,255,255,0.1);
-                padding: 0 10px;
-                font-size: 8.5pt;
+                font-size: 8pt;
             }}
             QPushButton:hover {{ background: rgba(255,255,255,0.12); }}
         """)
@@ -1348,7 +1269,7 @@ class TabRemote(QWidget):
         cfg_lay.addLayout(btn_accion_layout)
 
         self.left_vsplitter.addWidget(config_container)
-        self.left_vsplitter.setSizes([310, 270])
+        self.left_vsplitter.setSizes([260, 220])
         layout_izq.addWidget(self.left_vsplitter)
 
     def _build_right_workspace(self):
@@ -1356,15 +1277,14 @@ class TabRemote(QWidget):
         self.panel_der_container.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_secundario']};
-                border-radius: 10px;
+                border-radius: 8px;
                 border: 1px solid rgba(255,255,255,0.05);
             }}
         """)
         r_lay = QVBoxLayout(self.panel_der_container)
-        r_lay.setContentsMargins(10, 10, 10, 10)
-        r_lay.setSpacing(8)
+        r_lay.setContentsMargins(6, 6, 6, 6)
+        r_lay.setSpacing(5)
 
-        # QTabWidget de sesiones en vivo (estilo mRemoteNG Connections Workspace)
         self.tabs_sesiones = QTabWidget()
         self.tabs_sesiones.setTabsClosable(True)
         self.tabs_sesiones.setMovable(True)
@@ -1372,17 +1292,17 @@ class TabRemote(QWidget):
         self.tabs_sesiones.setStyleSheet(f"""
             QTabWidget::pane {{
                 background: {self.colores['bg_principal']};
-                border-radius: 8px;
-                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 6px;
+                border: 1px solid rgba(255,255,255,0.05);
             }}
             QTabBar::tab {{
                 background: {self.colores['bg_terciario']};
                 color: {self.colores['fg_secundario']};
-                padding: 7px 14px;
-                font-size: 9pt;
-                border-top-left-radius: 6px;
-                border-top-right-radius: 6px;
-                margin-right: 3px;
+                padding: 5px 11px;
+                font-size: 8.5pt;
+                border-top-left-radius: 5px;
+                border-top-right-radius: 5px;
+                margin-right: 2px;
             }}
             QTabBar::tab:selected {{
                 background: {self.colores['bg_principal']};
@@ -1392,59 +1312,59 @@ class TabRemote(QWidget):
             }}
         """)
 
-        # Pestaña Fija 0: Centro de Control mRemoteNG (Matriz de Hosts + Escáner de Puertos)
         self._build_dashboard_tab()
-        self.tabs_sesiones.addTab(self.tab_dashboard_mremote, "📊 Centro mRemoteNG & Escáner")
-        # Ocultar botón de cerrar en la pestaña fija 0
+        self.tabs_sesiones.addTab(self.tab_dashboard_scroll, "📊 Panel & Escáner")
         self.tabs_sesiones.tabBar().setTabButton(0, self.tabs_sesiones.tabBar().ButtonPosition.RightSide, None)
 
         r_lay.addWidget(self.tabs_sesiones, 1)
 
-        # Barra Inferior Multi-SSH Broadcast (Enviar comando a todas las terminales abiertas)
+        # Barra Inferior Compacta Multi-SSH Broadcast (28px)
         bcast_frame = QFrame()
+        bcast_frame.setFixedHeight(28)
         bcast_frame.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_terciario']};
-                border-radius: 8px;
-                border: 1px solid rgba(255,255,255,0.07);
+                border-radius: 6px;
+                border: 1px solid rgba(255,255,255,0.06);
             }}
         """)
         b_lay = QHBoxLayout(bcast_frame)
-        b_lay.setContentsMargins(10, 5, 10, 5)
-        b_lay.setSpacing(8)
+        b_lay.setContentsMargins(8, 2, 6, 2)
+        b_lay.setSpacing(6)
 
-        lbl_bcast = QLabel("📡 Multi-SSH Broadcast:")
+        lbl_bcast = QLabel("📡 Broadcast:")
         lbl_bcast.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
         lbl_bcast.setStyleSheet("color: #FBBF24; border: none; background: transparent;")
         b_lay.addWidget(lbl_bcast)
 
         self.txt_broadcast = QLineEdit()
-        self.txt_broadcast.setPlaceholderText("Escribe un comando para enviarlo simultáneamente a TODAS las pestañas de terminal activas...")
+        self.txt_broadcast.setPlaceholderText("Enviar comando a todas las pestañas de terminal abiertas...")
         self.txt_broadcast.setStyleSheet(f"""
             QLineEdit {{
                 background: {self.colores['bg_principal']};
                 color: white;
-                border: 1px solid rgba(255,255,255,0.1);
-                border-radius: 5px;
-                padding: 4px 10px;
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 4px;
+                padding: 1px 8px;
                 font-family: Consolas;
-                font-size: 9pt;
+                font-size: 8.5pt;
             }}
         """)
         self.txt_broadcast.returnPressed.connect(self.enviar_broadcast_terminales)
         b_lay.addWidget(self.txt_broadcast, 1)
 
-        btn_bcast = QPushButton("⚡ Enviar a Todas")
+        btn_bcast = QPushButton("⚡ Enviar")
+        btn_bcast.setFixedHeight(22)
         btn_bcast.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_bcast.setStyleSheet("""
             QPushButton {
                 background: #D97706;
                 color: white;
                 font-weight: bold;
-                border-radius: 5px;
-                padding: 5px 12px;
+                border-radius: 4px;
+                padding: 0 9px;
                 border: none;
-                font-size: 8.5pt;
+                font-size: 8pt;
             }
             QPushButton:hover { background: #B45309; }
         """)
@@ -1456,53 +1376,52 @@ class TabRemote(QWidget):
     def _build_dashboard_tab(self):
         self.tab_dashboard_mremote = QWidget()
         d_lay = QVBoxLayout(self.tab_dashboard_mremote)
-        d_lay.setContentsMargins(14, 14, 14, 14)
-        d_lay.setSpacing(12)
+        d_lay.setContentsMargins(8, 8, 8, 8)
+        d_lay.setSpacing(8)
 
-        # Fila de KPIs
+        # Fila de KPIs compactos en una sola línea (32px de alto)
         kpi_row = QHBoxLayout()
-        kpi_row.setSpacing(10)
+        kpi_row.setSpacing(6)
 
-        def _mk_kpi(titulo, valor, color):
+        def _mk_kpi_pill(titulo, valor, color):
             f = QFrame()
+            f.setFixedHeight(32)
             f.setStyleSheet(f"""
                 QFrame {{
                     background: {self.colores['bg_secundario']};
-                    border-radius: 8px;
+                    border-radius: 6px;
                     border: 1px solid rgba(255,255,255,0.06);
                 }}
             """)
-            fl = QVBoxLayout(f)
-            fl.setContentsMargins(12, 8, 12, 8)
-            fl.setSpacing(2)
+            fl = QHBoxLayout(f)
+            fl.setContentsMargins(10, 2, 10, 2)
+            fl.setSpacing(6)
             lt = QLabel(titulo)
             lt.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 8pt; font-weight: bold; border: none;")
             lv = QLabel(valor)
-            lv.setFont(QFont("Segoe UI", 14, QFont.Weight.Bold))
+            lv.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
             lv.setStyleSheet(f"color: {color}; border: none;")
             fl.addWidget(lt)
+            fl.addStretch()
             fl.addWidget(lv)
             return f, lv
 
-        card1, self.lbl_kpi_total = _mk_kpi("🖥️ SERVIDORES GUARDADOS", "0", self.colores['acento'])
-        card2, self.lbl_kpi_folders = _mk_kpi("📂 CARPETAS / GRUPOS", "0", "#60A5FA")
-        card3, self.lbl_kpi_online = _mk_kpi("🟢 HOSTS EN LÍNEA", "0", "#34D399")
-        card4, self.lbl_kpi_sessions = _mk_kpi("⚡ SESIONES ACTIVAS", "0", "#FBBF24")
+        card1, self.lbl_kpi_total = _mk_kpi_pill("🖥️ Hosts:", "0", self.colores['acento'])
+        card2, self.lbl_kpi_folders = _mk_kpi_pill("📂 Carpetas:", "0", "#60A5FA")
+        card3, self.lbl_kpi_online = _mk_kpi_pill("🟢 Online:", "0", "#34D399")
+        card4, self.lbl_kpi_sessions = _mk_kpi_pill("⚡ Sesiones:", "0", "#FBBF24")
 
         for c in (card1, card2, card3, card4):
             kpi_row.addWidget(c, 1)
         d_lay.addLayout(kpi_row)
 
-        # Tabla de Matriz de Servidores Guardados
-        lbl_m = QLabel("📋 MATRIZ DE CONEXIONES & MONITOREO RÁPIDO (Doble clic en cualquier fila para conectar)")
-        lbl_m.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
-        lbl_m.setStyleSheet(f"color: {self.colores['fg_secundario']}; letter-spacing: 0.8px;")
-        d_lay.addWidget(lbl_m)
-
-        self.table_hosts = QTableWidget(0, 7)
-        self.table_hosts.setHorizontalHeaderLabels(["Estado", "Nombre", "Carpeta", "Protocolo", "Host : Puerto", "Usuario", "Entorno / Notas"])
+        # Tabla compacta de Matriz de Servidores Guardados
+        self.table_hosts = QTableWidget(0, 6)
+        self.table_hosts.setMinimumHeight(140)
+        self.table_hosts.setHorizontalHeaderLabels(["Estado", "Nombre", "Carpeta", "Proto", "Host:Puerto", "Usuario"])
         self.table_hosts.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table_hosts.verticalHeader().setVisible(False)
+        self.table_hosts.verticalHeader().setDefaultSectionSize(24)
         self.table_hosts.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_hosts.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table_hosts.setStyleSheet(f"""
@@ -1510,57 +1429,59 @@ class TabRemote(QWidget):
                 background: {self.colores['bg_secundario']};
                 color: white;
                 border: 1px solid rgba(255,255,255,0.06);
-                border-radius: 8px;
+                border-radius: 6px;
                 gridline-color: rgba(255,255,255,0.04);
-                font-size: 9pt;
+                font-size: 8.5pt;
             }}
             QHeaderView::section {{
                 background: {self.colores['bg_terciario']};
                 color: {self.colores['fg_secundario']};
-                padding: 6px;
+                padding: 4px;
                 border: none;
                 font-weight: bold;
-                font-size: 8.5pt;
+                font-size: 8pt;
             }}
         """)
         self.table_hosts.cellDoubleClicked.connect(self._on_matrix_double_clicked)
         d_lay.addWidget(self.table_hosts, 1)
 
-        # Escáner de Puertos y Descubrimiento de Servicios Remotos (Port Scanner mRemoteNG)
+        # Escáner de Puertos Compacto
         scan_box = QFrame()
         scan_box.setStyleSheet(f"""
             QFrame {{
                 background: {self.colores['bg_secundario']};
-                border-radius: 8px;
+                border-radius: 6px;
                 border: 1px solid rgba(255,255,255,0.06);
             }}
         """)
         s_lay = QVBoxLayout(scan_box)
-        s_lay.setContentsMargins(12, 10, 12, 10)
-        s_lay.setSpacing(8)
+        s_lay.setContentsMargins(8, 6, 8, 6)
+        s_lay.setSpacing(5)
 
         s_top = QHBoxLayout()
-        lbl_sc = QLabel("🔍 ESCÁNER DE PUERTOS DE ADMINISTRACIÓN REMOTA (SSH, RDP, HTTP/S, VNC, WinRM, DB)")
+        s_top.setSpacing(6)
+        lbl_sc = QLabel("🔍 Escáner de Puertos:")
         lbl_sc.setFont(QFont("Segoe UI", 8, QFont.Weight.Bold))
         lbl_sc.setStyleSheet(f"color: {self.colores['fg_secundario']}; border: none;")
         s_top.addWidget(lbl_sc)
-        s_top.addStretch()
 
         self.txt_scan_host = QLineEdit()
-        self.txt_scan_host.setPlaceholderText("IP o Host a escanear (ej. 127.0.0.1)")
-        self.txt_scan_host.setFixedWidth(200)
-        self.txt_scan_host.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 5px; padding: 4px 8px;")
-        s_top.addWidget(self.txt_scan_host)
+        self.txt_scan_host.setPlaceholderText("IP o Host (ej. 127.0.0.1)")
+        self.txt_scan_host.setFixedHeight(22)
+        self.txt_scan_host.setStyleSheet(f"background: {self.colores['bg_principal']}; color: white; border-radius: 4px; padding: 2px 6px; font-size: 8pt;")
+        s_top.addWidget(self.txt_scan_host, 1)
 
-        self.btn_scan_ports = QPushButton("🔍 Escanear Puertos")
+        self.btn_scan_ports = QPushButton("🔍 Escanear")
+        self.btn_scan_ports.setFixedHeight(22)
         self.btn_scan_ports.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_scan_ports.setStyleSheet(f"""
             QPushButton {{
                 background: {self.colores['acento']};
                 color: white;
                 font-weight: bold;
-                border-radius: 5px;
-                padding: 5px 12px;
+                border-radius: 4px;
+                padding: 0 10px;
+                font-size: 8pt;
                 border: none;
             }}
             QPushButton:hover {{ background: {self.colores['acento_hover']}; }}
@@ -1569,12 +1490,18 @@ class TabRemote(QWidget):
         s_top.addWidget(self.btn_scan_ports)
         s_lay.addLayout(s_top)
 
-        self.lbl_scan_results = QLabel("Selecciona un servidor o escribe una IP y pulsa 'Escanear Puertos' para detectar servicios activos.")
+        self.lbl_scan_results = QLabel("Selecciona un host o ingresa una IP para detectar puertos activos (SSH, RDP, HTTP/S, VNC, WinRM, DB).")
         self.lbl_scan_results.setWordWrap(True)
-        self.lbl_scan_results.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 9pt; border: none;")
+        self.lbl_scan_results.setStyleSheet(f"color: {self.colores['fg_secundario']}; font-size: 8pt; border: none;")
         s_lay.addWidget(self.lbl_scan_results)
 
         d_lay.addWidget(scan_box)
+
+        self.tab_dashboard_scroll = QScrollArea()
+        self.tab_dashboard_scroll.setWidgetResizable(True)
+        self.tab_dashboard_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.tab_dashboard_scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        self.tab_dashboard_scroll.setWidget(self.tab_dashboard_mremote)
 
     # ──────────────────────────────────────────────────────────────────────────
     #  GESTIÓN JERÁRQUICA DEL ÁRBOL, CARPETAS Y HERENCIA (mRemoteNG Tree)
@@ -1620,6 +1547,8 @@ class TabRemote(QWidget):
         self._poblar_nodos_recursivo(self.raiz, conexiones)
         self.raiz.setExpanded(True)
         self.actualizar_vista_vacia()
+        # Verificar conectividad inicial de todos los hosts en segundo plano
+        QTimer.singleShot(300, self.ping_todos_los_hosts)
 
     def _poblar_nodos_recursivo(self, parent_item: QTreeWidgetItem, lista_nodos: list):
         for data in lista_nodos:
@@ -1659,7 +1588,7 @@ class TabRemote(QWidget):
         proto = data.get("proto", "SSH")
         icon = PROTO_ICONS.get(proto, "🖧")
         name = data.get("name", "Host")
-        ip = data.get("ip", "")
+        ip = (data.get("ip") or "").strip()
         st = self._status_cache.get(ip)
         if st is None:
             dot = "⚪"
@@ -1670,14 +1599,14 @@ class TabRemote(QWidget):
         else:
             dot = "🔴"
             lat = ""
-        item.setText(0, f"{dot} {icon} [{proto}] {name}{lat}")
+        item.setText(0, f"{dot} {icon} {name}{lat}")
 
     def _serializar_nodos_recursivo(self, parent_item: QTreeWidgetItem) -> list:
         resultado = []
         for i in range(parent_item.childCount()):
             child = parent_item.child(i)
             data = dict(child.data(0, Qt.ItemDataRole.UserRole) or {})
-            if data.get("type") == "folder" or child.childCount() > 0 and not data.get("ip"):
+            if data.get("type") == "folder" or (child.childCount() > 0 and not data.get("ip")):
                 data["type"] = "folder"
                 data["children"] = self._serializar_nodos_recursivo(child)
             else:
@@ -1698,7 +1627,6 @@ class TabRemote(QWidget):
         self.actualizar_matriz_hosts()
 
     def obtener_todas_las_conexiones_planas(self) -> list[tuple[QTreeWidgetItem, dict, str]]:
-        """Retorna una lista de tuplas (QTreeWidgetItem, datos_resueltos, nombre_carpeta)."""
         lista = []
         if not hasattr(self, "raiz"):
             return lista
@@ -1717,7 +1645,6 @@ class TabRemote(QWidget):
         return lista
 
     def resolver_credenciales_efectivas(self, item: QTreeWidgetItem) -> dict:
-        """Resuelve la herencia de credenciales estilo mRemoteNG desde las carpetas padre si inherit_auth está activo."""
         if not item:
             return {}
         data = dict(item.data(0, Qt.ItemDataRole.UserRole) or {})
@@ -1759,7 +1686,7 @@ class TabRemote(QWidget):
             "pass": "",
             "domain": "",
             "ssh_key": "",
-            "notes": "Contenedor con herencia de credenciales",
+            "notes": "",
         }
         item = QTreeWidgetItem(parent_node, ["📁 Nueva Carpeta"])
         item.setData(0, Qt.ItemDataRole.UserRole, folder_data)
@@ -1779,8 +1706,8 @@ class TabRemote(QWidget):
             "pass": "",
             "domain": "",
             "proto": "SSH",
-            "font": 12,
-            "theme": "Matrix Green",
+            "font": 11,
+            "theme": "🟢 Hacker Esmeralda",
             "tag": "Producción",
             "resolution": "Smart Sizing (Ajustar)",
             "inherit_auth": parent_node != self.raiz,
@@ -1826,6 +1753,7 @@ class TabRemote(QWidget):
             self.txt_ip.clear()
             self.txt_usuario.clear()
             self.txt_pass.clear()
+            self.lbl_estado.setText("⚫")
             self.actualizar_vista_vacia()
 
     def cargar_datos(self, item: QTreeWidgetItem):
@@ -1847,10 +1775,15 @@ class TabRemote(QWidget):
             proto = data.get("proto", "SSH")
             self.combo_proto.setCurrentText(proto)
             self.spin_port.setValue(int(data.get("port", DEFAULT_PORTS.get(proto, 22)) or 22))
-            self.spin_font.setValue(int(data.get("font", 12) or 12))
+            self.spin_font.setValue(int(data.get("font", 11) or 11))
             self.combo_tag.setCurrentText(data.get("tag", "Producción"))
             self.combo_resolucion.setCurrentText(data.get("resolution", "Smart Sizing (Ajustar)"))
-            self.combo_tema_term.setCurrentText(data.get("theme", "Matrix Green"))
+
+            theme_saved = data.get("theme", "🟢 Hacker Esmeralda")
+            if theme_saved not in TERMINAL_THEMES:
+                theme_saved = "🟢 Hacker Esmeralda"
+            self.combo_tema_term.setCurrentText(theme_saved)
+
             self.txt_ssh_tunnel.setText(data.get("ssh_tunnel", ""))
             self.txt_post_cmd.setText(data.get("post_cmd", ""))
 
@@ -1861,8 +1794,18 @@ class TabRemote(QWidget):
             self.chk_rdp_drives.setChecked(bool(data.get("rdp_drives", False)))
             self.chk_rdp_audio.setChecked(bool(data.get("rdp_audio", True)))
 
-            if data.get("ip"):
-                self.txt_scan_host.setText(data.get("ip"))
+            ip_val = (data.get("ip") or "").strip()
+            if ip_val:
+                self.txt_scan_host.setText(ip_val)
+                # Mostrar caché inmediata si ya existe y lanzar verificación en vivo
+                cached = self._status_cache.get(ip_val)
+                if cached is not None:
+                    self.lbl_estado.setText("🟢" if cached.get("online") else "🔴")
+                else:
+                    self.lbl_estado.setText("🟡")
+                self._forzar_chequeo_ip_actual()
+            else:
+                self.lbl_estado.setText("⚫")
         finally:
             self._updating_form = False
 
@@ -1901,10 +1844,12 @@ class TabRemote(QWidget):
         item.setData(0, Qt.ItemDataRole.UserRole, data)
         self._actualizar_etiqueta_item_arbol(item)
         self.guardar_todas_las_conexiones()
+        if not is_folder and data["ip"]:
+            self._forzar_chequeo_ip_actual()
 
         texto_orig = self.btn_guardar.text()
-        self.btn_guardar.setText("✅ Guardado")
-        QTimer.singleShot(1400, lambda: self.btn_guardar.setText(texto_orig))
+        self.btn_guardar.setText("✅ OK")
+        QTimer.singleShot(1200, lambda: self.btn_guardar.setText(texto_orig))
 
     def _on_proto_changed(self, proto: str):
         if not self._updating_form:
@@ -1916,12 +1861,36 @@ class TabRemote(QWidget):
             self.txt_ssh_key.setText(ruta)
 
     # ──────────────────────────────────────────────────────────────────────────
-    #  CONEXIÓN EN PESTAÑAS INTEGRADAS Y VENTANAS NATIVAS (mRemoteNG Connect)
+    #  CONEXIÓN EN PESTAÑAS INTEGRADAS Y VENTANAS NATIVAS
     # ──────────────────────────────────────────────────────────────────────────
+    def abrir_terminal_local(self):
+        """Abre una pestaña de Terminal Interactiva Local idéntica a terminal_main.py."""
+        conn_data = {
+            "type": "connection",
+            "name": f"Shell Local #{self.tabs_sesiones.count()}",
+            "ip": "",
+            "port": 0,
+            "user": "",
+            "pass": "",
+            "proto": "SSH",
+            "font": 11,
+            "theme": "🟢 Hacker Esmeralda",
+        }
+        tab = MRemoteTerminalSession(
+            self.tabs_sesiones,
+            conn_data,
+            self.colores,
+            context=self.context,
+            open_native_cb=self._lanzar_consola_nativa_externa,
+        )
+        idx = self.tabs_sesiones.addTab(tab, f"📟 Shell #{self.tabs_sesiones.count()}")
+        self.tabs_sesiones.setCurrentIndex(idx)
+        self.actualizar_vista_vacia()
+
     def conectar_rapido(self):
         raw = self.txt_quick_host.text().strip()
         if not raw:
-            QMessageBox.warning(self, "Quick Connect", "Ingresa un Host o IP (ej. root@192.168.1.10 o 10.0.0.5).")
+            self.abrir_terminal_local()
             return
 
         proto = self.combo_quick_proto.currentText()
@@ -1939,14 +1908,14 @@ class TabRemote(QWidget):
 
         conn_data = {
             "type": "connection",
-            "name": f"Quick: {host}",
+            "name": f"{host}",
             "ip": host,
             "port": port,
             "user": user,
             "pass": "",
             "proto": proto,
-            "font": 12,
-            "theme": "Matrix Green",
+            "font": 11,
+            "theme": "🟢 Hacker Esmeralda",
             "rdp_sso": True,
             "rdp_clipboard": True,
             "rdp_audio": True,
@@ -1954,12 +1923,10 @@ class TabRemote(QWidget):
         self._abrir_sesion_mremote(conn_data, forzar_externa=False)
 
     def conectar(self, forzar_externa: bool = False):
-        # Sincronizar el formulario actual antes de conectar
         item = self.arbol_conexiones.currentItem()
         if item and item != self.raiz:
             d_item = item.data(0, Qt.ItemDataRole.UserRole) or {}
             if d_item.get("type") == "folder":
-                # En mRemoteNG, conectar una carpeta abre todas las conexiones dentro de ella
                 for i in range(item.childCount()):
                     ch = item.child(i)
                     ch_d = ch.data(0, Qt.ItemDataRole.UserRole) or {}
@@ -2025,6 +1992,7 @@ class TabRemote(QWidget):
                 self.tabs_sesiones,
                 conn_data,
                 self.colores,
+                context=self.context,
                 open_native_cb=self._lanzar_consola_nativa_externa,
             )
 
@@ -2107,7 +2075,7 @@ class TabRemote(QWidget):
                 enviados += 1
         self.txt_broadcast.clear()
         if enviados == 0:
-            QMessageBox.information(self, "Broadcast Multi-SSH", "No hay ninguna pestaña de terminal (SSH/Telnet/WinRM) abierta actualmente.")
+            QMessageBox.information(self, "Broadcast Multi-SSH", "No hay ninguna pestaña de terminal abierta actualmente.")
 
     # ──────────────────────────────────────────────────────────────────────────
     #  MENÚ CONTEXTUAL, FILTRO, MATRIZ Y ESCÁNER DE PUERTOS
@@ -2129,8 +2097,9 @@ class TabRemote(QWidget):
                 border: 1px solid rgba(255,255,255,0.12);
                 border-radius: 6px;
                 padding: 4px;
+                font-size: 8.5pt;
             }}
-            QMenu::item {{ padding: 6px 18px; border-radius: 4px; }}
+            QMenu::item {{ padding: 5px 14px; border-radius: 4px; }}
             QMenu::item:selected {{ background-color: {self.colores['acento']}; }}
         """)
 
@@ -2139,11 +2108,11 @@ class TabRemote(QWidget):
             act_tab.triggered.connect(lambda: self.conectar(forzar_externa=False))
             menu.addAction(act_tab)
 
-            act_ext = QAction("🪟 Conectar en Ventana Externa (Nativa)", self)
+            act_ext = QAction("🪟 Conectar en Ventana Externa", self)
             act_ext.triggered.connect(lambda: self.conectar(forzar_externa=True))
             menu.addAction(act_ext)
 
-            act_as = QAction("👤 Conectar como... (Credenciales al vuelo)", self)
+            act_as = QAction("👤 Conectar como...", self)
             act_as.triggered.connect(self._conectar_como_dialogo)
             menu.addAction(act_as)
 
@@ -2195,7 +2164,7 @@ class TabRemote(QWidget):
         menu.exec(self.arbol_conexiones.viewport().mapToGlobal(pos))
 
     def _conectar_como_dialogo(self):
-        usr, ok1 = QInputDialog.getText(self, "Conectar como...", "Usuario para esta sesión:", QLineEdit.EchoMode.Normal, self.txt_usuario.text())
+        usr, ok1 = QInputDialog.getText(self, "Conectar como...", "Usuario:", QLineEdit.EchoMode.Normal, self.txt_usuario.text())
         if not ok1:
             return
         pwd, ok2 = QInputDialog.getText(self, "Conectar como...", "Contraseña (opcional):", QLineEdit.EchoMode.Password)
@@ -2252,17 +2221,17 @@ class TabRemote(QWidget):
 
         online_count = 0
         for row, (item, data, folder_name) in enumerate(conns):
-            ip = data.get("ip", "")
+            ip = (data.get("ip") or "").strip()
             proto = data.get("proto", "SSH")
             port = data.get("port", DEFAULT_PORTS.get(proto, 22))
             st = self._status_cache.get(ip)
             if st and st.get("online"):
                 online_count += 1
-                st_txt = f"🟢 Online ({st.get('latency_ms', 1)} ms)"
+                st_txt = f"🟢 Online ({st.get('latency_ms', 1)}ms)"
             elif st is not None:
                 st_txt = "🔴 Offline"
             else:
-                st_txt = "⚪ Sin probar"
+                st_txt = "⚪ Pendiente"
 
             vals = [
                 st_txt,
@@ -2271,7 +2240,6 @@ class TabRemote(QWidget):
                 f"{PROTO_ICONS.get(proto, '🖧')} {proto}",
                 f"{ip}:{port}",
                 data.get("user", "-"),
-                f"[{data.get('tag', 'General')}] {data.get('notes', '')}",
             ]
             for col, val in enumerate(vals):
                 tw = QTableWidgetItem(str(val))
@@ -2283,7 +2251,6 @@ class TabRemote(QWidget):
         conns = self.obtener_todas_las_conexiones_planas()
         total_hosts = len(conns)
 
-        # Contar carpetas
         folders = 0
         if hasattr(self, "raiz"):
             def _cnt_f(n):
@@ -2296,7 +2263,7 @@ class TabRemote(QWidget):
             _cnt_f(self.raiz)
 
         if online_count is None:
-            online_count = sum(1 for _, d, _ in conns if self._status_cache.get(d.get("ip", ""), {}).get("online"))
+            online_count = sum(1 for _, d, _ in conns if self._status_cache.get((d.get("ip") or "").strip(), {}).get("online"))
 
         if hasattr(self, "lbl_kpi_total"):
             self.lbl_kpi_total.setText(str(total_hosts))
@@ -2305,23 +2272,105 @@ class TabRemote(QWidget):
             active_tabs = max(0, self.tabs_sesiones.count() - 1) if hasattr(self, "tabs_sesiones") else 0
             self.lbl_kpi_sessions.setText(str(active_tabs))
 
-    def _chequear_item_individual(self, item: QTreeWidgetItem):
-        data = item.data(0, Qt.ItemDataRole.UserRole) or {}
-        ip = data.get("ip", "").strip()
-        port = int(data.get("port", 22) or 22)
+    # ──────────────────────────────────────────────────────────────────────────
+    #  VERIFICACIÓN DE IP / PING / PUERTO TCP THREAD-SAFE CON SEÑALES QT
+    # ──────────────────────────────────────────────────────────────────────────
+    def _iniciar_chequeo_ping(self, txt: str):
+        ip = (txt or "").strip()
         if not ip:
+            self.lbl_estado.setText("⚫")
+            self.lbl_estado.setToolTip("Sin dirección IP/Host")
             return
 
-        def _work():
-            fn = self.callbacks.get("verificar_host_remoto")
-            if callable(fn):
-                res = fn(ip, port)
-            else:
-                res = {"online": False, "latency_ms": None}
-            self._status_cache[ip] = res
-            QTimer.singleShot(0, lambda: [self._actualizar_etiqueta_item_arbol(item), self.actualizar_matriz_hosts()])
+        self.lbl_estado.setText("🟡")
+        self.lbl_estado.setToolTip(f"Comprobando conectividad con {ip}...")
 
-        threading.Thread(target=_work, daemon=True).start()
+        if hasattr(self, "_timer_ping"):
+            self._timer_ping.stop()
+        else:
+            self._timer_ping = QTimer(self)
+            self._timer_ping.setSingleShot(True)
+            self._timer_ping.timeout.connect(self._forzar_chequeo_ip_actual)
+
+        self._timer_ping.start(550)
+
+    def _forzar_chequeo_ip_actual(self):
+        ip = self.txt_ip.text().strip()
+        if not ip:
+            self.lbl_estado.setText("⚫")
+            return
+        port = self.spin_port.value() if hasattr(self, "spin_port") else 22
+        self.lbl_estado.setText("🟡")
+        threading.Thread(target=self._probe_host_worker, args=(ip, port), daemon=True).start()
+
+    def _probe_host_worker(self, ip: str, port: int):
+        """Ejecuta la prueba de red en hilo secundario y emite host_status_signal al hilo principal Qt."""
+        res = self._medir_conectividad_host(ip, port, timeout=0.85)
+        self.host_status_signal.emit(
+            ip,
+            bool(res.get("online", False)),
+            res.get("latency_ms"),
+            str(res.get("method", "ICMP"))
+        )
+
+    def _medir_conectividad_host(self, ip: str, port: int = 0, timeout: float = 0.85) -> dict:
+        fn = self.callbacks.get("verificar_host_remoto")
+        if callable(fn):
+            try:
+                return fn(ip, port, timeout=timeout)
+            except Exception:
+                pass
+
+        # 1. Intentar conexión TCP directa al puerto
+        if port and int(port) > 0:
+            t0 = time.perf_counter()
+            try:
+                with socket.create_connection((ip, int(port)), timeout=timeout):
+                    ms = max(1, int((time.perf_counter() - t0) * 1000))
+                    return {"online": True, "latency_ms": ms, "method": f"TCP:{port}"}
+            except Exception:
+                pass
+
+        # 2. Intentar ICMP Ping del sistema
+        cmd_args = ["ping", "-n", "1", "-w", str(int(timeout * 1000)), ip] if platform.system() == "Windows" else ["ping", "-c", "1", "-W", "1", ip]
+        kwargs = {"creationflags": 0x08000000} if platform.system() == "Windows" else {}
+        t0 = time.perf_counter()
+        try:
+            r = subprocess.run(cmd_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
+            if r.returncode == 0:
+                ms = max(1, int((time.perf_counter() - t0) * 1000))
+                return {"online": True, "latency_ms": ms, "method": "ICMP Ping"}
+        except Exception:
+            pass
+
+        return {"online": False, "latency_ms": None, "method": "Sin respuesta"}
+
+    def _on_host_status_received(self, ip: str, online: bool, latency_ms, method: str):
+        """Slot ejecutado garantizadamente en el hilo principal de la GUI."""
+        self._status_cache[ip] = {"online": online, "latency_ms": latency_ms, "method": method}
+
+        # Si el campo txt_ip actual coincide con la IP comprobada, actualizar el círculo inmediatamente
+        if self.txt_ip.text().strip() == ip:
+            if online:
+                self.lbl_estado.setText("🟢")
+                self.lbl_estado.setToolTip(f"🟢 ACTIVO ({ip}) — {latency_ms or 1} ms vía {method}")
+            else:
+                self.lbl_estado.setText("🔴")
+                self.lbl_estado.setToolTip(f"🔴 INACTIVO ({ip}) — No responde Ping ni puerto TCP")
+
+        # Actualizar todos los nodos del árbol que tengan esa IP
+        for item, data, _ in self.obtener_todas_las_conexiones_planas():
+            if (data.get("ip") or "").strip() == ip:
+                self._actualizar_etiqueta_item_arbol(item)
+
+        self.actualizar_matriz_hosts()
+
+    def _chequear_item_individual(self, item: QTreeWidgetItem):
+        data = item.data(0, Qt.ItemDataRole.UserRole) or {}
+        ip = (data.get("ip") or "").strip()
+        port = int(data.get("port", 22) or 22)
+        if ip:
+            threading.Thread(target=self._probe_host_worker, args=(ip, port), daemon=True).start()
 
     def ping_todos_los_hosts(self):
         conns = self.obtener_todas_las_conexiones_planas()
@@ -2329,24 +2378,20 @@ class TabRemote(QWidget):
             return
 
         def _worker():
-            fn = self.callbacks.get("verificar_host_remoto")
-            for item, data, _ in conns:
-                ip = data.get("ip", "").strip()
+            vistos = set()
+            for _, data, _ in conns:
+                ip = (data.get("ip") or "").strip()
                 port = int(data.get("port", 22) or 22)
-                if not ip:
+                if not ip or (ip, port) in vistos:
                     continue
-                if callable(fn):
-                    res = fn(ip, port, timeout=0.6)
-                else:
-                    t0 = time.perf_counter()
-                    try:
-                        with socket.create_connection((ip, port), timeout=0.6):
-                            res = {"online": True, "latency_ms": max(1, int((time.perf_counter() - t0) * 1000))}
-                    except Exception:
-                        res = {"online": False, "latency_ms": None}
-                self._status_cache[ip] = res
-                QTimer.singleShot(0, lambda it=item: self._actualizar_etiqueta_item_arbol(it))
-            QTimer.singleShot(0, self.actualizar_matriz_hosts)
+                vistos.add((ip, port))
+                res = self._medir_conectividad_host(ip, port, timeout=0.65)
+                self.host_status_signal.emit(
+                    ip,
+                    bool(res.get("online", False)),
+                    res.get("latency_ms"),
+                    str(res.get("method", "ICMP"))
+                )
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -2356,7 +2401,7 @@ class TabRemote(QWidget):
             QMessageBox.warning(self, "Escáner de Puertos", "Ingresa una IP o selecciona un servidor primero.")
             return
 
-        self.lbl_scan_results.setText(f"⏳ Escaneando puertos comunes de administración remota en <b>{host}</b>...")
+        self.lbl_scan_results.setText(f"⏳ Escaneando puertos comunes en <b>{host}</b>...")
         self.btn_scan_ports.setEnabled(False)
 
         def _scan():
@@ -2365,7 +2410,7 @@ class TabRemote(QWidget):
                 resultados = fn(host)
             else:
                 resultados = []
-            QTimer.singleShot(0, lambda: self._mostrar_resultados_escaneo(host, resultados))
+            self.port_scan_signal.emit(host, resultados)
 
         threading.Thread(target=_scan, daemon=True).start()
 
@@ -2373,19 +2418,18 @@ class TabRemote(QWidget):
         self.btn_scan_ports.setEnabled(True)
         abiertos = [r for r in resultados if r.get("open")]
         if not abiertos:
-            self.lbl_scan_results.setText(f"🔴 No se detectaron puertos estándar abiertos en <b>{host}</b> (o el firewall los filtra).")
+            self.lbl_scan_results.setText(f"🔴 Sin puertos estándar abiertos detectados en <b>{host}</b>.")
             return
 
-        badges = []
-        for r in abiertos:
-            badges.append(
-                f"<span style='background:#065F46; color:#34D399; padding:3px 8px; border-radius:4px; font-weight:bold;'>"
-                f"🟢 {r['port']} ({r['service']}) · {r['latency_ms']}ms</span>"
-            )
-        self.lbl_scan_results.setText(f"<b>Puertos abiertos en {host}:</b> &nbsp; " + " &nbsp; ".join(badges))
+        badges = [
+            f"<span style='background:#065F46; color:#34D399; padding:2px 6px; border-radius:4px; font-weight:bold;'>"
+            f"🟢 {r['port']} ({r['service']}) · {r['latency_ms']}ms</span>"
+            for r in abiertos
+        ]
+        self.lbl_scan_results.setText(f"<b>Abiertos en {host}:</b> &nbsp; " + " &nbsp; ".join(badges))
 
     # ──────────────────────────────────────────────────────────────────────────
-    #  IMPORTACIÓN Y EXPORTACIÓN COMPATIBLE CON mRemoteNG XML (confCons.xml), JSON Y CSV
+    #  IMPORTACIÓN Y EXPORTACIÓN (mRemoteNG XML, JSON, CSV)
     # ──────────────────────────────────────────────────────────────────────────
     def exportar_conexiones_dialogo(self):
         ruta, filtro = QFileDialog.getSaveFileName(
@@ -2404,10 +2448,10 @@ class TabRemote(QWidget):
         else:
             data = self._serializar_nodos_recursivo(self.raiz)
             Path(ruta).write_text(json.dumps(data, indent=4, ensure_ascii=False), encoding="utf-8")
-        QMessageBox.information(self, "Exportación Exitosa", f"Conexiones exportadas correctamente a:\n{ruta}")
+        QMessageBox.information(self, "Exportación Exitosa", f"Conexiones exportadas a:\n{ruta}")
 
     def _exportar_mremoteng_xml(self, ruta: str):
-        root_el = ET.Element("mrng:Connections", {" xmlns:mrng": "http://mremoteng.org", "Export": "Multitool-mRemoteNG"})
+        root_el = ET.Element("mrng:Connections", {"xmlns:mrng": "http://mremoteng.org", "Export": "Multitool-mRemoteNG"})
 
         def _append_xml(parent_item: QTreeWidgetItem, xml_parent: ET.Element):
             for i in range(parent_item.childCount()):
@@ -2468,9 +2512,10 @@ class TabRemote(QWidget):
             if nodos:
                 self._poblar_nodos_recursivo(self.raiz, nodos)
                 self.guardar_todas_las_conexiones()
-                QMessageBox.information(self, "Importación Completada", f"Se importaron las conexiones desde:\n{Path(ruta).name}")
+                self.ping_todos_los_hosts()
+                QMessageBox.information(self, "Importación Completada", f"Conexiones importadas desde:\n{Path(ruta).name}")
         except Exception as e:
-            QMessageBox.critical(self, "Error al Importar", f"No se pudo importar el archivo:\n{e}")
+            QMessageBox.critical(self, "Error al Importar", f"No se pudo importar:\n{e}")
 
     def _parsear_mremoteng_xml(self, ruta: str) -> list:
         tree = ET.parse(ruta)
@@ -2531,43 +2576,3 @@ class TabRemote(QWidget):
                     "notes": row.get("Notes") or "",
                 })
         return out
-
-    # ──────────────────────────────────────────────────────────────────────────
-    #  ESTADO INDICADOR EN TIEMPO REAL (PING / TCP CIRCLE)
-    # ──────────────────────────────────────────────────────────────────────────
-    def _iniciar_chequeo_ping(self, txt: str):
-        if not txt.strip():
-            self.lbl_estado.setText("⚫")
-            return
-
-        if hasattr(self, "_timer_ping"):
-            self._timer_ping.stop()
-        else:
-            self._timer_ping = QTimer(self)
-            self._timer_ping.setSingleShot(True)
-            self._timer_ping.timeout.connect(lambda: threading.Thread(target=self._validar_ip, daemon=True).start())
-
-        self._timer_ping.start(800)
-
-    def _validar_ip(self):
-        ip = self.txt_ip.text().strip()
-        port = self.spin_port.value() if hasattr(self, "spin_port") else 22
-        if not ip:
-            return
-
-        fn = self.callbacks.get("verificar_host_remoto")
-        if callable(fn):
-            res = fn(ip, port, timeout=0.8)
-            exito = res.get("online", False)
-            self._status_cache[ip] = res
-        else:
-            cmd_args = ["ping", "-n", "1", "-w", "1000", ip] if platform.system() == "Windows" else ["ping", "-c", "1", "-W", "1", ip]
-            kwargs = {"creationflags": 0x08000000} if platform.system() == "Windows" else {}
-            try:
-                r = subprocess.run(cmd_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kwargs)
-                exito = (r.returncode == 0)
-            except Exception:
-                exito = False
-            self._status_cache[ip] = {"online": exito, "latency_ms": 10 if exito else None}
-
-        QTimer.singleShot(0, lambda: self.lbl_estado.setText("🟢" if exito else "🔴"))
