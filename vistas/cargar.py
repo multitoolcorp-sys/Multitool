@@ -497,8 +497,17 @@ class AppMultitareasGUI(BaseAppGUI):
             except Exception as e_sub:
                 print(f"[HotReload] Error recargando clase de submódulo {sub.get('name')}: {e_sub}")
 
-        # 3. Si el módulo estaba cargado en pantalla, reemplazar su contenedor en vivo
+        # 3. Si el módulo estaba cargado en pantalla, reemplazar su contenedor en vivo conservando la sub-pestaña activa
         if estaba_cargado:
+            sub_idx_previo = 0
+            try:
+                if hasattr(self, "_resolver_tab_widget_submodulos"):
+                    tw_prev = self._resolver_tab_widget_submodulos(target_mod["name"])
+                    if tw_prev and hasattr(tw_prev, "currentIndex"):
+                        sub_idx_previo = max(0, tw_prev.currentIndex())
+            except Exception:
+                sub_idx_previo = 0
+
             parent_frame = self._frames_modulos.get(target_mod["name"]) or target_mod.get("dummy_frame")
             if parent_frame and parent_frame.layout():
                 while parent_frame.layout().count():
@@ -520,6 +529,14 @@ class AppMultitareasGUI(BaseAppGUI):
                 self.clases_modulos.pop(k, None)
 
             self._instanciar_modulo(target_mod)
+
+            try:
+                if hasattr(self, "_resolver_tab_widget_submodulos"):
+                    tw_new = self._resolver_tab_widget_submodulos(target_mod["name"])
+                    if tw_new and 0 <= sub_idx_previo < tw_new.count():
+                        tw_new.setCurrentIndex(sub_idx_previo)
+            except Exception:
+                pass
 
         if hasattr(self, "sidebar") and self.sidebar:
             self.sidebar.renderizar_arbol()

@@ -1,3 +1,5 @@
+import os
+import sys
 import platform
 import datetime
 import json
@@ -1316,6 +1318,7 @@ class BaseAppGUI(QMainWindow):
         Aplica un paquete .mtu directamente en caliente sin cerrar Multitool,
         creando copia de seguridad para Rollback y recargando los módulos/vistas afectados.
         """
+        import os
         import shutil
         import zipfile
         from controlador.utils.paths import get_data_path
