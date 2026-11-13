@@ -227,6 +227,13 @@ class ModuleCompilerDialog(QDialog):
     def __init__(self, parent=None, modulo_preseleccionado: str | None = None):
         super().__init__(parent)
         self.setWindowTitle("📦 Compilador y Empaquetador de Módulos (.mtu)")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.setMinimumSize(640, 480)
         self.resize(920, 620)
 
@@ -607,7 +614,23 @@ class ModuleCompilerDialog(QDialog):
 
 
 def abrir_compilador_modulos(parent=None, modulo_preseleccionado: str | None = None):
-    """Abre el diálogo del compilador de módulos para usuarios."""
-    dlg = ModuleCompilerDialog(parent=parent, modulo_preseleccionado=modulo_preseleccionado)
-    dlg.exec()
-    return dlg
+    """Abre el empaquetador de módulos (.mtu) como ventana independiente no bloqueante."""
+    existing = getattr(parent, "_compilador_modulos_win", None) if parent is not None else None
+    if existing is not None:
+        try:
+            if existing.isMinimized():
+                existing.showNormal()
+            existing.show()
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+        except RuntimeError:
+            pass
+
+    win = ModuleCompilerDialog(parent=None, modulo_preseleccionado=modulo_preseleccionado)
+    if parent is not None:
+        parent._compilador_modulos_win = win
+    win.show()
+    win.raise_()
+    win.activateWindow()
+    return win

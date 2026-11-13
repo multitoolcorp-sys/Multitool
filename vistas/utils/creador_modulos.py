@@ -55,7 +55,11 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from vistas.utils.compilar_modulo import ModuleCompilerDialog, obtener_raiz_proyecto
+from vistas.utils.compilar_modulo import (
+    ModuleCompilerDialog,
+    abrir_compilador_modulos,
+    obtener_raiz_proyecto,
+)
 
 
 def normalizar_id_modulo(nombre: str) -> str:
@@ -250,6 +254,13 @@ class ModuleCreatorDialog(QDialog):
         ]
 
         self.setWindowTitle("🎨 Modo Creador de Módulos (mode MT) — Estudio Multitool")
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowMinimizeButtonHint
+            | Qt.WindowType.WindowMaximizeButtonHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setWindowModality(Qt.WindowModality.NonModal)
         self.setMinimumSize(820, 560)
         self.resize(1180, 740)
 
@@ -1279,33 +1290,67 @@ class ModuleCreatorDialog(QDialog):
     def _recargar_en_app(self):
         self._guardar_todo()
         app = self.app_ref or self.parent()
-        if app and hasattr(app, "cargar_modulos"):
-            try:
+        if not app:
+            QMessageBox.information(
+                self,
+                "Guardado",
+                "Cambios guardados en vistas/modulos/. Abre Multitool para ver el módulo.",
+            )
+            return
+
+        import importlib
+        if self.modulo_actual:
+            prefijo = f"vistas.modulos.{self.modulo_actual.lower()}"
+            for k in list(sys.modules.keys()):
+                if k == prefijo or k.startswith(prefijo + "."):
+                    sys.modules.pop(k, None)
+            importlib.invalidate_caches()
+
+        try:
+            # 1. Intentar recarga en caliente si el módulo ya estaba registrado en la app
+            ya_registrado = any(
+                m.get("folder", "").lower() == (self.modulo_actual or "").lower()
+                or m.get("name", "").lower() == (self.modulo_actual or "").lower()
+                for m in getattr(app, "modulos_cargados", [])
+            )
+            if ya_registrado and self.modulo_actual and hasattr(app, "recargar_modulo_en_caliente"):
+                if app.recargar_modulo_en_caliente(self.modulo_actual):
+                    self.lbl_estado.setText(f"🔥 Cambios aplicados en caliente en '{self.modulo_actual}' (sin reiniciar).")
+                    return
+
+            # 2. Si es un módulo nuevo o cambió su estructura, redescubrir y cargar
+            if hasattr(app, "cargar_modulos"):
                 app.cargar_modulos()
-                QMessageBox.information(
-                    self,
-                    "Módulos Recargados",
-                    "Se recargaron los módulos en Multitool. Tu módulo ya debería aparecer detectado.",
-                )
+                self.lbl_estado.setText(f"🔄 Módulo '{self.modulo_actual}' cargado en Multitool sin reiniciar.")
                 return
-            except Exception as e:
-                QMessageBox.warning(self, "Aviso", f"No se pudo recargar automáticamente:\n{e}")
-                return
-        QMessageBox.information(
-            self,
-            "Guardado",
-            "Cambios guardados en vistas/modulos/. Reinicia o recarga Multitool para ver el módulo.",
-        )
+        except Exception as e:
+            QMessageBox.warning(self, "Aviso", f"No se pudo recargar automáticamente:\n{e}")
 
     def _abrir_compilador(self):
         self._guardar_todo()
-        dlg = ModuleCompilerDialog(self, modulo_preseleccionado=self.modulo_actual)
-        dlg.exec()
+        abrir_compilador_modulos(parent=self, modulo_preseleccionado=self.modulo_actual)
 
 
 def abrir_creador_modulos(parent=None, app_ref=None):
-    """Abre el estudio Modo Creador de Módulos (mode MT)."""
-    dlg = ModuleCreatorDialog(parent=parent, app_ref=app_ref)
-    dlg.exec()
-    return dlg
+    """Abre el estudio Modo Creador de Módulos (mode MT) como ventana independiente no bloqueante."""
+    holder = app_ref or parent
+    existing = getattr(holder, "_creador_modulos_win", None) if holder is not None else None
+    if existing is not None:
+        try:
+            if existing.isMinimized():
+                existing.showNormal()
+            existing.show()
+            existing.raise_()
+            existing.activateWindow()
+            return existing
+        except RuntimeError:
+            pass
+
+    win = ModuleCreatorDialog(parent=None, app_ref=app_ref or parent)
+    if holder is not None:
+        holder._creador_modulos_win = win
+    win.show()
+    win.raise_()
+    win.activateWindow()
+    return win
 
