@@ -232,6 +232,17 @@ class AppMultitareasGUI(BaseAppGUI):
             self.clases_modulos = {}
             self._frames_modulos = {}
 
+            # Limpiar pestañas anteriores si es una recarga en caliente
+            self.notebook.blockSignals(True)
+            try:
+                while self.notebook.count() > 0:
+                    old_w = self.notebook.widget(0)
+                    self.notebook.removeTab(0)
+                    if old_w is not None:
+                        old_w.deleteLater()
+            finally:
+                self.notebook.blockSignals(False)
+
             # Crear pestañas placeholder en el hilo principal (requerido por Qt)
             for mod in modulos_encontrados:
                 if not mod.get("visible", True):

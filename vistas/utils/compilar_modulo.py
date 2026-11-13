@@ -245,10 +245,18 @@ class ModuleCompilerDialog(QDialog):
 
     def _aplicar_estilo(self):
         self.setStyleSheet("""
-            QDialog {
+            QDialog, QWidget {
                 background-color: #13141c;
-                color: #e4e6f0;
+                color: #f8fafc;
                 font-family: 'Segoe UI', sans-serif;
+            }
+            QLabel, QCheckBox {
+                color: #f8fafc;
+                background: transparent;
+            }
+            QScrollArea {
+                background-color: transparent;
+                border: none;
             }
             QFrame#Card {
                 background-color: #1b1d29;

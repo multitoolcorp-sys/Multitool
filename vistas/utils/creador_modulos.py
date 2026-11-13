@@ -8,11 +8,16 @@ compilarlos a `.mtu` para compartirlos.
 """
 
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import QRect, QSize, Qt
 from PyQt6.QtGui import (
+    QAction,
     QColor,
     QFont,
     QKeySequence,
@@ -34,6 +39,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QProgressBar,
@@ -254,10 +260,18 @@ class ModuleCreatorDialog(QDialog):
 
     def _aplicar_estilo(self):
         self.setStyleSheet("""
-            QDialog {
+            QDialog, QWidget {
                 background-color: #11131c;
-                color: #e2e8f0;
+                color: #f8fafc;
                 font-family: 'Segoe UI', sans-serif;
+            }
+            QLabel, QCheckBox, QRadioButton {
+                color: #f8fafc;
+                background: transparent;
+            }
+            QScrollArea {
+                background-color: transparent;
+                border: none;
             }
             QFrame#IdeBar, QFrame#Panel {
                 background-color: #181b28;
@@ -277,11 +291,36 @@ class ModuleCreatorDialog(QDialog):
             }
             QTreeWidget, QListWidget, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox, QSpinBox {
                 background-color: #0f111a;
-                color: #e2e8f0;
+                color: #f8fafc;
                 border: 1px solid #2a2f45;
                 border-radius: 6px;
                 padding: 5px;
                 font-size: 12px;
+            }
+            QHeaderView::section {
+                background-color: #181b28;
+                color: #f8fafc;
+                border: none;
+                border-bottom: 1px solid #2a2f45;
+                padding: 5px;
+                font-weight: 600;
+            }
+            QTreeWidget::item {
+                color: #f1f5f9;
+                padding: 3px;
+            }
+            QTreeWidget::item:selected, QListWidget::item:selected {
+                background-color: #4f46e5;
+                color: #ffffff;
+            }
+            QMenu {
+                background-color: #181b28;
+                color: #f8fafc;
+                border: 1px solid #38405e;
+            }
+            QMenu::item:selected {
+                background-color: #4f46e5;
+                color: #ffffff;
             }
             QTabWidget::pane {
                 border: 1px solid #2a2f45;
@@ -290,7 +329,7 @@ class ModuleCreatorDialog(QDialog):
             }
             QTabBar::tab {
                 background-color: #1e2233;
-                color: #94a3b8;
+                color: #cbd5e1;
                 padding: 8px 16px;
                 border-top-left-radius: 6px;
                 border-top-right-radius: 6px;
@@ -303,7 +342,7 @@ class ModuleCreatorDialog(QDialog):
             }
             QPushButton {
                 background-color: #252a3d;
-                color: #e2e8f0;
+                color: #f8fafc;
                 border: 1px solid #38405e;
                 border-radius: 6px;
                 padding: 6px 12px;
@@ -394,17 +433,42 @@ class ModuleCreatorDialog(QDialog):
         left_lay.addWidget(self.cmb_modulos)
 
         self.tree_archivos = QTreeWidget()
-        self.tree_archivos.setHeaderLabel("Archivos del módulo")
+        self.tree_archivos.setHeaderLabel("Gestor de Archivos del Módulo")
+        self.tree_archivos.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree_archivos.customContextMenuRequested.connect(self._menu_contextual_arbol)
         self.tree_archivos.itemDoubleClicked.connect(self._abrir_item_arbol)
         self.tree_archivos.itemClicked.connect(self._abrir_item_arbol)
         left_lay.addWidget(self.tree_archivos, 1)
 
         row_tree_btns = QHBoxLayout()
-        btn_new_file = QPushButton("📄 + Archivo")
-        btn_new_file.clicked.connect(self._crear_archivo_en_modulo)
+        row_tree_btns.setSpacing(4)
+        btn_new_file = QPushButton("📄+")
+        btn_new_file.setToolTip("Nuevo archivo en la carpeta seleccionada")
+        btn_new_file.clicked.connect(lambda: self._crear_archivo_en_modulo())
         row_tree_btns.addWidget(btn_new_file)
+
+        btn_new_dir = QPushButton("📁+")
+        btn_new_dir.setToolTip("Nueva carpeta en el módulo")
+        btn_new_dir.clicked.connect(lambda: self._crear_carpeta_en_modulo())
+        row_tree_btns.addWidget(btn_new_dir)
+
+        btn_rename = QPushButton("✏️")
+        btn_rename.setToolTip("Renombrar archivo o carpeta")
+        btn_rename.clicked.connect(self._renombrar_item_arbol)
+        row_tree_btns.addWidget(btn_rename)
+
+        btn_move = QPushButton("📦")
+        btn_move.setToolTip("Mover archivo o carpeta")
+        btn_move.clicked.connect(self._mover_item_arbol)
+        row_tree_btns.addWidget(btn_move)
+
+        btn_del = QPushButton("🗑️")
+        btn_del.setToolTip("Eliminar archivo o carpeta")
+        btn_del.clicked.connect(self._eliminar_item_arbol)
+        row_tree_btns.addWidget(btn_del)
+
         btn_ref_tree = QPushButton("↻")
-        btn_ref_tree.setMaximumWidth(36)
+        btn_ref_tree.setToolTip("Refrescar árbol")
         btn_ref_tree.clicked.connect(self._poblar_arbol_archivos)
         row_tree_btns.addWidget(btn_ref_tree)
         left_lay.addLayout(row_tree_btns)
@@ -639,7 +703,7 @@ class ModuleCreatorDialog(QDialog):
             return
 
         root_item = QTreeWidgetItem([f"📁 {self.modulo_actual}"])
-        root_item.setData(0, Qt.ItemDataRole.UserRole, None)
+        root_item.setData(0, Qt.ItemDataRole.UserRole, str(mod_dir))
         self.tree_archivos.addTopLevelItem(root_item)
 
         def _add_dir(parent_item: QTreeWidgetItem, current_dir: Path):
@@ -649,7 +713,7 @@ class ModuleCreatorDialog(QDialog):
                     continue
                 if entry.is_dir():
                     dir_it = QTreeWidgetItem([f"📂 {entry.name}"])
-                    dir_it.setData(0, Qt.ItemDataRole.UserRole, None)
+                    dir_it.setData(0, Qt.ItemDataRole.UserRole, str(entry))
                     parent_item.addChild(dir_it)
                     _add_dir(dir_it, entry)
                 else:
@@ -665,7 +729,9 @@ class ModuleCreatorDialog(QDialog):
         ruta_str = item.data(0, Qt.ItemDataRole.UserRole)
         if not ruta_str:
             return
-        self._abrir_archivo_en_editor(Path(ruta_str))
+        ruta = Path(ruta_str)
+        if ruta.is_file():
+            self._abrir_archivo_en_editor(ruta)
 
     def _abrir_archivo_principal_modulo(self):
         if not self.modulo_actual:
@@ -795,22 +861,49 @@ class ModuleCreatorDialog(QDialog):
             return
 
         sub_dir = mod_dir / "submodulos"
+        utils_dir = mod_dir / "utils"
         sub_dir.mkdir(parents=True, exist_ok=True)
+        utils_dir.mkdir(parents=True, exist_ok=True)
+
         (mod_dir / "__init__.py").write_text("", encoding="utf-8")
         (sub_dir / "__init__.py").write_text("", encoding="utf-8")
+        (utils_dir / "__init__.py").write_text("", encoding="utf-8")
 
-        clase = f"Tab{a_pascal_case(mod_id)}"
+        clase_tab = f"Tab{a_pascal_case(mod_id)}"
+        clase_root = f"{a_pascal_case(mod_id)}App"
+
+        # Backend del módulo (utils/backend.py)
+        backend_code = (
+            "# -*- coding: utf-8 -*-\n"
+            f'"""Backend y lógica de negocio del módulo {nombre.strip()}."""\n\n\n'
+            f"class {a_pascal_case(mod_id)}Backend:\n"
+            "    def procesar(self, texto: str) -> str:\n"
+            '        return f"Procesado: {texto}" if texto else "Listo."\n'
+        )
+        (utils_dir / "backend.py").write_text(backend_code, encoding="utf-8")
+
+        # Archivo raíz del módulo (<mod_id>.py) que conecta frontend + backend
+        root_code = (
+            "# -*- coding: utf-8 -*-\n"
+            f'"""Punto de entrada raíz del módulo {nombre.strip()}."""\n\n'
+            f"from .submodulos.tab_{mod_id} import {clase_tab}\n"
+            f"from .utils.backend import {a_pascal_case(mod_id)}Backend\n\n\n"
+            f"class {clase_root}({clase_tab}):\n"
+            "    pass\n"
+        )
+        (mod_dir / f"{mod_id}.py").write_text(root_code, encoding="utf-8")
+
         config_data = {
             "name": nombre.strip(),
             "icon": "🧩",
             "version": "1.0.0",
-            "position": 10,
+            "position": 25,
             "visible": True,
             "submodulos": [
                 {
                     "name": "Principal",
                     "file_name": f"submodulos/tab_{mod_id}.py",
-                    "class_name": clase,
+                    "class_name": clase_tab,
                     "visible": True,
                     "icon": "🧩",
                     "alias": mod_id,
@@ -819,26 +912,72 @@ class ModuleCreatorDialog(QDialog):
             ],
         }
         (mod_dir / "config.json").write_text(json.dumps(config_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        (mod_dir / "commands.json").write_text("{}", encoding="utf-8")
         (mod_dir / "requirements.txt").write_text("# Agrega aquí las dependencias pip de tu módulo\n", encoding="utf-8")
 
         py_file = sub_dir / f"tab_{mod_id}.py"
-        py_file.write_text(self._generar_codigo_pyqt(clase, nombre.strip()), encoding="utf-8")
+        py_file.write_text(self._generar_codigo_pyqt(clase_tab, nombre.strip()), encoding="utf-8")
 
         self._cargar_lista_modulos(seleccionar=mod_id)
-        self.lbl_estado.setText(f"✅ Módulo '{mod_id}' creado en vistas/modulos/{mod_id}.")
+        self.lbl_estado.setText(f"✅ Módulo '{mod_id}' creado con raíz {mod_id}.py, frontend y backend.")
+
+    # ── Gestor Completo de Archivos y Carpetas ────────────────────────────
+
+    def _obtener_ruta_item_seleccionado(self) -> Path | None:
+        item = self.tree_archivos.currentItem()
+        if not item:
+            return (self.modulos_dir / self.modulo_actual) if self.modulo_actual else None
+        ruta_str = item.data(0, Qt.ItemDataRole.UserRole)
+        return Path(ruta_str) if ruta_str else None
+
+    def _obtener_directorio_destino_actual(self) -> Path | None:
+        if not self.modulo_actual:
+            return None
+        ruta = self._obtener_ruta_item_seleccionado()
+        if ruta is None:
+            return self.modulos_dir / self.modulo_actual
+        return ruta if ruta.is_dir() else ruta.parent
+
+    def _menu_contextual_arbol(self, pos):
+        if not self.modulo_actual:
+            return
+        menu = QMenu(self)
+        act_new_f = QAction("📄 Nuevo archivo aquí...", self)
+        act_new_f.triggered.connect(self._crear_archivo_en_modulo)
+        act_new_d = QAction("📁 Nueva carpeta aquí...", self)
+        act_new_d.triggered.connect(self._crear_carpeta_en_modulo)
+        act_ren = QAction("✏️ Renombrar...", self)
+        act_ren.triggered.connect(self._renombrar_item_arbol)
+        act_mov = QAction("📦 Mover a otra carpeta...", self)
+        act_mov.triggered.connect(self._mover_item_arbol)
+        act_del = QAction("🗑️ Eliminar", self)
+        act_del.triggered.connect(self._eliminar_item_arbol)
+        act_exp = QAction("📂 Abrir en Explorador", self)
+        act_exp.triggered.connect(self._abrir_en_explorador)
+
+        menu.addAction(act_new_f)
+        menu.addAction(act_new_d)
+        menu.addSeparator()
+        menu.addAction(act_ren)
+        menu.addAction(act_mov)
+        menu.addAction(act_del)
+        menu.addSeparator()
+        menu.addAction(act_exp)
+        menu.exec(self.tree_archivos.viewport().mapToGlobal(pos))
 
     def _crear_archivo_en_modulo(self):
-        if not self.modulo_actual:
+        base_dir = self._obtener_directorio_destino_actual()
+        if not base_dir:
             return
         nombre, ok = QInputDialog.getText(
             self,
             "Nuevo Archivo",
-            "Ruta relativa dentro del módulo (ej: submodulos/tab_extra.py):",
+            f"Nombre o ruta relativa dentro de {base_dir.name}/ (ej: tab_extra.py):",
         )
         if not ok or not nombre.strip():
             return
         rel = nombre.strip().lstrip("/\\")
-        destino = self.modulos_dir / self.modulo_actual / rel
+        destino = base_dir / rel
         if destino.exists():
             QMessageBox.warning(self, "Ya existe", f"El archivo '{rel}' ya existe.")
             return
@@ -850,6 +989,110 @@ class ModuleCreatorDialog(QDialog):
             destino.write_text("", encoding="utf-8")
         self._poblar_arbol_archivos()
         self._abrir_archivo_en_editor(destino)
+
+    def _crear_carpeta_en_modulo(self):
+        base_dir = self._obtener_directorio_destino_actual()
+        if not base_dir:
+            return
+        nombre, ok = QInputDialog.getText(
+            self,
+            "Nueva Carpeta",
+            f"Nombre de la carpeta dentro de {base_dir.name}/:",
+        )
+        if not ok or not nombre.strip():
+            return
+        nueva = base_dir / nombre.strip().strip("/\\")
+        if nueva.exists():
+            QMessageBox.warning(self, "Ya existe", f"La carpeta '{nueva.name}' ya existe.")
+            return
+        nueva.mkdir(parents=True, exist_ok=True)
+        self._poblar_arbol_archivos()
+        self.lbl_estado.setText(f"📁 Carpeta creada: {nueva.name}")
+
+    def _renombrar_item_arbol(self):
+        ruta = self._obtener_ruta_item_seleccionado()
+        mod_root = self.modulos_dir / self.modulo_actual if self.modulo_actual else None
+        if not ruta or not mod_root or ruta == mod_root:
+            QMessageBox.information(self, "Selección", "Selecciona un archivo o subcarpeta para renombrar.")
+            return
+        nuevo_nombre, ok = QInputDialog.getText(self, "Renombrar", "Nuevo nombre:", text=ruta.name)
+        if not ok or not nuevo_nombre.strip() or nuevo_nombre.strip() == ruta.name:
+            return
+        destino = ruta.parent / nuevo_nombre.strip()
+        if destino.exists():
+            QMessageBox.warning(self, "Error", f"Ya existe '{destino.name}'.")
+            return
+        ruta.rename(destino)
+        if self.archivo_actual == ruta:
+            self.archivo_actual = destino
+        self._poblar_arbol_archivos()
+        self.lbl_estado.setText(f"✏️ Renombrado a {destino.name}")
+
+    def _mover_item_arbol(self):
+        ruta = self._obtener_ruta_item_seleccionado()
+        mod_root = self.modulos_dir / self.modulo_actual if self.modulo_actual else None
+        if not ruta or not mod_root or ruta == mod_root:
+            QMessageBox.information(self, "Selección", "Selecciona un archivo o subcarpeta para mover.")
+            return
+        carpetas = [mod_root] + [
+            p for p in sorted(mod_root.rglob("*"))
+            if p.is_dir() and p.name not in {"__pycache__", ".git"} and p != ruta and ruta not in p.parents
+        ]
+        opciones = [
+            ("." if c == mod_root else c.relative_to(mod_root).as_posix())
+            for c in carpetas
+        ]
+        elegida, ok = QInputDialog.getItem(
+            self, "Mover elemento", f"Mover '{ruta.name}' a carpeta:", opciones, 0, False
+        )
+        if not ok or not elegida:
+            return
+        dest_dir = mod_root if elegida == "." else (mod_root / elegida)
+        destino = dest_dir / ruta.name
+        if destino.exists():
+            QMessageBox.warning(self, "Conflicto", f"Ya existe '{ruta.name}' en '{elegida}'.")
+            return
+        shutil.move(str(ruta), str(destino))
+        if self.archivo_actual == ruta:
+            self.archivo_actual = destino
+        self._poblar_arbol_archivos()
+        self.lbl_estado.setText(f"📦 Movido '{ruta.name}' -> {elegida}")
+
+    def _eliminar_item_arbol(self):
+        ruta = self._obtener_ruta_item_seleccionado()
+        mod_root = self.modulos_dir / self.modulo_actual if self.modulo_actual else None
+        if not ruta or not mod_root or ruta == mod_root:
+            QMessageBox.information(self, "Selección", "Selecciona un archivo o subcarpeta para eliminar.")
+            return
+        resp = QMessageBox.question(
+            self,
+            "Confirmar eliminación",
+            f"¿Eliminar '{ruta.name}' permanentemente?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if resp != QMessageBox.StandardButton.Yes:
+            return
+        if ruta.is_dir():
+            shutil.rmtree(ruta)
+        else:
+            ruta.unlink(missing_ok=True)
+        if self.archivo_actual == ruta:
+            self.archivo_actual = None
+            self.code_editor.clear()
+            self.lbl_archivo_abierto.setText("Ningún archivo abierto")
+        self._poblar_arbol_archivos()
+        self.lbl_estado.setText(f"🗑️ Eliminado: {ruta.name}")
+
+    def _abrir_en_explorador(self):
+        if not self.modulo_actual:
+            return
+        mod_root = self.modulos_dir / self.modulo_actual
+        if sys.platform.startswith("win"):
+            os.startfile(str(mod_root))
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(mod_root)])
+        else:
+            subprocess.Popen(["xdg-open", str(mod_root)])
 
     # ── Diseñador Visual ──────────────────────────────────────────────────
 
@@ -965,6 +1208,7 @@ class ModuleCreatorDialog(QDialog):
             "        self._init_ui()",
             "",
             "    def _init_ui(self):",
+            '        self.setStyleSheet("QFrame { background: transparent; } QLabel, QCheckBox { color: #f8fafc; }")',
             "        layout = QVBoxLayout(self)",
             "        layout.setContentsMargins(16, 16, 16, 16)",
             "        layout.setSpacing(10)",
@@ -976,9 +1220,10 @@ class ModuleCreatorDialog(QDialog):
             t = it["tipo"]
             if t == "QLabel_title":
                 lines.append(f'        self.{var} = QLabel("{txt}")')
-                lines.append(f'        self.{var}.setStyleSheet("font-size: 18px; font-weight: 700;")')
+                lines.append(f'        self.{var}.setStyleSheet("font-size: 18px; font-weight: 700; color: #ffffff;")')
             elif t == "QLabel":
                 lines.append(f'        self.{var} = QLabel("{txt}")')
+                lines.append(f'        self.{var}.setStyleSheet("font-size: 13px; color: #e2e8f0;")')
             elif t == "QPushButton":
                 lines.append(f'        self.{var} = QPushButton("{txt}")')
             elif t == "QLineEdit":
@@ -1063,3 +1308,4 @@ def abrir_creador_modulos(parent=None, app_ref=None):
     dlg = ModuleCreatorDialog(parent=parent, app_ref=app_ref)
     dlg.exec()
     return dlg
+
