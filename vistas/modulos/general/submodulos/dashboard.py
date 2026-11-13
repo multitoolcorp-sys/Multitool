@@ -971,7 +971,8 @@ class TabInicioGUI(QWidget):
             return
 
         # Comando secreto: 'mode dev' activa el modo desarrollador
-        if query.lower() == "mode dev":
+        cmd = query.lower()
+        if cmd == "mode dev":
             self.ent_search.clear()
             app = getattr(self.context, "app", None) or self.window()
             if hasattr(app, "activar_modo_dev"):
@@ -981,8 +982,41 @@ class TabInicioGUI(QWidget):
                     self, "Modo Programador Activado",
                     "⛏️ ¡MODO PROGRAMADOR ACTIVADO CON ÉXITO!\n\n"
                     "Se ha añadido el botón '⛏️ CONSOLA DEV' en la barra de herramientas superior.\n"
-                    "Haz clic en él o presiona F1 / F12 para abrir la consola con logs y comandos de minijuegos."
+                    "Permanecerá visible incluso al reiniciar la aplicación (usa 'mode dev off' para ocultarlo)."
                 )
+            return
+
+        if cmd == "mode dev off":
+            self.ent_search.clear()
+            app = getattr(self.context, "app", None) or self.window()
+            if hasattr(app, "activar_modo_dev"):
+                app.activar_modo_dev(False)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(self, "Modo Programador", "Se ha ocultado el Modo Programador.")
+            return
+
+        # Comando secreto: 'mode mt' activa el Modo Creador de Módulos
+        if cmd == "mode mt":
+            self.ent_search.clear()
+            app = getattr(self.context, "app", None) or self.window()
+            if hasattr(app, "activar_modo_creador"):
+                app.activar_modo_creador(True)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(
+                    self, "Modo Creador Activado (mode MT)",
+                    "🎨 ¡MODO CREADOR ACTIVADO CON ÉXITO!\n\n"
+                    "Se ha añadido el botón '🎨 CREADOR' en la barra de herramientas superior.\n"
+                    "Permanecerá visible incluso al reiniciar la aplicación (usa 'mode mt off' para ocultarlo)."
+                )
+            return
+
+        if cmd == "mode mt off":
+            self.ent_search.clear()
+            app = getattr(self.context, "app", None) or self.window()
+            if hasattr(app, "activar_modo_creador"):
+                app.activar_modo_creador(False)
+                from PyQt6.QtWidgets import QMessageBox
+                QMessageBox.information(self, "Modo Creador", "Se ha ocultado el Modo Creador.")
             return
 
         app = getattr(self.context, "app", None) or self.window()

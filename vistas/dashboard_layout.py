@@ -1492,6 +1492,32 @@ class DashboardSidebar(QFrame):
             """)
             lay_toolbar.addWidget(btn_tb_con)
 
+        # Modo Creador (mode MT)
+        creator_active = getattr(mw_check, "_creator_mode_activo", False) if mw_check else False
+        if creator_active:
+            def _on_creator_click():
+                mw = self._get_main_window()
+                if mw and hasattr(mw, "abrir_creador_modulos"):
+                    mw.abrir_creador_modulos()
+            btn_tb_cr = _crear_btn_tb("🎨 Modo Creador", "Estudio de creación y compilación de módulos (mode MT)", _on_creator_click)
+            btn_tb_cr.setStyleSheet(f"""
+                QPushButton {{
+                    text-align: left;
+                    background-color: rgba(99, 102, 241, 0.14);
+                    color: {acento};
+                    border: 1px solid rgba(99, 102, 241, 0.35);
+                    border-radius: 4px;
+                    padding-left: 8px;
+                    font-size: 10px;
+                    font-weight: bold;
+                }}
+                QPushButton:hover {{
+                    background-color: {acento};
+                    color: #0A0A0F;
+                }}
+            """)
+            lay_toolbar.addWidget(btn_tb_cr)
+
         def _on_reset_click():
             mw = self._get_main_window()
             if mw and hasattr(mw, "reiniciar_configuracion_modulos_zip"):

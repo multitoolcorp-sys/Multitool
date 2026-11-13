@@ -810,6 +810,13 @@ class BaseAppGUI(QMainWindow):
         self.act_dev_console.setVisible(getattr(self, "_dev_mode_activo", False))
         self.menu_toolbar.addAction(self.act_dev_console)
 
+        # Modo Creador (mode MT) dentro de Toolbar
+        self.act_creator_mode = QAction("🎨 MODO CREADOR", self)
+        self.act_creator_mode.setToolTip("Abrir Estudio Creador de Módulos (mode MT)")
+        self.act_creator_mode.triggered.connect(self.abrir_creador_modulos)
+        self.act_creator_mode.setVisible(getattr(self, "_creator_mode_activo", False))
+        self.menu_toolbar.addAction(self.act_creator_mode)
+
         self.menu_toolbar.addSeparator()
         act_reset_zip = self.menu_toolbar.addAction("🔄 Reiniciar Configuración (Backup .ZIP)...", self.reiniciar_configuracion_modulos_zip)
         self.menu_toolbar.addSeparator()
@@ -833,6 +840,12 @@ class BaseAppGUI(QMainWindow):
         self.act_bar_console.triggered.connect(self._toggle_console)
         self.act_bar_console.setVisible(getattr(self, "_dev_mode_activo", False))
         menubar.addAction(self.act_bar_console)
+
+        self.act_bar_creator = QAction("🎨 CREADOR", self)
+        self.act_bar_creator.setToolTip("Abrir Estudio Creador de Módulos (mode MT)")
+        self.act_bar_creator.triggered.connect(self.abrir_creador_modulos)
+        self.act_bar_creator.setVisible(getattr(self, "_creator_mode_activo", False))
+        menubar.addAction(self.act_bar_creator)
     def reiniciar_configuracion_modulos_zip(self):
         """Reinicia la configuración de módulos a fábrica generando un backup comprimido en .zip."""
         resp = QMessageBox.question(
@@ -871,8 +884,8 @@ class BaseAppGUI(QMainWindow):
             QMessageBox.critical(self, "Error al Reiniciar", f"Ocurrió un error durante el reinicio: {zip_path}")
 
 
-    def activar_modo_dev(self, activar=True):
-        """Activa o desactiva el modo desarrollador y muestra/oculta el botón en la barra superior."""
+    def activar_modo_dev(self, activar=True, guardar=True):
+        """Activa o desactiva el modo desarrollador y persiste el estado en config.json."""
         self._dev_mode_activo = bool(activar)
         if hasattr(self, "act_dev_console") and self.act_dev_console:
             self.act_dev_console.setVisible(self._dev_mode_activo)
@@ -880,7 +893,36 @@ class BaseAppGUI(QMainWindow):
             self.act_bar_console.setVisible(self._dev_mode_activo)
         if hasattr(self, "sidebar") and self.sidebar:
             self.sidebar.renderizar_arbol()
+        if guardar and hasattr(self, "config") and isinstance(self.config, dict):
+            self.config["dev_mode_activo"] = self._dev_mode_activo
+            if hasattr(self, "guardar_configuracion"):
+                self.guardar_configuracion()
         return self._dev_mode_activo
+
+    def activar_modo_creador(self, activar=True, guardar=True):
+        """Activa o desactiva el Modo Creador (mode MT) y persiste el estado en config.json."""
+        self._creator_mode_activo = bool(activar)
+        if hasattr(self, "act_creator_mode") and self.act_creator_mode:
+            self.act_creator_mode.setVisible(self._creator_mode_activo)
+        if hasattr(self, "act_bar_creator") and self.act_bar_creator:
+            self.act_bar_creator.setVisible(self._creator_mode_activo)
+        if hasattr(self, "sidebar") and self.sidebar:
+            self.sidebar.renderizar_arbol()
+        if guardar and hasattr(self, "config") and isinstance(self.config, dict):
+            self.config["creator_mode_activo"] = self._creator_mode_activo
+            if hasattr(self, "guardar_configuracion"):
+                self.guardar_configuracion()
+        return self._creator_mode_activo
+
+    def abrir_creador_modulos(self):
+        """Abre el estudio Modo Creador de Módulos (mode MT)."""
+        from vistas.utils.creador_modulos import abrir_creador_modulos
+        abrir_creador_modulos(parent=self, app_ref=self)
+
+    def abrir_compilador_modulos_usuario(self, modulo_preseleccionado=None):
+        """Abre el empaquetador de módulos (.mtu) para usuarios."""
+        from vistas.utils.compilar_modulo import abrir_compilador_modulos
+        abrir_compilador_modulos(parent=self, modulo_preseleccionado=modulo_preseleccionado)
 
     def crear_btn_aclaraciones(self):
         """Genera el botón de aviso con estilo destacado"""

@@ -159,6 +159,12 @@ class AppMultitareasGUI(BaseAppGUI):
         # Inicializa UI base PyQt6 (crea la ventana, notebook, etc.)
         super().__init__(usuario, colores=colores_tema)
 
+        # Restaurar modos persistentes (mode dev y mode MT)
+        if self.config.get("dev_mode_activo", False):
+            self.activar_modo_dev(True, guardar=False)
+        if self.config.get("creator_mode_activo", False):
+            self.activar_modo_creador(True, guardar=False)
+
         # Aplicar modo de vista guardado (clasico o dashboard)
         modo_vista_guardado = self.config.get('modo_vista', 'clasico')
         self._aplicar_modo_vista(modo_vista_guardado)
