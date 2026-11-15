@@ -11,7 +11,11 @@ WIDGET_PALETTE = [
     ("Área Texto", "QTextEdit", "📄 Área Texto", 280, 90),
     ("Lista", "QComboBox", "🔽 Lista", 190, 30),
     ("Casilla", "QCheckBox", "☑️ Casilla", 180, 26),
-    ("Progreso", "QProgressBar", "📊 Progreso", 240, 22),
+    ("Número", "QSpinBox", "🔢 Número", 120, 30),
+    ("Deslizador", "QSlider", "🎚️ Deslizador", 200, 26),
+    ("Tabla", "QTableWidget", "📊 Tabla", 340, 150),
+    ("Grupo", "QGroupBox", "🗂️ Grupo", 300, 140),
+    ("Progreso", "QProgressBar", "📶 Progreso", 240, 22),
     ("Submódulo", "SubmoduleSlot", "🧩 Contenedor Submódulo", 300, 140),
 ]
 

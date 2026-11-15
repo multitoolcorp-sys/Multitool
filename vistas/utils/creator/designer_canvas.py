@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Paleta Drag & Drop y Lienzo Visual interactivo para el Modo Creador."""
+"""Paleta Drag & Drop y Lienzo Visual interactivo con guías inteligentes de alineación."""
 
 import json
 
@@ -9,12 +9,16 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QFrame,
+    QGroupBox,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QSlider,
+    QSpinBox,
+    QTableWidget,
     QTextEdit,
     QVBoxLayout,
 )
@@ -56,15 +60,16 @@ class PaletteDragList(QListWidget):
 
 
 class CanvasWidgetItem(QFrame):
-    """Wrapper arrastrable y redimensionable sobre el lienzo visual sin autodestruirse en press."""
+    """Wrapper arrastrable y redimensionable sobre el lienzo visual."""
 
     selected = pyqtSignal(int)
     geometryChangedCustom = pyqtSignal(int, int, int, int, int)
 
-    def __init__(self, idx: int, spec: dict, is_selected: bool, parent=None):
-        super().__init__(parent)
+    def __init__(self, idx: int, spec: dict, is_selected: bool, canvas_ref=None):
+        super().__init__(canvas_ref)
         self.idx = idx
         self.spec = spec
+        self.canvas_ref = canvas_ref
         self.is_selected = is_selected
         self._drag_start: QPoint | None = None
         self._resizing = False
@@ -79,47 +84,65 @@ class CanvasWidgetItem(QFrame):
 
         t = spec["tipo"]
         txt = spec.get("texto", "")
+        fg = spec.get("fg_color") or "#ffffff"
+        bg = spec.get("bg_color") or ""
+
         if t == "QLabel_title":
             w = QLabel(txt)
-            w.setStyleSheet("font-size: 15px; font-weight: 700; color: #ffffff; border: none; background: transparent;")
+            w.setStyleSheet(f"font-size: 15px; font-weight: 700; color: {fg}; border: none; background: transparent;")
         elif t == "QLabel":
             w = QLabel(txt)
-            w.setStyleSheet("font-size: 12px; color: #f1f5f9; border: none; background: transparent;")
+            w.setStyleSheet(f"font-size: 12px; color: {fg}; border: none; background: transparent;")
         elif t == "QPushButton":
             w = QPushButton(txt)
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-            w.setStyleSheet("background: #4f46e5; color: #ffffff; border-radius: 5px; font-size: 11px; padding: 4px;")
+            w.setStyleSheet(f"background: {bg or '#4f46e5'}; color: {fg}; border-radius: 5px; font-size: 11px; padding: 4px;")
         elif t == "QLineEdit":
             w = QLineEdit(txt)
             w.setPlaceholderText(spec.get("placeholder", ""))
-            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e; border-radius: 4px; padding: 3px;")
+            w.setStyleSheet(f"background: {bg or '#181b28'}; color: {fg}; border: 1px solid #38405e; border-radius: 4px; padding: 3px;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QTextEdit":
             w = QTextEdit(txt)
-            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e; border-radius: 4px;")
+            w.setStyleSheet(f"background: {bg or '#181b28'}; color: {fg}; border: 1px solid #38405e; border-radius: 4px;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QComboBox":
             w = QComboBox()
             w.addItems([txt or "Opción 1", "Opción 2"])
-            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e;")
+            w.setStyleSheet(f"background: {bg or '#181b28'}; color: {fg}; border: 1px solid #38405e;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QCheckBox":
             w = QCheckBox(txt)
-            w.setStyleSheet("color: #ffffff;")
+            w.setStyleSheet(f"color: {fg};")
+            w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        elif t == "QSpinBox":
+            w = QSpinBox()
+            w.setStyleSheet(f"background: {bg or '#181b28'}; color: {fg}; border: 1px solid #38405e;")
+            w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        elif t == "QSlider":
+            w = QSlider(Qt.Orientation.Horizontal)
+            w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        elif t == "QTableWidget":
+            w = QTableWidget(2, 3)
+            w.setStyleSheet(f"background: {bg or '#181b28'}; color: {fg}; gridline-color: #2e344d;")
+            w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        elif t == "QGroupBox":
+            w = QGroupBox(txt or "Grupo")
+            w.setStyleSheet(f"color: {fg}; border: 1px solid #38405e; border-radius: 5px;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QProgressBar":
             w = QProgressBar()
             w.setValue(50)
-            w.setStyleSheet("color: #ffffff;")
+            w.setStyleSheet(f"color: {fg};")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "SubmoduleSlot":
             target = spec.get("target_sub", "Sin asignar")
             w = QLabel(f"🧩 Submódulo: {target}\n({txt})")
             w.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            w.setStyleSheet("color: #c7d2fe; font-size: 11px; font-weight: 600; border: none; background: transparent;")
+            w.setStyleSheet(f"color: {fg}; font-size: 11px; font-weight: 600; border: none; background: transparent;")
         else:
             w = QLabel(txt)
-            w.setStyleSheet("color: #ffffff;")
+            w.setStyleSheet(f"color: {fg};")
         lay.addWidget(w)
 
         self.handle = QFrame(self)
@@ -165,19 +188,23 @@ class CanvasWidgetItem(QFrame):
         else:
             nx = max(0, round((self._orig_geo.x() + delta.x()) / 8) * 8)
             ny = max(0, round((self._orig_geo.y() + delta.y()) / 8) * 8)
+            if self.canvas_ref:
+                nx, ny = self.canvas_ref.compute_snap_guides(self.idx, nx, ny, self.width(), self.height())
             self.move(nx, ny)
         event.accept()
 
     def mouseReleaseEvent(self, event):
         if self._drag_start is not None:
             self._drag_start = None
+            if self.canvas_ref:
+                self.canvas_ref.clear_guides()
             g = self.geometry()
             self.geometryChangedCustom.emit(self.idx, g.x(), g.y(), g.width(), g.height())
             event.accept()
 
 
 class DesignCanvas(QFrame):
-    """Lienzo interactivo con cuadrícula y soporte Drag & Drop desde la paleta."""
+    """Lienzo interactivo con cuadrícula, Drag & Drop y guías inteligentes de alineación."""
 
     widgetDropped = pyqtSignal(str, str, int, int, int, int)
     widgetSelected = pyqtSignal(int)
@@ -189,6 +216,35 @@ class DesignCanvas(QFrame):
         self.setMinimumSize(520, 380)
         self.setStyleSheet("DesignCanvas { background-color: #0e1018; border: 1px solid #2e344d; border-radius: 6px; }")
         self._items_widgets: list[CanvasWidgetItem] = []
+        self._guide_x: int | None = None
+        self._guide_y: int | None = None
+
+    def compute_snap_guides(self, active_idx: int, nx: int, ny: int, w: int, h: int) -> tuple[int, int]:
+        """Calcula snap a ±6px respecto a bordes/centros de otros widgets y activa guías visuales."""
+        gx, gy = None, None
+        cx = nx + w // 2
+        cy = ny + h // 2
+        for i, cw in enumerate(self._items_widgets):
+            if i == active_idx:
+                continue
+            og = cw.geometry()
+            if abs(nx - og.x()) <= 6:
+                nx, gx = og.x(), og.x()
+            elif abs(cx - og.center().x()) <= 6:
+                nx, gx = og.center().x() - w // 2, og.center().x()
+            if abs(ny - og.y()) <= 6:
+                ny, gy = og.y(), og.y()
+            elif abs(cy - og.center().y()) <= 6:
+                ny, gy = og.center().y() - h // 2, og.center().y()
+        self._guide_x, self._guide_y = gx, gy
+        self.update()
+        return max(0, nx), max(0, ny)
+
+    def clear_guides(self):
+        if self._guide_x is not None or self._guide_y is not None:
+            self._guide_x = None
+            self._guide_y = None
+            self.update()
 
     def paintEvent(self, event):
         super().paintEvent(event)
@@ -201,6 +257,17 @@ class DesignCanvas(QFrame):
             painter.drawLine(x, 0, x, self.height())
         for y in range(0, self.height(), step):
             painter.drawLine(0, y, self.width(), y)
+
+        # Guías inteligentes cian
+        if self._guide_x is not None or self._guide_y is not None:
+            gpen = QPen(QColor("#22d3ee"))
+            gpen.setStyle(Qt.PenStyle.DashLine)
+            gpen.setWidth(1)
+            painter.setPen(gpen)
+            if self._guide_x is not None:
+                painter.drawLine(self._guide_x, 0, self._guide_x, self.height())
+            if self._guide_y is not None:
+                painter.drawLine(0, self._guide_y, self.width(), self._guide_y)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasText():
@@ -225,7 +292,6 @@ class DesignCanvas(QFrame):
             pass
 
     def update_selection_only(self, selected_idx: int):
-        """Actualiza el resaltado de selección sin destruir los widgets activos."""
         for i, cw in enumerate(self._items_widgets):
             cw.set_selected_visual(i == selected_idx)
 

@@ -355,3 +355,4 @@ class ModuleConfigPanel(QScrollArea):
             "✅ Dependencias instaladas correctamente." if ok else "❌ pip finalizó con errores.",
             not ok,
         )
+

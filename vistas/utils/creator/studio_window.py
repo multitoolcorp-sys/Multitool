@@ -2,9 +2,11 @@
 """Ventana principal del Estudio Modo Creador de Módulos (mode MT)."""
 
 import importlib
+import importlib.util
 import json
 import sys
 import traceback
+import zipfile
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -12,6 +14,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -91,6 +94,10 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
         btn_nuevo.clicked.connect(self._crear_nuevo_modulo_dialog)
         tb_lay.addWidget(btn_nuevo)
 
+        btn_imp = QPushButton("📥 Importar .mtu")
+        btn_imp.clicked.connect(self._importar_mtu)
+        tb_lay.addWidget(btn_imp)
+
         self.btn_config = QPushButton("⚙️ Config & Reqs")
         self.btn_config.clicked.connect(self._abrir_pestana_config)
         tb_lay.addWidget(self.btn_config)
@@ -98,6 +105,10 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
         self.btn_guardar = QPushButton("💾 Guardar Todo")
         self.btn_guardar.clicked.connect(self._guardar_todo)
         tb_lay.addWidget(self.btn_guardar)
+
+        self.btn_probar = QPushButton("▶ Probar Vista")
+        self.btn_probar.clicked.connect(self._probar_vista_sandbox)
+        tb_lay.addWidget(self.btn_probar)
 
         self.btn_recargar = QPushButton("🔄 Hot-Reload")
         self.btn_recargar.clicked.connect(self._recargar_en_app)
@@ -287,7 +298,7 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
                     pass
 
     def _set_acciones_habilitadas(self, habilitado: bool):
-        for b in [self.btn_config, self.btn_guardar, self.btn_recargar, self.btn_compilar, *self.tree_action_btns]:
+        for b in [self.btn_config, self.btn_guardar, self.btn_probar, self.btn_recargar, self.btn_compilar, *self.tree_action_btns]:
             b.setEnabled(habilitado)
 
     def _confirmar_cambios_pendientes(self) -> bool:
@@ -594,6 +605,109 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
     def _abrir_compilador(self):
         self._guardar_todo()
         abrir_compilador_modulos(parent=self, modulo_preseleccionado=self.modulo_actual)
+
+    def _probar_vista_sandbox(self):
+        """Ejecuta el submódulo actual en una ventana Sandbox aislada con context simulado."""
+        if not self.modulo_actual:
+            return
+        self._guardar_todo()
+        w = self.open_tabs_widget.currentWidget()
+        if not isinstance(w, FileEditorTab) or not w.is_visual:
+            self._append_output("Selecciona una pestaña Visual (.py) para probar en Sandbox.", True)
+            return
+        try:
+            mod_dir = self.modulos_dir / self.modulo_actual
+            if str(self.raiz) not in sys.path:
+                sys.path.insert(0, str(self.raiz))
+            rel_parts = w.file_path.relative_to(self.raiz).with_suffix("").parts
+            mod_dotted = ".".join(rel_parts)
+            for k in list(sys.modules.keys()):
+                if k.startswith(f"vistas.modulos.{self.modulo_actual}"):
+                    sys.modules.pop(k, None)
+            importlib.invalidate_caches()
+            py_mod = importlib.import_module(mod_dotted)
+
+            target_cls = None
+            cfg_path = mod_dir / "config.json"
+            if cfg_path.exists():
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                rel_fn = w.file_path.relative_to(mod_dir).as_posix()
+                for s in cfg.get("submodulos") or []:
+                    if s.get("file_name") == rel_fn and s.get("class_name"):
+                        target_cls = getattr(py_mod, s["class_name"], None)
+                        break
+            if target_cls is None:
+                from PyQt6.QtWidgets import QWidget as _QW
+                for attr in dir(py_mod):
+                    obj = getattr(py_mod, attr)
+                    if isinstance(obj, type) and issubclass(obj, _QW) and obj.__module__ == py_mod.__name__:
+                        target_cls = obj
+                        break
+            if target_cls is None:
+                self._append_output("No se encontró ninguna clase QWidget/QFrame en el archivo.", True)
+                return
+
+            studio = self
+            class _SandboxLogger:
+                def log(self, level, msg, modulo="Sandbox"):
+                    studio._append_output(f"[{level}] [{modulo}] {msg}")
+            class _SandboxApp:
+                logger = _SandboxLogger()
+                def mostrar_notificacion(self, t, m, tipo="info"):
+                    studio._append_output(f"🔔 Notificación ({tipo}): {t} — {m}")
+                def set_status(self, txt):
+                    studio._append_output(f"📊 Estado: {txt}")
+            class _SandboxCtx:
+                app = _SandboxApp()
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f"▶ Sandbox: {w.file_path.name}")
+            dlg.setStyleSheet("QDialog { background-color: #121218; color: #f8fafc; }")
+            dlg.resize(640, 460)
+            lay = QVBoxLayout(dlg)
+            inst = target_cls(parent=dlg, context=_SandboxCtx())
+            lay.addWidget(inst)
+            self._sandbox_win = dlg
+            dlg.show()
+            self._append_output(f"▶ Sandbox iniciado para {w.file_path.name}")
+        except Exception:
+            self._append_output(traceback.format_exc(), True)
+
+    def _importar_mtu(self):
+        """Extrae un paquete .mtu dentro de vistas/modulos/ para inspeccionarlo o editarlo."""
+        ruta_mtu, _ = QFileDialog.getOpenFileName(
+            self, "Importar Módulo (.mtu)", str(Path.home()), "Paquetes Multitool (*.mtu *.zip)"
+        )
+        if not ruta_mtu:
+            return
+        try:
+            with zipfile.ZipFile(ruta_mtu, "r") as zf:
+                if "manifest.json" not in zf.namelist():
+                    QMessageBox.warning(self, "Paquete inválido", "El archivo .mtu no contiene manifest.json.")
+                    return
+                manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+                mod_id = normalizar_id_modulo(manifest.get("module_id") or Path(ruta_mtu).stem)
+                dest_dir = self.modulos_dir / mod_id
+                if dest_dir.exists():
+                    resp = QMessageBox.question(
+                        self, "Módulo existente",
+                        f"El módulo '{mod_id}' ya existe. ¿Sobrescribir sus archivos?",
+                    )
+                    if resp != QMessageBox.StandardButton.Yes:
+                        return
+                for member in zf.namelist():
+                    if member == "manifest.json" or member.endswith("/"):
+                        continue
+                    rel_target = Path(member)
+                    if ".." in rel_target.parts:
+                        continue
+                    out_file = self.raiz / rel_target if rel_target.parts[:2] == ("vistas", "modulos") else (dest_dir / rel_target)
+                    out_file.parent.mkdir(parents=True, exist_ok=True)
+                    out_file.write_bytes(zf.read(member))
+            self._cargar_lista_modulos(seleccionar=mod_id)
+            self._append_output(f"📥 Paquete '{Path(ruta_mtu).name}' importado en vistas/modulos/{mod_id}.")
+        except Exception:
+            self._append_output(traceback.format_exc(), True)
 
 
 def abrir_creador_modulos(parent=None, app_ref=None):

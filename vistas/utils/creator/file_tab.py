@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Pestaña independiente por archivo abierto en el IDE (como IntelliJ / VS Code).
-- Si el archivo es Visual (submódulo UI / clase PyQt6): ofrece conmutador 🎨 Visual | 💻 Código
-  con sincronización bidireccional en tiempo real (AST <-> Lienzo) y selector de Layout responsivo.
-- Si es Funcionalidad / JSON / TXT: muestra únicamente 💻 Código (+ snippets Multitool si es .py).
+Pestaña independiente por archivo abierto en el IDE:
+- Si es Visual: 🎨 Visual | 💻 Código, Undo/Redo, Alineación, Colores, Conexión Backend y Sync AST.
+- Si es Funcionalidad/Datos: 💻 Código con Snippets, Autocomplete, Linter AST y Buscar/Reemplazar (Ctrl+F).
 """
 
+import copy
 import json
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer, pyqtSignal
+from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
+    QColorDialog,
     QComboBox,
     QFormLayout,
     QFrame,
@@ -25,7 +27,12 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from vistas.utils.creator.ast_sync import LAYOUT_MODES, generate_pyqt_from_design, parse_pyqt_to_design
+from vistas.utils.creator.ast_sync import (
+    LAYOUT_MODES,
+    discover_backend_functions,
+    generate_pyqt_from_design,
+    parse_pyqt_to_design,
+)
 from vistas.utils.creator.code_editor import CodeEditor
 from vistas.utils.creator.designer_canvas import DesignCanvas, PaletteDragList
 from vistas.utils.creator.helpers import MULTITOOL_SNIPPETS, a_pascal_case, normalizar_id_modulo
@@ -47,6 +54,8 @@ class FileEditorTab(QWidget):
         self._selected_idx = 0
         self.layout_mode = "free"
         self.design_items: list[dict] = []
+        self._undo_stack: list[list[dict]] = []
+        self._redo_stack: list[list[dict]] = []
 
         self._code_sync_timer = QTimer(self)
         self._code_sync_timer.setSingleShot(True)
@@ -61,9 +70,8 @@ class FileEditorTab(QWidget):
         root.setContentsMargins(4, 4, 4, 4)
         root.setSpacing(4)
 
-        # Barra superior de la pestaña
         bar = QHBoxLayout()
-        bar.setSpacing(6)
+        bar.setSpacing(5)
 
         if self.is_visual:
             self.btn_mode_visual = QPushButton("🎨 Visual")
@@ -88,6 +96,10 @@ class FileEditorTab(QWidget):
             bar.addWidget(lbl_ro)
 
         bar.addStretch(1)
+        btn_find = QPushButton("🔍 Buscar")
+        btn_find.clicked.connect(self._toggle_search_bar)
+        bar.addWidget(btn_find)
+
         btn_save = QPushButton("💾 Guardar")
         btn_save.setObjectName("Accent")
         btn_save.clicked.connect(self.save_to_disk)
@@ -99,6 +111,11 @@ class FileEditorTab(QWidget):
             self.stack.addWidget(self._build_visual_view())
         self.stack.addWidget(self._build_code_view())
         root.addWidget(self.stack, 1)
+
+        QShortcut(QKeySequence("Ctrl+F"), self).activated.connect(self._toggle_search_bar)
+        if self.is_visual:
+            QShortcut(QKeySequence("Ctrl+Z"), self).activated.connect(self.undo_design)
+            QShortcut(QKeySequence("Ctrl+Y"), self).activated.connect(self.redo_design)
 
     def _build_visual_view(self) -> QWidget:
         w = QWidget()
@@ -130,7 +147,18 @@ class FileEditorTab(QWidget):
         c_lay.setSpacing(4)
 
         top_c = QHBoxLayout()
-        top_c.addWidget(QLabel("Lienzo (arrastra, redimensiona y edita — Sync bidireccional)"))
+        top_c.setSpacing(4)
+        for txt, tip, fn in [
+            ("↩", "Deshacer (Ctrl+Z)", self.undo_design),
+            ("↪", "Rehacer (Ctrl+Y)", self.redo_design),
+            ("◧ Izq", "Alinear todos a X del seleccionado", lambda: self._align_all("x")),
+            ("◫ Centrar", "Centrar horizontalmente en el lienzo", lambda: self._align_all("center")),
+            ("↔ Ancho", "Igualar ancho al seleccionado", lambda: self._align_all("width")),
+        ]:
+            b = QPushButton(txt)
+            b.setToolTip(tip)
+            b.clicked.connect(fn)
+            top_c.addWidget(b)
         top_c.addStretch(1)
         btn_del = QPushButton("🗑 Quitar")
         btn_del.clicked.connect(self._remove_selected_widget)
@@ -149,8 +177,8 @@ class FileEditorTab(QWidget):
 
         insp_frame = QFrame()
         insp_frame.setObjectName("Panel")
-        insp_frame.setMinimumWidth(175)
-        insp_frame.setMaximumWidth(215)
+        insp_frame.setMinimumWidth(180)
+        insp_frame.setMaximumWidth(220)
         insp = QFormLayout(insp_frame)
         insp.setContentsMargins(6, 6, 6, 6)
         insp.setSpacing(4)
@@ -167,6 +195,14 @@ class FileEditorTab(QWidget):
         self.spn_h = QSpinBox(); self.spn_h.setRange(16, 2000); self.spn_h.valueChanged.connect(self._on_geo_spin)
         self.cmb_action = QComboBox(); self.cmb_action.currentTextChanged.connect(self._on_prop_edited)
 
+        row_col = QHBoxLayout()
+        btn_fg = QPushButton("Texto 🎨")
+        btn_fg.clicked.connect(lambda: self._pick_color("fg_color"))
+        btn_bg = QPushButton("Fondo 🎨")
+        btn_bg.clicked.connect(lambda: self._pick_color("bg_color"))
+        row_col.addWidget(btn_fg)
+        row_col.addWidget(btn_bg)
+
         insp.addRow("Var:", self.ent_var)
         insp.addRow("Texto:", self.ent_texto)
         insp.addRow("Hint:", self.ent_hint)
@@ -175,6 +211,7 @@ class FileEditorTab(QWidget):
         insp.addRow("Ancho:", self.spn_w)
         insp.addRow("Alto:", self.spn_h)
         insp.addRow("Acción:", self.cmb_action)
+        insp.addRow("Color:", row_col)
         lay.addWidget(insp_frame)
         return w
 
@@ -197,11 +234,59 @@ class FileEditorTab(QWidget):
             sb.addStretch(1)
             lay.addLayout(sb)
 
+        # Barra Buscar / Reemplazar (oculta por defecto)
+        self.search_bar = QFrame()
+        self.search_bar.setObjectName("Panel")
+        self.search_bar.setVisible(False)
+        s_lay = QHBoxLayout(self.search_bar)
+        s_lay.setContentsMargins(6, 4, 6, 4)
+        self.ent_find = QLineEdit(); self.ent_find.setPlaceholderText("Buscar...")
+        self.ent_replace = QLineEdit(); self.ent_replace.setPlaceholderText("Reemplazar por...")
+        btn_next = QPushButton("Siguiente")
+        btn_next.clicked.connect(self._find_next)
+        btn_rep = QPushButton("Reemplazar")
+        btn_rep.clicked.connect(self._replace_one)
+        btn_cls = QPushButton("✕")
+        btn_cls.clicked.connect(lambda: self.search_bar.setVisible(False))
+        s_lay.addWidget(self.ent_find)
+        s_lay.addWidget(self.ent_replace)
+        s_lay.addWidget(btn_next)
+        s_lay.addWidget(btn_rep)
+        s_lay.addWidget(btn_cls)
+        lay.addWidget(self.search_bar)
+
         self.code_editor = CodeEditor()
         self.code_editor.highlighter.set_mode("json" if self.file_path.suffix.lower() == ".json" else "python")
         self.code_editor.textChanged.connect(self._on_code_text_changed)
+        self.code_editor.syntaxErrorDetected.connect(self._on_syntax_lint)
         lay.addWidget(self.code_editor, 1)
         return w
+
+    def _toggle_search_bar(self):
+        if self.is_visual and self.stack.currentIndex() == 0:
+            self._switch_mode(1)
+        vis = not self.search_bar.isVisible()
+        self.search_bar.setVisible(vis)
+        if vis:
+            self.ent_find.setFocus()
+
+    def _find_next(self):
+        q = self.ent_find.text()
+        if q and not self.code_editor.find(q):
+            tc = self.code_editor.textCursor()
+            tc.movePosition(tc.MoveOperation.Start)
+            self.code_editor.setTextCursor(tc)
+            self.code_editor.find(q)
+
+    def _replace_one(self):
+        tc = self.code_editor.textCursor()
+        if tc.hasSelection() and tc.selectedText() == self.ent_find.text():
+            tc.insertText(self.ent_replace.text())
+        self._find_next()
+
+    def _on_syntax_lint(self, err_msg: str):
+        if err_msg:
+            self.statusMessage.emit(f"⚠️ Sintaxis: {err_msg}")
 
     def _switch_mode(self, idx: int):
         if not self.is_visual:
@@ -211,6 +296,60 @@ class FileEditorTab(QWidget):
         if idx == 0:
             self._sync_code_to_visual()
         self.stack.setCurrentIndex(idx)
+
+    def _push_undo(self):
+        self._undo_stack.append(copy.deepcopy(self.design_items))
+        if len(self._undo_stack) > 40:
+            self._undo_stack.pop(0)
+        self._redo_stack.clear()
+
+    def undo_design(self):
+        if not self.is_visual or not self._undo_stack:
+            return
+        self._redo_stack.append(copy.deepcopy(self.design_items))
+        self.design_items = self._undo_stack.pop()
+        self._selected_idx = min(self._selected_idx, len(self.design_items) - 1)
+        self.canvas.render_items(self.design_items, self._selected_idx)
+        self._load_inspector(self._selected_idx)
+        self._sync_visual_to_code()
+
+    def redo_design(self):
+        if not self.is_visual or not self._redo_stack:
+            return
+        self._undo_stack.append(copy.deepcopy(self.design_items))
+        self.design_items = self._redo_stack.pop()
+        self._selected_idx = min(self._selected_idx, len(self.design_items) - 1)
+        self.canvas.render_items(self.design_items, self._selected_idx)
+        self._load_inspector(self._selected_idx)
+        self._sync_visual_to_code()
+
+    def _align_all(self, mode: str):
+        if not self.design_items or not (0 <= self._selected_idx < len(self.design_items)):
+            return
+        self._push_undo()
+        ref = self.design_items[self._selected_idx]
+        if mode == "x":
+            for it in self.design_items:
+                it["x"] = ref["x"]
+        elif mode == "width":
+            for it in self.design_items:
+                it["w"] = ref["w"]
+        elif mode == "center":
+            cw = max(520, self.canvas.width())
+            ref["x"] = max(0, (cw - ref["w"]) // 2)
+        self.canvas.render_items(self.design_items, self._selected_idx)
+        self._load_inspector(self._selected_idx)
+        self._sync_visual_to_code()
+
+    def _pick_color(self, key: str):
+        if not (0 <= self._selected_idx < len(self.design_items)):
+            return
+        col = QColorDialog.getColor(parent=self, title="Seleccionar Color")
+        if col.isValid():
+            self._push_undo()
+            self.design_items[self._selected_idx][key] = col.name()
+            self.canvas.render_items(self.design_items, self._selected_idx)
+            self._sync_visual_to_code()
 
     def load_from_disk(self):
         if not self.file_path.exists():
@@ -250,6 +389,8 @@ class FileEditorTab(QWidget):
         self.cmb_action.clear()
         self.cmb_action.addItem("")
         self.cmb_action.addItem("notificacion:info")
+        for fn in discover_backend_functions(self.mod_dir):
+            self.cmb_action.addItem(fn)
         cfg_path = self.mod_dir / "config.json"
         if cfg_path.exists():
             try:
@@ -298,20 +439,27 @@ class FileEditorTab(QWidget):
                         break
             except Exception:
                 pass
-        code = generate_pyqt_from_design(self.design_items, clase, self.mod_dir.name, self.layout_mode)
+        code = generate_pyqt_from_design(
+            self.design_items,
+            clase,
+            self.mod_dir.name,
+            self.layout_mode,
+            existing_code=self.code_editor.toPlainText(),
+        )
         self._blocking = True
         self.code_editor.setPlainText(code)
         self._blocking = False
         self._set_dirty(True)
-        self.statusMessage.emit("● Visual -> Código sincronizado")
+        self.statusMessage.emit("● Visual -> Código sincronizado (métodos propios preservados)")
 
     def _add_widget(self, tipo: str, label: str, x: int = 16, y: int = 16, w: int = 180, h: int = 32):
+        self._push_undo()
         idx = len(self.design_items) + 1
         var = f"{tipo.lower().replace('q', '')}_{idx}"
         self.design_items.append({
             "tipo": tipo, "var": var, "texto": f"{label} {idx}",
             "placeholder": "Escribe aquí..." if tipo == "QLineEdit" else "",
-            "x": x, "y": y, "w": w, "h": h, "target_sub": "",
+            "x": x, "y": y, "w": w, "h": h, "target_sub": "", "fg_color": "", "bg_color": "",
         })
         self._selected_idx = len(self.design_items) - 1
         self.canvas.render_items(self.design_items, self._selected_idx)
@@ -325,6 +473,7 @@ class FileEditorTab(QWidget):
 
     def _on_widget_moved_resized(self, idx: int, x: int, y: int, w: int, h: int):
         if 0 <= idx < len(self.design_items):
+            self._push_undo()
             self.design_items[idx].update({"x": x, "y": y, "w": w, "h": h})
             self._load_inspector(idx)
             self._sync_visual_to_code()
@@ -347,6 +496,7 @@ class FileEditorTab(QWidget):
     def _on_prop_edited(self):
         if self._blocking or not (0 <= self._selected_idx < len(self.design_items)):
             return
+        self._push_undo()
         it = self.design_items[self._selected_idx]
         it["var"] = normalizar_id_modulo(self.ent_var.text() or it["var"])
         it["texto"] = self.ent_texto.text()
@@ -358,6 +508,7 @@ class FileEditorTab(QWidget):
     def _on_geo_spin(self):
         if self._blocking or not (0 <= self._selected_idx < len(self.design_items)):
             return
+        self._push_undo()
         self.design_items[self._selected_idx].update({
             "x": self.spn_x.value(), "y": self.spn_y.value(),
             "w": self.spn_w.value(), "h": self.spn_h.value(),
@@ -373,6 +524,7 @@ class FileEditorTab(QWidget):
 
     def _remove_selected_widget(self):
         if 0 <= self._selected_idx < len(self.design_items):
+            self._push_undo()
             self.design_items.pop(self._selected_idx)
             self._selected_idx = max(-1, min(self._selected_idx, len(self.design_items) - 1))
             self.canvas.render_items(self.design_items, self._selected_idx)

@@ -1,11 +1,31 @@
 # -*- coding: utf-8 -*-
-"""Editor de código con números de línea y resaltado de sintaxis Python/JSON."""
+"""Editor de código con números de línea, resaltado, autocompletado, linter AST y Ctrl+F."""
 
+import ast
 import re
 
-from PyQt6.QtCore import QRect, QSize, Qt
-from PyQt6.QtGui import QColor, QFont, QPainter, QSyntaxHighlighter, QTextCharFormat, QTextFormat
-from PyQt6.QtWidgets import QPlainTextEdit, QTextEdit, QWidget
+from PyQt6.QtCore import QRect, QSize, QStringListModel, Qt, pyqtSignal
+from PyQt6.QtGui import (
+    QColor,
+    QFont,
+    QPainter,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+    QTextCursor,
+    QTextFormat,
+)
+from PyQt6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QWidget
+
+AUTOCOMPLETE_WORDS = [
+    "QLabel", "QPushButton", "QLineEdit", "QTextEdit", "QComboBox", "QCheckBox",
+    "QProgressBar", "QSpinBox", "QSlider", "QTableWidget", "QGroupBox", "QFrame",
+    "QVBoxLayout", "QHBoxLayout", "QGridLayout", "QMessageBox", "QThread", "pyqtSignal",
+    "self.context", "mostrar_notificacion", "set_status", "logger.log",
+    "setGeometry", "setPlaceholderText", "setStyleSheet", "clicked.connect",
+    "addWidget", "addItems", "def ", "class ", "import ", "from ", "return ",
+]
+
+AUTO_CLOSE_PAIRS = {"(": ")", "[": "]", "{": "}", '"': '"', "'": "'"}
 
 
 class CodeHighlighter(QSyntaxHighlighter):
@@ -76,7 +96,9 @@ class _LineNumberArea(QWidget):
 
 
 class CodeEditor(QPlainTextEdit):
-    """Editor monoespaciado compacto con números de línea y resaltado."""
+    """Editor monoespaciado IDE con números de línea, autocompletado, auto-cierre y linter AST."""
+
+    syntaxErrorDetected = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,13 +106,76 @@ class CodeEditor(QPlainTextEdit):
         self.setTabStopDistance(self.fontMetrics().horizontalAdvance(" ") * 4)
         self.line_number_area = _LineNumberArea(self)
         self.highlighter = CodeHighlighter(self.document(), "python")
+        self._error_line: int | None = None
+
+        self._completer = QCompleter(self)
+        self._completer.setWidget(self)
+        self._completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self._completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self._completer.setModel(QStringListModel(AUTOCOMPLETE_WORDS, self._completer))
+        self._completer.activated.connect(self._insert_completion)
+        self._completer.popup().setStyleSheet(
+            "background-color: #181b28; color: #f8fafc; border: 1px solid #4f46e5;"
+        )
 
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
-        self.cursorPositionChanged.connect(self.highlight_current_line)
+        self.cursorPositionChanged.connect(self._refresh_selections)
+        self.textChanged.connect(self._check_syntax_live)
 
         self.update_line_number_area_width(0)
-        self.highlight_current_line()
+        self._refresh_selections()
+
+    def _insert_completion(self, completion: str):
+        tc = self.textCursor()
+        tc.select(QTextCursor.SelectionType.WordUnderCursor)
+        tc.insertText(completion)
+        self.setTextCursor(tc)
+
+    def _word_under_cursor(self) -> str:
+        tc = self.textCursor()
+        tc.select(QTextCursor.SelectionType.WordUnderCursor)
+        return tc.selectedText()
+
+    def keyPressEvent(self, event):
+        if self._completer.popup().isVisible():
+            if event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return, Qt.Key.Key_Escape, Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+                event.ignore()
+                return
+
+        ch = event.text()
+        if ch in AUTO_CLOSE_PAIRS and not event.modifiers():
+            super().keyPressEvent(event)
+            tc = self.textCursor()
+            tc.insertText(AUTO_CLOSE_PAIRS[ch])
+            tc.movePosition(QTextCursor.MoveOperation.Left)
+            self.setTextCursor(tc)
+            return
+
+        super().keyPressEvent(event)
+        if self.highlighter.mode == "python":
+            prefix = self._word_under_cursor()
+            if len(prefix) >= 2:
+                self._completer.setCompletionPrefix(prefix)
+                cr = self.cursorRect()
+                cr.setWidth(self._completer.popup().sizeHintForColumn(0) + 24)
+                self._completer.complete(cr)
+            else:
+                self._completer.popup().hide()
+
+    def _check_syntax_live(self):
+        if self.highlighter.mode != "python":
+            self._error_line = None
+            self._refresh_selections()
+            return
+        try:
+            ast.parse(self.toPlainText())
+            self._error_line = None
+            self.syntaxErrorDetected.emit("")
+        except SyntaxError as se:
+            self._error_line = se.lineno
+            self.syntaxErrorDetected.emit(f"Línea {se.lineno}: {se.msg}")
+        self._refresh_selections()
 
     def line_number_area_width(self) -> int:
         digits = max(2, len(str(max(1, self.blockCount()))))
@@ -112,7 +197,7 @@ class CodeEditor(QPlainTextEdit):
         cr = self.contentsRect()
         self.line_number_area.setGeometry(QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height()))
 
-    def highlight_current_line(self):
+    def _refresh_selections(self):
         extra = []
         if not self.isReadOnly():
             sel = QTextEdit.ExtraSelection()
@@ -121,6 +206,17 @@ class CodeEditor(QPlainTextEdit):
             sel.cursor = self.textCursor()
             sel.cursor.clearSelection()
             extra.append(sel)
+
+        if self._error_line is not None:
+            blk = self.document().findBlockByLineNumber(max(0, self._error_line - 1))
+            if blk.isValid():
+                err_sel = QTextEdit.ExtraSelection()
+                err_sel.format.setBackground(QColor(248, 113, 113, 55))
+                err_sel.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
+                c = QTextCursor(blk)
+                c.clearSelection()
+                err_sel.cursor = c
+                extra.append(err_sel)
         self.setExtraSelections(extra)
 
     def line_number_area_paint_event(self, event):
@@ -133,7 +229,8 @@ class CodeEditor(QPlainTextEdit):
 
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
-                painter.setPen(QColor("#64748b"))
+                is_err = self._error_line == (block_number + 1)
+                painter.setPen(QColor("#f87171") if is_err else QColor("#64748b"))
                 painter.drawText(
                     0, top, self.line_number_area.width() - 5,
                     self.fontMetrics().height(),
@@ -142,4 +239,3 @@ class CodeEditor(QPlainTextEdit):
             block = block.next()
             top = bottom
             bottom = top + round(self.blockBoundingRect(block).height())
-

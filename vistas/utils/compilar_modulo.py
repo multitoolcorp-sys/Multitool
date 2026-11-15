@@ -571,12 +571,49 @@ class ModuleCompilerDialog(QDialog):
         else:
             subprocess.Popen(["xdg-open", str(self.carpeta_salida)])
 
+    def _validar_modulo(self, mod: dict) -> list[str]:
+        """Valida sintaxis Python y rutas/clases declaradas en config.json antes de compilar."""
+        import ast
+        errores = []
+        mod_dir: Path = mod["ruta"]
+        for fp, rel, _sz in mod["archivos"]:
+            if fp.suffix == ".py":
+                try:
+                    compile(fp.read_text(encoding="utf-8", errors="ignore"), str(fp), "exec")
+                except SyntaxError as se:
+                    errores.append(f"SyntaxError en {rel} (línea {se.lineno}): {se.msg}")
+
+        cfg = mod.get("config") or {}
+        for sub in cfg.get("submodulos") or cfg.get("submodules") or []:
+            fn = sub.get("file_name")
+            cls_n = sub.get("class_name")
+            if fn:
+                fp_sub = mod_dir / fn
+                if not fp_sub.exists():
+                    errores.append(f"No existe el submódulo declarado en config.json: {fn}")
+                elif cls_n:
+                    try:
+                        tree = ast.parse(fp_sub.read_text(encoding="utf-8", errors="ignore"))
+                        clases = {n.name for n in tree.body if isinstance(n, ast.ClassDef)}
+                        if cls_n not in clases:
+                            errores.append(f"La clase '{cls_n}' no se encontró en {fn}")
+                    except SyntaxError:
+                        pass
+        return errores
+
     def _iniciar_compilacion(self):
         item = self.lista_modulos.currentItem()
         if not item:
             QMessageBox.warning(self, "Sin selección", "Selecciona un módulo para empaquetar.")
             return
         mod = item.data(Qt.ItemDataRole.UserRole)
+
+        errores = self._validar_modulo(mod)
+        if errores:
+            msg = "Se detectaron errores antes de empaquetar:\n\n• " + "\n• ".join(errores)
+            self.txt_log.setPlainText(msg)
+            QMessageBox.warning(self, "Validación pre-compilación", msg)
+            return
 
         self.btn_compilar.setEnabled(False)
         self.txt_log.clear()
