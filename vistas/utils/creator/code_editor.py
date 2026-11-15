@@ -142,3 +142,4 @@ class CodeEditor(QPlainTextEdit):
             block = block.next()
             top = bottom
             bottom = top + round(self.blockBoundingRect(block).height())
+

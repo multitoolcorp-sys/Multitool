@@ -56,7 +56,7 @@ class PaletteDragList(QListWidget):
 
 
 class CanvasWidgetItem(QFrame):
-    """Wrapper arrastrable y redimensionable sobre el lienzo visual."""
+    """Wrapper arrastrable y redimensionable sobre el lienzo visual sin autodestruirse en press."""
 
     selected = pyqtSignal(int)
     geometryChangedCustom = pyqtSignal(int, int, int, int, int)
@@ -72,9 +72,6 @@ class CanvasWidgetItem(QFrame):
 
         self.setGeometry(spec.get("x", 16), spec.get("y", 16), spec.get("w", 200), spec.get("h", 34))
         self.setCursor(Qt.CursorShape.SizeAllCursor)
-        border = "2px solid #6366f1" if is_selected else "1px dashed #3b4261"
-        bg = "rgba(99, 102, 241, 0.12)" if is_selected else "rgba(30, 34, 51, 0.45)"
-        self.setStyleSheet(f"CanvasWidgetItem {{ border: {border}; background: {bg}; border-radius: 5px; }}")
 
         lay = QVBoxLayout(self)
         lay.setContentsMargins(4, 3, 4, 3)
@@ -87,7 +84,7 @@ class CanvasWidgetItem(QFrame):
             w.setStyleSheet("font-size: 15px; font-weight: 700; color: #ffffff; border: none; background: transparent;")
         elif t == "QLabel":
             w = QLabel(txt)
-            w.setStyleSheet("font-size: 12px; color: #e2e8f0; border: none; background: transparent;")
+            w.setStyleSheet("font-size: 12px; color: #f1f5f9; border: none; background: transparent;")
         elif t == "QPushButton":
             w = QPushButton(txt)
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -95,46 +92,66 @@ class CanvasWidgetItem(QFrame):
         elif t == "QLineEdit":
             w = QLineEdit(txt)
             w.setPlaceholderText(spec.get("placeholder", ""))
+            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e; border-radius: 4px; padding: 3px;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QTextEdit":
             w = QTextEdit(txt)
+            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e; border-radius: 4px;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QComboBox":
             w = QComboBox()
             w.addItems([txt or "Opción 1", "Opción 2"])
+            w.setStyleSheet("background: #181b28; color: #ffffff; border: 1px solid #38405e;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QCheckBox":
             w = QCheckBox(txt)
+            w.setStyleSheet("color: #ffffff;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "QProgressBar":
             w = QProgressBar()
             w.setValue(50)
+            w.setStyleSheet("color: #ffffff;")
             w.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         elif t == "SubmoduleSlot":
             target = spec.get("target_sub", "Sin asignar")
             w = QLabel(f"🧩 Submódulo: {target}\n({txt})")
             w.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            w.setStyleSheet("color: #a5b4fc; font-size: 11px; font-weight: 600; border: none; background: transparent;")
+            w.setStyleSheet("color: #c7d2fe; font-size: 11px; font-weight: 600; border: none; background: transparent;")
         else:
             w = QLabel(txt)
+            w.setStyleSheet("color: #ffffff;")
         lay.addWidget(w)
 
-        if is_selected:
-            self.handle = QFrame(self)
-            self.handle.setFixedSize(10, 10)
-            self.handle.setStyleSheet("background-color: #818cf8; border: 1px solid #ffffff; border-radius: 2px;")
-            self.handle.move(max(0, self.width() - 10), max(0, self.height() - 10))
-            self.handle.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self.handle = QFrame(self)
+        self.handle.setFixedSize(12, 12)
+        self.handle.setStyleSheet("background-color: #818cf8; border: 1px solid #ffffff; border-radius: 2px;")
+        self.handle.setCursor(Qt.CursorShape.SizeFDiagCursor)
+        self.set_selected_visual(is_selected)
+
+    def set_selected_visual(self, selected: bool):
+        self.is_selected = selected
+        border = "2px solid #6366f1" if selected else "1px dashed #3b4261"
+        bg = "rgba(99, 102, 241, 0.14)" if selected else "rgba(30, 34, 51, 0.45)"
+        self.setStyleSheet(f"CanvasWidgetItem {{ border: {border}; background: {bg}; border-radius: 5px; }}")
+        self.handle.setVisible(selected)
+        self.handle.move(max(0, self.width() - 12), max(0, self.height() - 12))
+        if selected:
+            self.raise_()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, "handle"):
+            self.handle.move(max(0, self.width() - 12), max(0, self.height() - 12))
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self.selected.emit(self.idx)
             self._drag_start = event.globalPosition().toPoint()
             self._orig_geo = self.geometry()
             self._resizing = (
-                event.position().x() >= self.width() - 14
-                and event.position().y() >= self.height() - 14
+                event.position().x() >= self.width() - 16
+                and event.position().y() >= self.height() - 16
             )
+            self.selected.emit(self.idx)
             event.accept()
 
     def mouseMoveEvent(self, event):
@@ -142,11 +159,9 @@ class CanvasWidgetItem(QFrame):
             return
         delta = event.globalPosition().toPoint() - self._drag_start
         if self._resizing:
-            nw = max(60, round((self._orig_geo.width() + delta.x()) / 8) * 8)
+            nw = max(48, round((self._orig_geo.width() + delta.x()) / 8) * 8)
             nh = max(24, round((self._orig_geo.height() + delta.y()) / 8) * 8)
             self.resize(nw, nh)
-            if hasattr(self, "handle"):
-                self.handle.move(max(0, nw - 10), max(0, nh - 10))
         else:
             nx = max(0, round((self._orig_geo.x() + delta.x()) / 8) * 8)
             ny = max(0, round((self._orig_geo.y() + delta.y()) / 8) * 8)
@@ -208,6 +223,11 @@ class DesignCanvas(QFrame):
             event.acceptProposedAction()
         except Exception:
             pass
+
+    def update_selection_only(self, selected_idx: int):
+        """Actualiza el resaltado de selección sin destruir los widgets activos."""
+        for i, cw in enumerate(self._items_widgets):
+            cw.set_selected_visual(i == selected_idx)
 
     def render_items(self, specs: list[dict], selected_idx: int):
         for w in self._items_widgets:

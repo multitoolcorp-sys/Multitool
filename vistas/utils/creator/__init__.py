@@ -10,3 +10,4 @@ __all__ = [
     "normalizar_id_modulo",
     "a_pascal_case",
 ]
+

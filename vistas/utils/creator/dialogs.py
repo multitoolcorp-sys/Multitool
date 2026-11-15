@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Diálogos auxiliares y generadores de código PyQt6 para el Modo Creador."""
+"""Diálogos auxiliares y plantillas de inicio para el Modo Creador."""
 
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -11,6 +12,61 @@ from PyQt6.QtWidgets import (
     QRadioButton,
     QVBoxLayout,
 )
+
+from vistas.utils.creator.ast_sync import generate_pyqt_from_design
+
+MODULE_TEMPLATES = {
+    "basico": {
+        "label": "🧩 Módulo Básico (Inicio limpio)",
+        "layout": "free",
+        "items": [
+            {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": "{titulo}", "placeholder": "", "x": 16, "y": 16, "w": 280, "h": 32, "target_sub": ""},
+            {"tipo": "QLabel", "var": "lbl_desc", "texto": "Módulo creado con Modo Creador.", "placeholder": "", "x": 16, "y": 56, "w": 320, "h": 24, "target_sub": ""},
+            {"tipo": "QPushButton", "var": "btn_accion", "texto": "Ejecutar", "placeholder": "", "x": 16, "y": 96, "w": 150, "h": 34, "target_sub": "notificacion:info"},
+        ],
+    },
+    "dashboard": {
+        "label": "📊 Dashboard con Tarjetas y Métricas",
+        "layout": "vbox",
+        "items": [
+            {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": "{titulo} — Panel", "placeholder": "", "x": 16, "y": 16, "w": 320, "h": 32, "target_sub": ""},
+            {"tipo": "QProgressBar", "var": "prg_estado", "texto": "", "placeholder": "", "x": 16, "y": 60, "w": 300, "h": 24, "target_sub": ""},
+            {"tipo": "SubmoduleSlot", "var": "card_resumen", "texto": "Tarjeta de Métricas", "placeholder": "", "x": 16, "y": 96, "w": 320, "h": 120, "target_sub": ""},
+            {"tipo": "QPushButton", "var": "btn_actualizar", "texto": "🔄 Actualizar Datos", "placeholder": "", "x": 16, "y": 230, "w": 180, "h": 34, "target_sub": "notificacion:info"},
+        ],
+    },
+    "terminal": {
+        "label": "💻 Herramienta con Terminal / Logs",
+        "layout": "vbox",
+        "items": [
+            {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": "{titulo} — Consola", "placeholder": "", "x": 16, "y": 16, "w": 300, "h": 32, "target_sub": ""},
+            {"tipo": "QLineEdit", "var": "ent_comando", "texto": "", "placeholder": "Escribe un comando...", "x": 16, "y": 56, "w": 320, "h": 32, "target_sub": ""},
+            {"tipo": "QPushButton", "var": "btn_ejecutar", "texto": "▶ Ejecutar", "placeholder": "", "x": 16, "y": 96, "w": 140, "h": 32, "target_sub": ""},
+            {"tipo": "QTextEdit", "var": "txt_logs", "texto": "Esperando comandos...", "placeholder": "", "x": 16, "y": 140, "w": 420, "h": 180, "target_sub": ""},
+        ],
+    },
+    "formulario": {
+        "label": "📋 Formulario de Entrada + Opciones",
+        "layout": "vbox",
+        "items": [
+            {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": "Formulario: {titulo}", "placeholder": "", "x": 16, "y": 16, "w": 300, "h": 32, "target_sub": ""},
+            {"tipo": "QLineEdit", "var": "ent_nombre", "texto": "", "placeholder": "Nombre...", "x": 16, "y": 56, "w": 260, "h": 32, "target_sub": ""},
+            {"tipo": "QComboBox", "var": "cmb_opcion", "texto": "Opción A", "placeholder": "", "x": 16, "y": 96, "w": 220, "h": 30, "target_sub": ""},
+            {"tipo": "QCheckBox", "var": "chk_activo", "texto": "Activar opción avanzada", "placeholder": "", "x": 16, "y": 134, "w": 220, "h": 26, "target_sub": ""},
+            {"tipo": "QPushButton", "var": "btn_guardar", "texto": "💾 Guardar Registro", "placeholder": "", "x": 16, "y": 170, "w": 170, "h": 34, "target_sub": "notificacion:info"},
+        ],
+    },
+    "servicio": {
+        "label": "⚙️ Servicio en Segundo Plano (QThread)",
+        "layout": "vbox",
+        "items": [
+            {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": "Servicio: {titulo}", "placeholder": "", "x": 16, "y": 16, "w": 300, "h": 32, "target_sub": ""},
+            {"tipo": "QLabel", "var": "lbl_estado", "texto": "Estado: Detenido", "placeholder": "", "x": 16, "y": 56, "w": 240, "h": 24, "target_sub": ""},
+            {"tipo": "QProgressBar", "var": "prg_servicio", "texto": "", "placeholder": "", "x": 16, "y": 88, "w": 300, "h": 22, "target_sub": ""},
+            {"tipo": "QPushButton", "var": "btn_iniciar", "texto": "▶ Iniciar Servicio", "placeholder": "", "x": 16, "y": 122, "w": 160, "h": 34, "target_sub": "notificacion:info"},
+        ],
+    },
+}
 
 
 class NewFileTypeDialog(QDialog):
@@ -36,7 +92,7 @@ class NewFileTypeDialog(QDialog):
 
         self.rb_visual = QRadioButton("🎨 Visual (Submódulo / Pestaña UI — se añade a config.json)")
         self.rb_visual.setChecked(True)
-        self.rb_func = QRadioButton("⚙️ Funcionalidad (Backend / Lógica — con snippets Multitool)")
+        self.rb_func = QRadioButton("⚙️ Funcionalidad (Backend / Lógica — solo modo Código)")
         lay.addWidget(self.rb_visual)
         lay.addWidget(self.rb_func)
 
@@ -57,67 +113,38 @@ class NewFileTypeDialog(QDialog):
         lay.addWidget(btns)
 
 
-def generar_codigo_pyqt(design_items: list[dict], class_name: str, titulo: str) -> str:
-    """Genera código PyQt6 completo a partir de los elementos del lienzo visual."""
-    lines = [
-        "# -*- coding: utf-8 -*-",
-        "from PyQt6.QtWidgets import (",
-        "    QCheckBox, QComboBox, QFrame, QLabel, QLineEdit,",
-        "    QProgressBar, QPushButton, QTextEdit",
-        ")",
-        "",
-        "",
-        f"class {class_name}(QFrame):",
-        f'    """Módulo {titulo} generado con Modo Creador (mode MT)."""',
-        "",
-        "    def __init__(self, parent=None, context=None, **kwargs):",
-        "        super().__init__(parent)",
-        "        self.context = context",
-        "        self._init_ui()",
-        "",
-        "    def _init_ui(self):",
-        '        self.setStyleSheet("QFrame { background: transparent; } QLabel, QCheckBox { color: #f8fafc; }")',
-        "        self.setMinimumSize(560, 400)",
-        "",
-    ]
-    for it in design_items:
-        var = it["var"]
-        txt = it["texto"].replace('"', '\\"')
-        t = it["tipo"]
-        x, y, w, h = it.get("x", 16), it.get("y", 16), it.get("w", 200), it.get("h", 32)
-        target = it.get("target_sub", "")
+class NewModuleTemplateDialog(QDialog):
+    """Diálogo para crear un nuevo módulo eligiendo una plantilla de inicio."""
 
-        if t == "QLabel_title":
-            lines.append(f'        self.{var} = QLabel("{txt}", self)')
-            lines.append(f'        self.{var}.setStyleSheet("font-size: 17px; font-weight: 700; color: #ffffff;")')
-        elif t == "QLabel":
-            lines.append(f'        self.{var} = QLabel("{txt}", self)')
-            lines.append(f'        self.{var}.setStyleSheet("font-size: 12px; color: #e2e8f0;")')
-        elif t == "QPushButton":
-            lines.append(f'        self.{var} = QPushButton("{txt}", self)')
-            if target.startswith("notificacion:"):
-                lines.append(
-                    f'        self.{var}.clicked.connect(lambda: getattr(self.context, "app", None) '
-                    f'and self.context.app.mostrar_notificacion("{txt}", "Acción ejecutada", tipo="info"))'
-                )
-        elif t == "QLineEdit":
-            ph = it.get("placeholder", "").replace('"', '\\"')
-            lines.append(f'        self.{var} = QLineEdit("{txt}", self)')
-            if ph:
-                lines.append(f'        self.{var}.setPlaceholderText("{ph}")')
-        elif t == "QTextEdit":
-            lines.append(f'        self.{var} = QTextEdit("{txt}", self)')
-        elif t == "QComboBox":
-            lines.append(f"        self.{var} = QComboBox(self)")
-            lines.append(f'        self.{var}.addItems(["{txt or "Opción 1"}", "Opción 2"])')
-        elif t == "QCheckBox":
-            lines.append(f'        self.{var} = QCheckBox("{txt}", self)')
-        elif t == "QProgressBar":
-            lines.append(f"        self.{var} = QProgressBar(self)")
-            lines.append(f"        self.{var}.setValue(0)")
-        elif t == "SubmoduleSlot":
-            lines.append(f"        self.{var} = QFrame(self)")
-            lines.append(f'        self.{var}.setStyleSheet("border: 1px dashed #6366f1; border-radius: 6px;")')
-        lines.append(f"        self.{var}.setGeometry({x}, {y}, {w}, {h})")
-        lines.append("")
-    return "\n".join(lines)
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Crear Nuevo Módulo")
+        self.setMinimumWidth(400)
+        self.setStyleSheet("""
+            QDialog, QWidget { background-color: #151824; color: #f8fafc; font-family: 'Segoe UI', sans-serif; }
+            QLabel { color: #f8fafc; }
+            QLineEdit, QComboBox { background-color: #0f111a; color: #f8fafc; border: 1px solid #2e344d; border-radius: 5px; padding: 5px; }
+            QPushButton { background-color: #252a3d; color: #f8fafc; border: 1px solid #38405e; border-radius: 5px; padding: 5px 12px; }
+        """)
+        lay = QFormLayout(self)
+        lay.setSpacing(8)
+
+        self.ent_nombre = QLineEdit()
+        self.ent_nombre.setPlaceholderText("Ej: Gestor Redes")
+        self.ent_icono = QLineEdit("🧩")
+        self.cmb_tpl = QComboBox()
+        for k, tpl in MODULE_TEMPLATES.items():
+            self.cmb_tpl.addItem(tpl["label"], k)
+
+        lay.addRow("Nombre del módulo:", self.ent_nombre)
+        lay.addRow("Icono:", self.ent_icono)
+        lay.addRow("Plantilla inicial:", self.cmb_tpl)
+
+        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        btns.accepted.connect(self.accept)
+        btns.rejected.connect(self.reject)
+        lay.addRow(btns)
+
+
+def generar_codigo_pyqt(design_items: list[dict], class_name: str, titulo: str, layout_mode: str = "free") -> str:
+    return generate_pyqt_from_design(design_items, class_name, titulo, layout_mode)

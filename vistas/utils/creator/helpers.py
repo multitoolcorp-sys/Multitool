@@ -178,3 +178,4 @@ def a_pascal_case(texto: str) -> str:
     if not partes:
         return "TabPrincipal"
     return "".join(p.capitalize() for p in partes)
+

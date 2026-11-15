@@ -12,7 +12,8 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QDialog, QInputDialog, QMenu, QMessageBox, QTreeWidgetItem
 
-from vistas.utils.creator.dialogs import NewFileTypeDialog, generar_codigo_pyqt
+from vistas.utils.creator.ast_sync import generate_pyqt_from_design
+from vistas.utils.creator.dialogs import NewFileTypeDialog
 from vistas.utils.creator.helpers import a_pascal_case, normalizar_id_modulo
 
 
@@ -116,8 +117,12 @@ class CreatorFileManagerMixin:
 
         if dlg.rb_visual.isChecked():
             clase = a_pascal_case(destino.stem)
+            items_base = [
+                {"tipo": "QLabel_title", "var": "lbl_titulo", "texto": dlg.ent_sub_name.text().strip() or destino.stem, "placeholder": "", "x": 16, "y": 16, "w": 280, "h": 32, "target_sub": ""},
+                {"tipo": "QPushButton", "var": "btn_accion", "texto": "Acción", "placeholder": "", "x": 16, "y": 64, "w": 150, "h": 34, "target_sub": "notificacion:info"},
+            ]
             destino.write_text(
-                generar_codigo_pyqt(self.design_items, clase, dlg.ent_sub_name.text().strip()),
+                generate_pyqt_from_design(items_base, clase, dlg.ent_sub_name.text().strip(), "free"),
                 encoding="utf-8",
             )
             cfg_path = mod_dir / "config.json"
@@ -136,12 +141,11 @@ class CreatorFileManagerMixin:
                         "position": len(subs) + 1,
                     })
                     cfg_path.write_text(json.dumps(cfg, indent=4, ensure_ascii=False), encoding="utf-8")
-                    self._cargar_meta_modulo()
+                    self.config_panel.load_module(mod_dir)
                 except Exception:
                     pass
             self._poblar_arbol_archivos()
-            self._abrir_archivo_en_editor(destino)
-            self.tabs_editor.setCurrentIndex(0)
+            self._abrir_archivo_en_editor(destino, force_visual=True)
         else:
             destino.write_text(
                 "# -*- coding: utf-8 -*-\n"
@@ -154,8 +158,7 @@ class CreatorFileManagerMixin:
                 encoding="utf-8",
             )
             self._poblar_arbol_archivos()
-            self._abrir_archivo_en_editor(destino)
-            self.tabs_editor.setCurrentIndex(1)
+            self._abrir_archivo_en_editor(destino, force_visual=False)
 
     def _crear_carpeta_en_modulo(self):
         base_dir = self._obtener_directorio_destino_actual()
@@ -184,8 +187,7 @@ class CreatorFileManagerMixin:
             QMessageBox.warning(self, "Error", f"Ya existe '{destino.name}'.")
             return
         ruta.rename(destino)
-        if self.archivo_actual == ruta:
-            self.archivo_actual = destino
+        self._actualizar_ruta_pestana_abierta(ruta, destino)
         self._poblar_arbol_archivos()
 
     def _mover_item_arbol(self):
@@ -207,8 +209,7 @@ class CreatorFileManagerMixin:
             QMessageBox.warning(self, "Conflicto", f"Ya existe '{ruta.name}' en '{elegida}'.")
             return
         shutil.move(str(ruta), str(destino))
-        if self.archivo_actual == ruta:
-            self.archivo_actual = destino
+        self._actualizar_ruta_pestana_abierta(ruta, destino)
         self._poblar_arbol_archivos()
 
     def _eliminar_item_arbol(self):
@@ -223,9 +224,7 @@ class CreatorFileManagerMixin:
             shutil.rmtree(ruta)
         else:
             ruta.unlink(missing_ok=True)
-        if self.archivo_actual == ruta:
-            self.archivo_actual = None
-            self.code_editor.clear()
+        self._cerrar_pestana_por_ruta(ruta)
         self._poblar_arbol_archivos()
 
     def _abrir_en_explorador(self):
