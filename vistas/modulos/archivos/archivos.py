@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import platform
 import subprocess
 from pathlib import Path
@@ -388,7 +389,7 @@ class TabArchivos(QWidget):
                 subprocess.Popen(["explorer.exe", ruta_str])
             else:
                 try:
-                    os.startfile(ruta_str)
+                    open_path_native(ruta_str)
                 except Exception:
                     subprocess.Popen(["explorer.exe", ruta_str])
         elif system == "Darwin": subprocess.Popen(["open", ruta_str])
@@ -972,7 +973,7 @@ class TabArchivos(QWidget):
                     # Usamos cadena completa en Popen para evitar que python introduzca comillas escapadas incorrectas
                     subprocess.Popen(f'explorer.exe /select,"{ruta.resolve()}"')
                 else:
-                    os.startfile(ruta)
+                    open_path_native(ruta)
             elif system == "Darwin":
                 if destacar:
                     subprocess.Popen(["open", "-R", str(ruta)])

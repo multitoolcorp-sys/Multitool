@@ -54,8 +54,13 @@ def is_desktop_shortcut_present() -> bool:
     return False
 
 def is_autostart_enabled() -> bool:
-    """Verifica si el inicio automático con Windows está activado"""
-    if platform.system() != "Windows":
+    """Verifica si el inicio automático está activado (Windows, Linux o macOS)."""
+    sys_os = platform.system()
+    if sys_os == "Linux":
+        return (Path.home() / ".config" / "autostart" / "multitool.desktop").exists()
+    if sys_os == "Darwin":
+        return (Path.home() / "Library" / "LaunchAgents" / "com.multitool.app.plist").exists()
+    if sys_os != "Windows":
         return False
         
     lnk_file = get_startup_folder() / STARTUP_LINK_NAME
@@ -79,9 +84,51 @@ def is_autostart_enabled() -> bool:
     return False
 
 def toggle_autostart(enable: bool) -> tuple[bool, str]:
-    """Activa o desactiva el inicio automático con Windows"""
-    if platform.system() != "Windows":
-        return False, "La función de inicio automático solo está disponible en sistemas Windows."
+    """Activa o desactiva el inicio automático (Windows, Linux y macOS)."""
+    sys_os = platform.system()
+    target_path = get_executable_path()
+
+    if sys_os == "Linux":
+        desktop_file = Path.home() / ".config" / "autostart" / "multitool.desktop"
+        try:
+            if enable:
+                desktop_file.parent.mkdir(parents=True, exist_ok=True)
+                desktop_file.write_text(
+                    "[Desktop Entry]\nType=Application\nName=MultiTool\n"
+                    f"Exec=\"{target_path}\"\nX-GNOME-Autostart-enabled=true\n",
+                    encoding="utf-8",
+                )
+                return True, "¡Función Activada! MultiTool se iniciará con tu sesión de Linux."
+            if desktop_file.exists():
+                desktop_file.unlink()
+            return True, "Inicio automático en Linux desactivado."
+        except Exception as e:
+            return False, f"Error configurando autostart en Linux: {e}"
+
+    if sys_os == "Darwin":
+        plist = Path.home() / "Library" / "LaunchAgents" / "com.multitool.app.plist"
+        try:
+            if enable:
+                plist.parent.mkdir(parents=True, exist_ok=True)
+                plist.write_text(
+                    '<?xml version="1.0" encoding="UTF-8"?>\n'
+                    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+                    '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                    '<plist version="1.0"><dict>\n'
+                    '<key>Label</key><string>com.multitool.app</string>\n'
+                    f'<key>ProgramArguments</key><array><string>{target_path}</string></array>\n'
+                    '<key>RunAtLoad</key><true/>\n</dict></plist>\n',
+                    encoding="utf-8",
+                )
+                return True, "¡Función Activada! MultiTool se iniciará con macOS."
+            if plist.exists():
+                plist.unlink()
+            return True, "Inicio automático en macOS desactivado."
+        except Exception as e:
+            return False, f"Error configurando autostart en macOS: {e}"
+
+    if sys_os != "Windows":
+        return False, "Sistema operativo no compatible con inicio automático."
 
     startup_dir = get_startup_folder()
     lnk_path = startup_dir / STARTUP_LINK_NAME

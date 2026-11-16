@@ -2,6 +2,7 @@ import sys
 import io
 import re
 import os
+from controlador.utils.platform_compat import open_path_native
 import datetime
 import json
 import shutil
@@ -543,7 +544,7 @@ class SnipperReadingModeDialog(QDialog):
                 if readme and readme.exists():
                     try:
                         if platform.system() == "Windows":
-                            os.startfile(str(readme))
+                            open_path_native(str(readme))
                     except Exception:
                         pass
 
@@ -551,7 +552,7 @@ class SnipperReadingModeDialog(QDialog):
                 if inst and inst.exists():
                     try:
                         if platform.system() == "Windows":
-                            os.startfile(str(inst))
+                            open_path_native(str(inst))
                         else:
                             subprocess.Popen([str(inst)])
                         from PyQt6.QtWidgets import QMessageBox

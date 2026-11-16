@@ -239,6 +239,9 @@ class AppMultitareasGUI(BaseAppGUI):
             for mod in modulos_encontrados:
                 if not is_module_compatible(mod):
                     mod["visible"] = False
+                for sub in mod.get("submodules", []):
+                    if not is_module_compatible(sub):
+                        sub["visible"] = False
 
             self.modulos_cargados = modulos_encontrados
             self.clases_modulos = {}

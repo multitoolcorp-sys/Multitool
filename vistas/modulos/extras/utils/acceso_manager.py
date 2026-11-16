@@ -1,5 +1,6 @@
 import json
 import os
+from controlador.utils.platform_compat import open_path_native
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import QMessageBox
@@ -57,7 +58,7 @@ class AccesosManager:
             # Ejecutar el proceso de forma limpia en Windows
             if os.name == 'nt':
                 # startfile maneja tanto URIs como executables
-                os.startfile(ruta)
+                open_path_native(ruta)
             else:
                 subprocess.Popen([ruta])
             

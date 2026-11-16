@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import platform
 import subprocess
 from pathlib import Path
@@ -176,7 +177,7 @@ class HistorialGrabacionesSubmodule(QWidget):
     def _abrir_carpeta_explorador(self):
         folder = str(self.manager.ruta_grabaciones)
         if os.name == 'nt':
-            os.startfile(folder)
+            open_path_native(folder)
         else:
             subprocess.Popen(["xdg-open", folder])
 
@@ -187,7 +188,7 @@ class HistorialGrabacionesSubmodule(QWidget):
             path = os.path.join(self.manager.ruta_grabaciones, nombre)
             if os.path.exists(path):
                 if os.name == 'nt':
-                    os.startfile(path)
+                    open_path_native(path)
                 else:
                     subprocess.Popen(["xdg-open", path])
 

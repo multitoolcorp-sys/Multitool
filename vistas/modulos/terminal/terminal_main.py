@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import sys
 import platform
 import shutil
@@ -447,7 +448,7 @@ class TabTerminal(QWidget):
         elif chosen == act_open_folder:
             if session and os.path.exists(session.cwd):
                 if platform.system() == "Windows":
-                    os.startfile(session.cwd)
+                    open_path_native(session.cwd)
                 else:
                     import subprocess
                     subprocess.Popen(["xdg-open", session.cwd])

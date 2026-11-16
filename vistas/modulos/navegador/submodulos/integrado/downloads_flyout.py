@@ -4,6 +4,7 @@ Ofrece la experiencia idéntica a Google Chrome / Microsoft Edge con panel flota
 Integrado armónicamente con la paleta de colores y tema de la aplicación.
 """
 import os
+from controlador.utils.platform_compat import open_path_native
 import time
 import subprocess
 from pathlib import Path
@@ -247,7 +248,7 @@ class DownloadItemWidget(QFrame):
     def _abrir_archivo(self, path):
         if path and Path(path).exists():
             try:
-                os.startfile(str(path))
+                open_path_native(str(path))
             except Exception:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
@@ -258,7 +259,7 @@ class DownloadItemWidget(QFrame):
                 subprocess.Popen(["explorer", "/select,", os.path.normpath(str(path))])
             except Exception:
                 try:
-                    os.startfile(str(folder))
+                    open_path_native(str(folder))
                 except Exception:
                     QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
@@ -635,7 +636,7 @@ class DownloadsFlyoutWidget(QFrame):
         dl_dir = Path.home() / "Downloads"
         if dl_dir.exists():
             try:
-                os.startfile(str(dl_dir))
+                open_path_native(str(dl_dir))
             except Exception:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(dl_dir)))
 

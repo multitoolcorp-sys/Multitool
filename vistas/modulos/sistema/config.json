@@ -1,6 +1,6 @@
 {
-    "name": "Sistema",
-    "position": 5,
+    "name": ".extracted_plugins",
+    "position": 10,
     "visible": true,
     "submodulos": [
         {
@@ -35,6 +35,7 @@
             "file_name": "submodulos/tab_startup.py",
             "class_name": "TabStartup",
             "visible": true,
+            "os": ["windows"],
             "icon": "🧩",
             "alias": "inicio_de",
             "position": 4
@@ -86,5 +87,6 @@
         }
     ],
     "alias": "sistema",
-    "icon": "💻"
+    "icon": "🧩",
+    "version": "1.0.0"
 }

@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import sys
 import json
 import time
@@ -791,7 +792,7 @@ class QuickLauncherWidget(QuickWidgetBase):
             elif action.startswith("url:"):
                 QDesktopServices.openUrl(QUrl(action[4:]))
             elif action == "folder:home":
-                os.startfile(str(self.context.ruta_usuario))
+                open_path_native(str(self.context.ruta_usuario))
         except Exception as e:
             QMessageBox.warning(self, "Error Ejecución", f"No se pudo ejecutar:\n{e}")
 

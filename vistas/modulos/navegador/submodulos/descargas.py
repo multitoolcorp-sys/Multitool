@@ -4,6 +4,7 @@ Diseño responsivo de dos columnas lado a lado (QSplitter) con soporte para desc
 locales fuera del predeterminado, sincronización con WebView2 y botones de acción nunca ocultos.
 """
 import os
+from controlador.utils.platform_compat import open_path_native
 import subprocess
 import time
 from pathlib import Path
@@ -627,7 +628,7 @@ class TabNavegadorDescargas(QWidget):
         ruta_dl = getattr(self.mgr, "ruta_descargas", None)
         if ruta_dl and Path(ruta_dl).exists():
             try:
-                os.startfile(str(ruta_dl))
+                open_path_native(str(ruta_dl))
                 return
             except Exception:
                 pass
@@ -635,7 +636,7 @@ class TabNavegadorDescargas(QWidget):
         dl_sys = Path.home() / "Downloads"
         if dl_sys.exists():
             try:
-                os.startfile(str(dl_sys))
+                open_path_native(str(dl_sys))
             except Exception:
                 QDesktopServices.openUrl(QUrl.fromLocalFile(str(dl_sys)))
 
@@ -670,7 +671,7 @@ class TabNavegadorDescargas(QWidget):
                 subprocess.Popen(["explorer", "/select,", os.path.normpath(str(file_path))])
             except Exception:
                 try:
-                    os.startfile(folder)
+                    open_path_native(folder)
                 except Exception:
                     QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 

@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import platform
 import subprocess
 from pathlib import Path
@@ -157,6 +158,6 @@ class HistorialChatsSubmodule(QWidget):
     def _abrir_carpeta_historial(self):
         folder = str(self.manager.ruta_chat) if hasattr(self.manager, 'ruta_chat') else str(Path.home() / "chats")
         if os.name == 'nt':
-            os.startfile(folder)
+            open_path_native(folder)
         else:
             subprocess.Popen(["xdg-open", folder])

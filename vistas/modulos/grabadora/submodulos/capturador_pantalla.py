@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import time
 import datetime
 import platform
@@ -390,7 +391,7 @@ class CapturadorPantallaSubmodule(QWidget):
     def _abrir_en_visor(self):
         if self.ultimo_path and self.ultimo_path.exists():
             if os.name == 'nt':
-                os.startfile(str(self.ultimo_path))
+                open_path_native(str(self.ultimo_path))
             else:
                 import subprocess
                 subprocess.Popen(["xdg-open", str(self.ultimo_path)])

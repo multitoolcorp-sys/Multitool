@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import threading
 import subprocess
 import psutil
@@ -200,7 +201,7 @@ class TabSistema(QWidget):
     def abrir_carpeta_proyecto(self):
         import platform
         if platform.system() == "Windows":
-            os.startfile(os.getcwd())
+            open_path_native(os.getcwd())
         elif platform.system() == "Darwin":
             subprocess.Popen(["open", os.getcwd()])
         else:
@@ -209,7 +210,7 @@ class TabSistema(QWidget):
     def abrir_admin_tareas(self):
         import platform
         if platform.system() == "Windows":
-            os.startfile("taskmgr.exe")
+            open_path_native("taskmgr.exe")
         else:
             QMessageBox.information(self, "Sistema", "Usa el Monitor de Actividad o el Monitor del Sistema de tu SO.")
 
@@ -224,19 +225,19 @@ class TabSistema(QWidget):
 
     def abrir_panel_control(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("control.exe")
+        if sys == "Windows": open_path_native("control.exe")
         elif sys == "Linux": subprocess.Popen(["gnome-control-center"])
         elif sys == "Darwin": subprocess.Popen(["open", "-b", "com.apple.systempreferences"])
 
     def abrir_admin_dispositivos(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("devmgmt.msc")
+        if sys == "Windows": open_path_native("devmgmt.msc")
         elif sys == "Linux": subprocess.Popen(["x-terminal-emulator", "-e", "lsusb; lspci; read"])
         elif sys == "Darwin": subprocess.Popen(["open", "/Applications/Utilities/System Information.app"])
 
     def abrir_admin_discos(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("diskmgmt.msc")
+        if sys == "Windows": open_path_native("diskmgmt.msc")
         elif sys == "Linux": 
             # Intentar herramientas comunes de discos
             for cmd in ["gnome-disks", "gparted"]:
@@ -248,19 +249,19 @@ class TabSistema(QWidget):
 
     def abrir_conexiones_red(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("ncpa.cpl")
+        if sys == "Windows": open_path_native("ncpa.cpl")
         elif sys == "Linux": subprocess.Popen(["nm-connection-editor"])
         elif sys == "Darwin": subprocess.Popen(["open", "/System/Library/PreferencePanes/Network.prefPane"])
 
     def abrir_servicios(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("services.msc")
+        if sys == "Windows": open_path_native("services.msc")
         elif sys == "Linux": subprocess.Popen(["gnome-system-monitor", "-s"])
         elif sys == "Darwin": subprocess.Popen(["open", "/Applications/Utilities/Activity Monitor.app"])
 
     def abrir_regedit(self):
         sys = platform.system()
-        if sys == "Windows": os.startfile("regedit.exe")
+        if sys == "Windows": open_path_native("regedit.exe")
         elif sys == "Linux": subprocess.Popen(["dconf-editor"])
         elif sys == "Darwin": 
              # No hay regedit real, pero abrimos la carpeta de preferencias

@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import platform
 from pathlib import Path
 from PyQt6.QtWidgets import (
@@ -518,7 +519,7 @@ class FileHeader(QFrame):
         """Abre un archivo directamente desde el menú de la ruta"""
         try:
             if platform.system() == "Windows":
-                os.startfile(ruta_archivo)
+                open_path_native(ruta_archivo)
             elif platform.system() == "Darwin":
                 import subprocess
                 subprocess.call(["open", ruta_archivo])

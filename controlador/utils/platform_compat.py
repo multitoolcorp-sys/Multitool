@@ -84,3 +84,26 @@ def apply_native_dark_titlebar(win_id) -> bool:
         return True
     except Exception:
         return False
+
+
+def get_creation_flags() -> int:
+    """Devuelve CREATE_NO_WINDOW en Windows o 0 en Linux/macOS."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0) if get_os_key() == "windows" else 0
+
+
+def beep_native(freq: int = 800, duration_ms: int = 200):
+    """Emite un sonido/beep de alerta multiplataforma."""
+    os_key = get_os_key()
+    if os_key == "windows":
+        try:
+            import winsound
+            winsound.Beep(freq, duration_ms)
+            return
+        except Exception:
+            pass
+    try:
+        from PyQt6.QtWidgets import QApplication
+        QApplication.beep()
+    except Exception:
+        sys.stdout.write("\a")
+        sys.stdout.flush()

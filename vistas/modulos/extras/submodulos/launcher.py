@@ -1,4 +1,5 @@
 import os
+from controlador.utils.platform_compat import open_path_native
 import json
 import subprocess
 import platform
@@ -387,7 +388,7 @@ class LauncherGUI(QWidget):
     def abrir_app(self, app):
         try:
             if platform.system() == "Windows":
-                 os.startfile(app['ruta'])
+                 open_path_native(app['ruta'])
             else:
                  subprocess.Popen(["open" if platform.system() == "Darwin" else "xdg-open", app['ruta']])
         except Exception as e:
