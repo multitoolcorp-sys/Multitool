@@ -160,7 +160,10 @@ class AppMultitareasGUI(BaseAppGUI):
         super().__init__(usuario, colores=colores_tema)
 
         from controlador.utils.event_bus import get_event_bus
+        from vistas.utils.automation_flows import FlowRuleEngine
         self.event_bus = get_event_bus()
+        self.flow_engine = FlowRuleEngine(self)
+        self.flow_engine.reload_rules()
         if hasattr(self, "_init_system_tray_y_atajos"):
             self._init_system_tray_y_atajos()
 
@@ -230,8 +233,12 @@ class AppMultitareasGUI(BaseAppGUI):
           • Cuando termina, instancia los widgets en el hilo principal
         """
         try:
-            # 1. Descubrir módulos dinámicos
+            # 1. Descubrir módulos dinámicos y filtrar por compatibilidad de SO
+            from controlador.utils.platform_compat import is_module_compatible
             modulos_encontrados = discover_modules_and_plugins(self.ruta_usuario)
+            for mod in modulos_encontrados:
+                if not is_module_compatible(mod):
+                    mod["visible"] = False
 
             self.modulos_cargados = modulos_encontrados
             self.clases_modulos = {}

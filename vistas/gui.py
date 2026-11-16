@@ -805,6 +805,8 @@ class BaseAppGUI(QMainWindow):
         self.menu_toolbar.addSeparator()
         self.menu_toolbar.addAction("🗂️ WORKSPACES (PERFILES)", self.abrir_gestor_workspaces)
         self.menu_toolbar.addAction("🛒 TIENDA DE MÓDULOS (.mtu)", self.abrir_tienda_modulos)
+        self.menu_toolbar.addAction("⚡ FLUJOS ENTRE MÓDULOS", self.abrir_flujos_automatizacion)
+        self.menu_toolbar.addAction("💾 BACKUP PORTÁTIL (.mtbackup)", self.abrir_backup_perfil)
         self.menu_toolbar.addAction("🚀 LAUNCHER RÁPIDO (Ctrl+Shift+Space)", self.abrir_quick_launcher)
 
         # Consola Dev dentro de Toolbar
@@ -944,6 +946,18 @@ class BaseAppGUI(QMainWindow):
     def abrir_quick_launcher(self):
         from vistas.utils.quick_launcher import QuickLauncherDialog
         dlg = QuickLauncherDialog(self, parent=self)
+        dlg.exec()
+
+    def abrir_backup_perfil(self):
+        from vistas.utils.profile_backup import ProfileBackupDialog
+        dlg = ProfileBackupDialog(self, parent=self)
+        dlg.exec()
+
+    def abrir_flujos_automatizacion(self):
+        from vistas.utils.automation_flows import AutomationFlowsDialog, FlowRuleEngine
+        if not hasattr(self, "flow_engine"):
+            self.flow_engine = FlowRuleEngine(self)
+        dlg = AutomationFlowsDialog(self, self.flow_engine, parent=self)
         dlg.exec()
 
     def _init_system_tray_y_atajos(self):

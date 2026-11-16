@@ -15,6 +15,7 @@ from pathlib import Path
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -100,6 +101,12 @@ class ModuleConfigPanel(QScrollArea):
         self.ent_version = QLineEdit("1.0.0")
         self.spn_pos = QSpinBox()
         self.spn_pos.setRange(1, 999)
+        self.cmb_os = QComboBox()
+        self.cmb_os.addItem("Todos (Windows, Linux, macOS)", ["all"])
+        self.cmb_os.addItem("Solo Windows", ["windows"])
+        self.cmb_os.addItem("Solo Linux", ["linux"])
+        self.cmb_os.addItem("Solo macOS", ["macos"])
+        self.cmb_os.addItem("Windows + Linux", ["windows", "linux"])
         self.chk_visible = QCheckBox("Visible en la barra de módulos")
         self.chk_visible.setChecked(True)
 
@@ -107,6 +114,7 @@ class ModuleConfigPanel(QScrollArea):
         form.addRow("Icono:", self.ent_icon)
         form.addRow("Versión:", self.ent_version)
         form.addRow("Posición:", self.spn_pos)
+        form.addRow("Sistemas (os):", self.cmb_os)
         form.addRow("", self.chk_visible)
         lay.addWidget(cfg_box)
 
@@ -207,6 +215,9 @@ class ModuleConfigPanel(QScrollArea):
         self.ent_icon.setText(str(self._cfg_data.get("icon") or self._cfg_data.get("icono") or "🧩"))
         self.ent_version.setText(str(self._cfg_data.get("version") or "1.0.0"))
         self.spn_pos.setValue(int(self._cfg_data.get("position", 10) or 10))
+        os_val = self._cfg_data.get("os") or ["all"]
+        idx_os = self.cmb_os.findData(os_val)
+        self.cmb_os.setCurrentIndex(idx_os if idx_os >= 0 else 0)
         self.chk_visible.setChecked(bool(self._cfg_data.get("visible", True)))
         self._render_subs()
 
@@ -322,6 +333,7 @@ class ModuleConfigPanel(QScrollArea):
         self._cfg_data["icon"] = self.ent_icon.text().strip() or "🧩"
         self._cfg_data["version"] = self.ent_version.text().strip() or "1.0.0"
         self._cfg_data["position"] = self.spn_pos.value()
+        self._cfg_data["os"] = self.cmb_os.currentData() or ["all"]
         self._cfg_data["visible"] = self.chk_visible.isChecked()
         self._cfg_data.setdefault("submodulos", [])
 
