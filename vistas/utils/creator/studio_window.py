@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
 )
 
 from vistas.utils.compilar_modulo import abrir_compilador_modulos, obtener_raiz_proyecto
+from vistas.utils.creator.ai_scaffold import AIScaffoldDialog, generar_especificacion_desde_prompt
 from vistas.utils.creator.ast_sync import generate_pyqt_from_design, parse_pyqt_to_design
 from vistas.utils.creator.config_panel import ModuleConfigPanel
 from vistas.utils.creator.dialogs import MODULE_TEMPLATES, NewModuleTemplateDialog
@@ -93,6 +94,10 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
         btn_nuevo.setObjectName("Accent")
         btn_nuevo.clicked.connect(self._crear_nuevo_modulo_dialog)
         tb_lay.addWidget(btn_nuevo)
+
+        btn_ai = QPushButton("🤖 Crear con IA")
+        btn_ai.clicked.connect(self._crear_modulo_con_ia)
+        tb_lay.addWidget(btn_ai)
 
         btn_imp = QPushButton("📥 Importar .mtu")
         btn_imp.clicked.connect(self._importar_mtu)
@@ -564,6 +569,50 @@ class ModuleCreatorDialog(CreatorFileManagerMixin, QDialog):
 
         self._cargar_lista_modulos(seleccionar=mod_id)
         self._append_output(f"✅ Módulo '{mod_id}' creado con plantilla '{tpl['label']}'.")
+
+    def _crear_modulo_con_ia(self):
+        dlg = AIScaffoldDialog(self)
+        if dlg.exec() != QDialog.DialogCode.Accepted or not dlg.ent_nombre.text().strip():
+            return
+        nombre = dlg.ent_nombre.text().strip()
+        prompt = dlg.txt_prompt.toPlainText().strip() or nombre
+        mod_id = normalizar_id_modulo(nombre)
+        mod_dir = self.modulos_dir / mod_id
+        if mod_dir.exists():
+            QMessageBox.warning(self, "Ya existe", f"La carpeta '{mod_id}' ya existe.")
+            return
+
+        items, layout_mode, backend_code = generar_especificacion_desde_prompt(nombre, prompt)
+        sub_dir = mod_dir / "submodulos"
+        utils_dir = mod_dir / "utils"
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        utils_dir.mkdir(parents=True, exist_ok=True)
+        (mod_dir / "__init__.py").write_text("", encoding="utf-8")
+        (sub_dir / "__init__.py").write_text("", encoding="utf-8")
+        (utils_dir / "__init__.py").write_text("", encoding="utf-8")
+        (utils_dir / "backend.py").write_text(backend_code, encoding="utf-8")
+
+        clase_tab = f"Tab{a_pascal_case(mod_id)}"
+        clase_root = f"{a_pascal_case(mod_id)}App"
+        (mod_dir / f"{mod_id}.py").write_text(
+            f"# -*- coding: utf-8 -*-\nfrom .submodulos.tab_{mod_id} import {clase_tab}\n\nclass {clase_root}({clase_tab}):\n    pass\n",
+            encoding="utf-8",
+        )
+        config_data = {
+            "name": nombre, "icon": "🤖", "version": "1.0.0", "position": 25, "visible": True,
+            "submodulos": [{
+                "name": "Principal", "file_name": f"submodulos/tab_{mod_id}.py",
+                "class_name": clase_tab, "visible": True, "icon": "🤖", "alias": mod_id, "position": 1,
+            }],
+        }
+        (mod_dir / "config.json").write_text(json.dumps(config_data, indent=4, ensure_ascii=False), encoding="utf-8")
+        (mod_dir / "commands.json").write_text(json.dumps({"ejecutar": {"description": f"Ejecutar {nombre}"}}, indent=4), encoding="utf-8")
+        (mod_dir / "requirements.txt").write_text("# Dependencias pip\n", encoding="utf-8")
+        (sub_dir / f"tab_{mod_id}.py").write_text(
+            generate_pyqt_from_design(items, clase_tab, nombre, layout_mode), encoding="utf-8"
+        )
+        self._cargar_lista_modulos(seleccionar=mod_id)
+        self._append_output(f"🤖 Módulo '{mod_id}' generado automáticamente desde descripción.")
 
     # ── Hot-Reload con Captura de Traceback & Compilador ──────────────────
 

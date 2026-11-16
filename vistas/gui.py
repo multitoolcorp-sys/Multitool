@@ -802,6 +802,10 @@ class BaseAppGUI(QMainWindow):
         # Opciones de Toolbar
         act_log = self.menu_toolbar.addAction("📋 ACTUALIZACIONES", self.mostrar_log_actualizaciones)
         act_aclara = self.menu_toolbar.addAction("⚠️ ACLARACIONES", self.mostrar_aclaraciones_sistema)
+        self.menu_toolbar.addSeparator()
+        self.menu_toolbar.addAction("🗂️ WORKSPACES (PERFILES)", self.abrir_gestor_workspaces)
+        self.menu_toolbar.addAction("🛒 TIENDA DE MÓDULOS (.mtu)", self.abrir_tienda_modulos)
+        self.menu_toolbar.addAction("🚀 LAUNCHER RÁPIDO (Ctrl+Shift+Space)", self.abrir_quick_launcher)
 
         # Consola Dev dentro de Toolbar
         self.act_dev_console = QAction("⚡ CONSOLA", self)
@@ -923,6 +927,52 @@ class BaseAppGUI(QMainWindow):
         """Abre el empaquetador de módulos (.mtu) para usuarios."""
         from vistas.utils.compilar_modulo import abrir_compilador_modulos
         abrir_compilador_modulos(parent=self, modulo_preseleccionado=modulo_preseleccionado)
+
+    def abrir_gestor_workspaces(self):
+        from vistas.utils.workspaces import WorkspaceManagerDialog
+        dlg = WorkspaceManagerDialog(self, parent=self)
+        dlg.exec()
+
+    def abrir_tienda_modulos(self):
+        from vistas.utils.module_store import ModuleStoreDialog
+        win = ModuleStoreDialog(app_ref=self, parent=None)
+        self._tienda_modulos_win = win
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def abrir_quick_launcher(self):
+        from vistas.utils.quick_launcher import QuickLauncherDialog
+        dlg = QuickLauncherDialog(self, parent=self)
+        dlg.exec()
+
+    def _init_system_tray_y_atajos(self):
+        from PyQt6.QtGui import QKeySequence, QShortcut
+        from PyQt6.QtWidgets import QMenu, QSystemTrayIcon
+        try:
+            sc = QShortcut(QKeySequence("Ctrl+Shift+Space"), self)
+            sc.activated.connect(self.abrir_quick_launcher)
+        except Exception:
+            pass
+        try:
+            if QSystemTrayIcon.isSystemTrayAvailable():
+                self._tray_icon = QSystemTrayIcon(self.windowIcon(), self)
+                self._tray_icon.setToolTip("Multitool")
+                tray_menu = QMenu(self)
+                tray_menu.addAction("🪟 Mostrar Multitool", self._restaurar_desde_tray)
+                tray_menu.addAction("🚀 Launcher Rápido", self.abrir_quick_launcher)
+                tray_menu.addAction("🗂️ Workspaces", self.abrir_gestor_workspaces)
+                tray_menu.addSeparator()
+                tray_menu.addAction("❌ Salir", self.salir_aplicacion)
+                self._tray_icon.setContextMenu(tray_menu)
+                self._tray_icon.show()
+        except Exception:
+            pass
+
+    def _restaurar_desde_tray(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
 
     def crear_btn_aclaraciones(self):
         """Genera el botón de aviso con estilo destacado"""

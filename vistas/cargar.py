@@ -159,6 +159,11 @@ class AppMultitareasGUI(BaseAppGUI):
         # Inicializa UI base PyQt6 (crea la ventana, notebook, etc.)
         super().__init__(usuario, colores=colores_tema)
 
+        from controlador.utils.event_bus import get_event_bus
+        self.event_bus = get_event_bus()
+        if hasattr(self, "_init_system_tray_y_atajos"):
+            self._init_system_tray_y_atajos()
+
         # Restaurar modos persistentes (mode dev y mode MT)
         if self.config.get("dev_mode_activo", False):
             self.activar_modo_dev(True, guardar=False)
@@ -293,6 +298,12 @@ class AppMultitareasGUI(BaseAppGUI):
         Los demás módulos permanecen en modo reposo hasta que el usuario haga clic en sus pestañas.
         """
         self.modulos_cargados = modulos_con_clase
+
+        # Aplicar workspace activo si fue guardado por el usuario
+        ws_activo = self.config.get("active_workspace") if hasattr(self, "config") else None
+        if ws_activo and ws_activo != "Todos":
+            from vistas.utils.workspaces import aplicar_workspace_a_app
+            aplicar_workspace_a_app(self, ws_activo)
 
         # Sincronizar los botones de navegación y pestañas
         self.actualizar_menu_ver(self.modulos_cargados)
