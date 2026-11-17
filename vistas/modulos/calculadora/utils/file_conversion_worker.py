@@ -52,6 +52,32 @@ def obtener_python_sistema():
 
     return sys.executable
 
+def _convert_with_libreoffice(in_file: Path, out_file: Path) -> bool:
+    """Fallback multiplataforma (Linux/macOS/Windows sin Office) usando LibreOffice headless."""
+    import shutil
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice and sys.platform == "darwin":
+        mac_bin = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+        if mac_bin.exists():
+            soffice = str(mac_bin)
+    if not soffice:
+        return False
+    try:
+        out_dir = out_file.parent.resolve()
+        res = subprocess.run(
+            [soffice, "--headless", "--convert-to", out_file.suffix.lstrip("."), "--outdir", str(out_dir), str(in_file.resolve())],
+            capture_output=True, text=True, timeout=30
+        )
+        generated = out_dir / (in_file.stem + out_file.suffix)
+        if res.returncode == 0 and generated.exists():
+            if generated.resolve() != out_file.resolve():
+                generated.replace(out_file)
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def ejecutar_script_en_python_sistema(codigo_script, in_file, out_file, timeout=120):
     """Ejecuta una rutina de conversión aislada usando el intérprete Python del sistema."""
     py_exe = obtener_python_sistema()
@@ -264,6 +290,10 @@ class ConversionThread(QThread):
                     convertido = True
                 except Exception as e_com:
                     err_msg = f"Word COM: {e_com}"
+
+                # Intento 1.5 (Linux/macOS/sin Word): LibreOffice headless
+                if not convertido:
+                    convertido = _convert_with_libreoffice(self.in_file, out_file)
 
                 # Intento 2: docx2pdf
                 if not convertido:
@@ -534,6 +564,10 @@ class ConversionThread(QThread):
                         convertido = True
                     except Exception as e_excom:
                         err_msg = f"Excel COM: {e_excom}"
+
+                    # Intento 1.5 (Linux/macOS/sin Excel): LibreOffice headless
+                    if not convertido:
+                        convertido = _convert_with_libreoffice(self.in_file, out_file)
 
                     # Intento 2: openpyxl + reportlab (Motor universal sin necesidad de Excel)
                     if not convertido:
