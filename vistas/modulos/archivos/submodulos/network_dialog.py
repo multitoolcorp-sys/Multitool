@@ -411,14 +411,15 @@ class NetworkConnectionDialog(QDialog):
             btn_del = QPushButton("✕")
             btn_del.setToolTip("Desconectar recurso de red")
             btn_del.setCursor(Qt.CursorShape.PointingHandCursor)
+            peligro_col = self.colores.get('peligro', self.colores.get('error', '#F87171'))
             btn_del.setStyleSheet(f"""
                 QPushButton {{
                     background: transparent;
-                    color: {self.colores['peligro']};
+                    color: {peligro_col};
                     border: 1px solid rgba(239, 68, 68, 0.4);
                     border-radius: 4px; padding: 2px 6px; font-size: 10px; font-weight: bold;
                 }}
-                QPushButton:hover {{ background: {self.colores['peligro']}; color: white; }}
+                QPushButton:hover {{ background: {peligro_col}; color: white; }}
             """)
             target_disc = letter if letter else unc
             btn_del.clicked.connect(lambda ch, td=target_disc: self._desconectar_recurso(td))
