@@ -12,31 +12,50 @@ con soporte completo para:
 """
 
 import os
+import shutil
+import subprocess
 import sys
 import time
 import ctypes
-from ctypes import wintypes, byref, Structure, c_long, WINFUNCTYPE, c_bool, c_int, c_uint32
+from ctypes import byref, Structure, c_long, c_bool, c_int, c_uint32
 import threading
 from PyQt6.QtCore import QObject, pyqtSignal
 
+IS_WINDOWS = sys.platform == "win32"
+
+if IS_WINDOWS:
+    from ctypes import wintypes, WINFUNCTYPE
+else:
+    wintypes = None
+    WINFUNCTYPE = None
+
+try:
+    import pyautogui as _pg
+except Exception:
+    _pg = None
+
 # Cargar DLLs nativas de Windows
-try:
-    user32 = ctypes.windll.user32
-except Exception:
-    user32 = None
-
-try:
-    winmm = ctypes.windll.winmm
-except Exception:
-    winmm = None
-
+user32 = None
+winmm = None
 xinput_dll = None
-for _dll_name in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+
+if IS_WINDOWS:
     try:
-        xinput_dll = getattr(ctypes.windll, _dll_name)
-        break
+        user32 = ctypes.windll.user32
     except Exception:
-        continue
+        user32 = None
+
+    try:
+        winmm = ctypes.windll.winmm
+    except Exception:
+        winmm = None
+
+    for _dll_name in ("xinput1_4", "xinput1_3", "xinput9_1_0"):
+        try:
+            xinput_dll = getattr(ctypes.windll, _dll_name)
+            break
+        except Exception:
+            continue
 
 # Constantes de Eventos de Ratón
 MOUSEEVENTF_MOVE = 0x0001
@@ -244,14 +263,17 @@ class RECT(Structure):
     _fields_ = [("left", c_long), ("top", c_long), ("right", c_long), ("bottom", c_long)]
 
 
-class MSLLHOOKSTRUCT(Structure):
-    _fields_ = [
-        ("pt", wintypes.POINT),
-        ("mouseData", wintypes.DWORD),
-        ("flags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.c_ulonglong),
-    ]
+if IS_WINDOWS and wintypes is not None:
+    class MSLLHOOKSTRUCT(Structure):
+        _fields_ = [
+            ("pt", wintypes.POINT),
+            ("mouseData", wintypes.DWORD),
+            ("flags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.c_ulonglong),
+        ]
+else:
+    MSLLHOOKSTRUCT = None
 
 
 class _PhysicalMouseTracker:
@@ -415,7 +437,12 @@ def is_cursor_over_own_process() -> bool:
 def get_cursor_pos() -> tuple[int, int]:
     """Obtiene las coordenadas absolutas actuales del cursor (X, Y)."""
     if not user32:
-        return (0, 0)
+        try:
+            from PyQt6.QtGui import QCursor
+            p = QCursor.pos()
+            return (int(p.x()), int(p.y()))
+        except Exception:
+            return (0, 0)
     pt = POINT()
     user32.GetCursorPos(byref(pt))
     return (int(pt.x), int(pt.y))
@@ -425,6 +452,13 @@ def set_cursor_pos(x: int, y: int):
     """Establece la posición del cursor en pantalla."""
     if user32:
         user32.SetCursorPos(int(x), int(y))
+    else:
+        try:
+            from PyQt6.QtGui import QCursor
+            QCursor.setPos(int(x), int(y))
+        except Exception:
+            if _pg:
+                _pg.moveTo(int(x), int(y))
 
 
 def lock_cursor_to_point(x: int, y: int):
@@ -441,62 +475,106 @@ def unlock_cursor():
 
 
 def get_foreground_window_title() -> str:
-    """Devuelve el título de la ventana activa en primer plano en Windows."""
-    if not user32:
-        return ""
-    hwnd = user32.GetForegroundWindow()
-    if not hwnd:
-        return ""
-    length = user32.GetWindowTextLengthW(hwnd)
-    if length <= 0:
-        return ""
-    buf = ctypes.create_unicode_buffer(length + 1)
-    user32.GetWindowTextW(hwnd, buf, length + 1)
-    return buf.value.strip()
+    """Devuelve el título de la ventana activa en primer plano (Windows, Linux, macOS)."""
+    if user32:
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return ""
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return ""
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        return buf.value.strip()
+
+    try:
+        if sys.platform == "darwin":
+            res = subprocess.run(
+                ["osascript", "-e", 'tell application "System Events" to get name of first application process whose frontmost is true'],
+                capture_output=True, text=True, timeout=2
+            )
+            return res.stdout.strip()
+        if shutil.which("xdotool"):
+            res = subprocess.run(["xdotool", "getactivewindow", "getwindowname"], capture_output=True, text=True, timeout=2)
+            return res.stdout.strip()
+    except Exception:
+        pass
+    return ""
 
 
 def get_open_window_titles() -> list[str]:
-    """Enumera los títulos de las ventanas visibles actualmente abiertas en Windows."""
-    if not user32:
-        return []
+    """Enumera los títulos de las ventanas visibles actualmente abiertas (Windows, Linux, macOS)."""
+    if user32 and WINFUNCTYPE and wintypes:
+        titles = []
+        EnumWindowsProc = WINFUNCTYPE(c_bool, wintypes.HWND, wintypes.LPARAM)
+
+        def foreach_window(hwnd, lParam):
+            if user32.IsWindowVisible(hwnd):
+                length = user32.GetWindowTextLengthW(hwnd)
+                if length > 0:
+                    buf = ctypes.create_unicode_buffer(length + 1)
+                    user32.GetWindowTextW(hwnd, buf, length + 1)
+                    val = buf.value.strip()
+                    if val and val not in titles and val not in ("Program Manager", "Settings", "Configuración"):
+                        titles.append(val)
+            return True
+
+        user32.EnumWindows(EnumWindowsProc(foreach_window), 0)
+        return sorted(titles)
+
     titles = []
-    EnumWindowsProc = WINFUNCTYPE(c_bool, wintypes.HWND, wintypes.LPARAM)
-
-    def foreach_window(hwnd, lParam):
-        if user32.IsWindowVisible(hwnd):
-            length = user32.GetWindowTextLengthW(hwnd)
-            if length > 0:
-                buf = ctypes.create_unicode_buffer(length + 1)
-                user32.GetWindowTextW(hwnd, buf, length + 1)
-                val = buf.value.strip()
-                if val and val not in titles and val not in ("Program Manager", "Settings", "Configuración"):
-                    titles.append(val)
-        return True
-
-    user32.EnumWindows(EnumWindowsProc(foreach_window), 0)
-    return sorted(titles)
+    try:
+        if sys.platform == "darwin":
+            res = subprocess.run(
+                ["osascript", "-e", 'tell application "System Events" to get name of every application process whose background only is false'],
+                capture_output=True, text=True, timeout=2
+            )
+            titles = [t.strip() for t in res.stdout.split(",") if t.strip()]
+        elif shutil.which("wmctrl"):
+            res = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=2)
+            for line in res.stdout.splitlines():
+                parts = line.split(None, 3)
+                if len(parts) == 4:
+                    titles.append(parts[3].strip())
+    except Exception:
+        pass
+    return sorted(set(titles))
 
 
 def play_sound_feedback(kind: str = "start"):
-    """Emite un sonido de feedback en Windows."""
+    """Emite un sonido de feedback multiplataforma."""
     try:
-        import winsound
-        if kind == "start":
-            winsound.Beep(900, 75)
-        else:
-            winsound.Beep(500, 90)
+        from controlador.utils.platform_compat import beep_native
+        beep_native(900 if kind == "start" else 500, 75 if kind == "start" else 90)
     except Exception:
         pass
 
 
 def mouse_click(button: str = "left", click_type: str = "single", x: int = None, y: int = None, hold_duration: float = 0.0):
     """
-    Ejecuta un clic de ratón de ultra-baja latencia.
-    - button: 'left', 'right', 'middle'
-    - click_type: 'single', 'double', 'triple', 'hold_down', 'release'
-    - hold_duration: tiempo en segundos entre mouse_down y mouse_up (para Click duty cycle de Speed AutoClicker)
+    Ejecuta un clic de ratón (Win32 en Windows; pyautogui/xdotool en Linux/macOS).
     """
     if not user32:
+        if _pg:
+            if x is not None and y is not None:
+                _pg.moveTo(int(x), int(y))
+            btn = button.lower()
+            ctype = click_type.lower()
+            if ctype == "hold_down":
+                _pg.mouseDown(button=btn)
+            elif ctype == "release":
+                _pg.mouseUp(button=btn)
+            elif ctype == "double":
+                _pg.doubleClick(button=btn)
+            elif ctype == "triple":
+                _pg.tripleClick(button=btn)
+            else:
+                _pg.click(button=btn)
+        elif shutil.which("xdotool"):
+            if x is not None and y is not None:
+                subprocess.run(["xdotool", "mousemove", str(int(x)), str(int(y))], timeout=1)
+            btn_map = {"left": "1", "middle": "2", "right": "3"}
+            subprocess.run(["xdotool", "click", btn_map.get(button.lower(), "1")], timeout=1)
         return
 
     if x is not None and y is not None:
@@ -540,18 +618,28 @@ def mouse_scroll(amount: int = 120):
     """Simula giro de la rueda del ratón (+120 arriba, -120 abajo)."""
     if user32:
         user32.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, int(amount), 0)
+    elif _pg:
+        _pg.scroll(int(amount))
 
 
 def key_down(vk_code: int):
     """Mantiene presionada una tecla por su código virtual."""
     if user32:
         user32.keybd_event(vk_code, 0, 0, 0)
+    elif _pg:
+        name = VK_TO_NAME.get(vk_code, "").lower()
+        if name:
+            _pg.keyDown(name)
 
 
 def key_up(vk_code: int):
     """Suelta una tecla presionada."""
     if user32:
         user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
+    elif _pg:
+        name = VK_TO_NAME.get(vk_code, "").lower()
+        if name:
+            _pg.keyUp(name)
 
 
 def key_press(vk_code: int, hold_duration: float = 0.01):
@@ -561,11 +649,19 @@ def key_press(vk_code: int, hold_duration: float = 0.01):
         if hold_duration > 0:
             time.sleep(hold_duration)
         user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
+    elif _pg:
+        name = VK_TO_NAME.get(vk_code, "").lower()
+        if name:
+            _pg.press(name)
 
 
 def send_char(char: str):
     """Envía un carácter utilizando VkKeyScanW o Unicode directo."""
     if not user32:
+        if _pg:
+            _pg.write(char)
+        elif shutil.which("xdotool"):
+            subprocess.run(["xdotool", "type", "--delay", "5", char], timeout=2)
         return
     res = user32.VkKeyScanW(ord(char))
     if res != -1:
