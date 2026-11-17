@@ -258,6 +258,11 @@ Categories=Utility;
                 with open(desktop / "Multitool.desktop", "w", encoding="utf-8") as f:
                     f.write(desktop_file)
                 os.chmod(desktop / "Multitool.desktop", 0o755)
+                apps_dir = Path.home() / ".local" / "share" / "applications"
+                apps_dir.mkdir(parents=True, exist_ok=True)
+                with open(apps_dir / "Multitool.desktop", "w", encoding="utf-8") as f:
+                    f.write(desktop_file)
+                os.chmod(apps_dir / "Multitool.desktop", 0o755)
                 return True
 
             elif system == "Darwin":
