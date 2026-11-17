@@ -440,13 +440,19 @@ class NetworkConnectionDialog(QDialog):
         )
         if resp == QMessageBox.StandardButton.Yes:
             try:
-                subprocess.run(
-                    ["net", "use", target, "/delete", "/y"],
-                    capture_output=True,
-                    errors="replace",
-                    timeout=4,
-                    creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-                )
+                sys_os = platform.system()
+                if sys_os == "Windows":
+                    subprocess.run(
+                        ["net", "use", target, "/delete", "/y"],
+                        capture_output=True,
+                        errors="replace",
+                        timeout=4,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                elif sys_os == "Darwin":
+                    subprocess.run(["umount", target], capture_output=True, timeout=4)
+                else:
+                    subprocess.run(["gio", "mount", "-u", target], capture_output=True, timeout=4)
             except Exception as e:
                 QMessageBox.warning(self, "Error al desconectar", str(e))
             self.refrescar_conexiones_existentes()
@@ -474,40 +480,45 @@ class NetworkConnectionDialog(QDialog):
 
         def _do_connect():
             error_msg = None
+            sys_os = platform.system()
             try:
-                cmd = ["net", "use"]
-                if letra:
-                    cmd.append(letra)
-                cmd.append(unc_path)
-
-                if password:
-                    cmd.append(password)
-                elif use_creds and not password:
-                    # Sin contraseña
-                    cmd.append('""')
-
-                if usuario:
-                    cmd.append(f"/user:{usuario}")
-
-                if reconnect:
-                    cmd.append("/persistent:yes")
-                else:
-                    cmd.append("/persistent:no")
-
-                res = subprocess.run(
-                    cmd,
-                    capture_output=True,
-                    errors="replace",
-                    timeout=10,
-                    creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-                )
-                if res.returncode != 0:
-                    out = res.stderr or res.stdout
-                    # Si el código es distinto de 0 pero ya está conectado
-                    if "ya existe" in out.lower() or "already exists" in out.lower():
-                        pass
+                if sys_os != "Windows":
+                    smb_url = unc_path if unc_path.startswith(("smb://", "sftp://")) else ("smb://" + unc_path.lstrip("\\/").replace("\\", "/"))
+                    if sys_os == "Darwin":
+                        res = subprocess.run(["open", smb_url], capture_output=True, errors="replace", timeout=8)
                     else:
-                        error_msg = out.strip() or "No se pudo establecer la conexión de red."
+                        res = subprocess.run(["gio", "mount", smb_url], capture_output=True, errors="replace", timeout=10)
+                    if res.returncode != 0:
+                        error_msg = (res.stderr or res.stdout).strip() or f"No se pudo montar {smb_url}"
+                else:
+                    cmd = ["net", "use"]
+                    if letra:
+                        cmd.append(letra)
+                    cmd.append(unc_path)
+
+                    if password:
+                        cmd.append(password)
+                    elif use_creds and not password:
+                        cmd.append('""')
+
+                    if usuario:
+                        cmd.append(f"/user:{usuario}")
+
+                    cmd.append("/persistent:yes" if reconnect else "/persistent:no")
+
+                    res = subprocess.run(
+                        cmd,
+                        capture_output=True,
+                        errors="replace",
+                        timeout=10,
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    if res.returncode != 0:
+                        out = res.stderr or res.stdout
+                        if "ya existe" in out.lower() or "already exists" in out.lower():
+                            pass
+                        else:
+                            error_msg = out.strip() or "No se pudo establecer la conexión de red."
             except subprocess.TimeoutExpired:
                 error_msg = "Tiempo de espera agotado al conectar al servidor de red."
             except Exception as e:

@@ -26,11 +26,25 @@ def obtener_ruta_remota_unidad(drive_letter):
 
 def obtener_conexiones_red():
     """
-    Lista las conexiones de red activas o desconectadas usando 'net use'.
-    Retorna lista de diccionarios: [{'status': '...', 'letter': 'S:', 'unc': '\\\\servidor\\compartido'}]
+    Lista las conexiones de red activas o desconectadas.
+    En Windows usa 'net use'; en Linux/macOS lee montajes cifs/smbfs/nfs/sshfs.
     """
-    if platform.system() != "Windows":
-        return []
+    sys_os = platform.system()
+    if sys_os != "Windows":
+        conns = []
+        try:
+            res = subprocess.run(["mount"], capture_output=True, text=True, errors="replace", timeout=2)
+            for line in res.stdout.splitlines():
+                low = line.lower()
+                if any(fs in low for fs in ("cifs", "smbfs", "nfs", "sshfs", "gvfsd-fuse")):
+                    parts = line.split()
+                    unc = parts[0] if parts else ""
+                    mp = parts[2] if len(parts) >= 3 else ""
+                    if unc:
+                        conns.append({"status": "Conectado", "letter": mp, "unc": unc})
+        except Exception:
+            pass
+        return conns
     conns = []
     try:
         res = subprocess.run(
@@ -155,16 +169,30 @@ def obtener_unidades_rapidas():
             pass
 
     else:
-        # En Linux / macOS usamos QStorageInfo de forma segura
+        # En Linux / macOS usamos QStorageInfo filtrando pseudo-filesystems e identificando particiones y USBs
         try:
             from PyQt6.QtCore import QStorageInfo
             volumes = QStorageInfo.mountedVolumes()
             for vol in volumes:
                 if vol.isValid() and vol.isReady():
                     ruta = vol.rootPath()
-                    etiqueta = vol.displayName().strip() if vol.displayName() else "Almacenamiento"
-                    icono = "💻" if ruta == "/" else "🔌"
-                    if vol.isReadOnly():
+                    if any(ruta.startswith(ig) for ig in ("/snap", "/sys", "/proc", "/dev", "/run/lock", "/run/shm")):
+                        continue
+                    etiqueta = vol.displayName().strip() if vol.displayName() else "Partición"
+                    if ruta == "/":
+                        icono = "🍎" if platform.system() == "Darwin" else "🐧"
+                        etiqueta = "Sistema (/)"
+                    elif ruta.startswith(("/media", "/run/media", "/Volumes")):
+                        icono = "🔌"
+                    elif ruta.startswith("/mnt"):
+                        icono = "🌐"
+                    elif ruta.startswith("/home"):
+                        icono = "👥"
+                    elif ruta.startswith("/var"):
+                        icono = "📦"
+                    else:
+                        icono = "💾"
+                    if vol.isReadOnly() and ruta != "/":
                         icono = "💿"
                     texto = f"{icono} {etiqueta} ({ruta})"
                     unidades_dict[ruta.lower()] = (texto, ruta, icono)
