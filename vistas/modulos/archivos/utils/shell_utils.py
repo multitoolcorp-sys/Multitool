@@ -1,8 +1,38 @@
+import datetime
 import os
 import platform
+import stat
 import subprocess
 from pathlib import Path
 from PyQt6.QtWidgets import QMessageBox
+from controlador.utils.platform_compat import open_path_native
+
+
+def mostrar_propiedades_multiplataforma(ruta_archivo, parent_widget=None):
+    """Muestra propiedades nativas en Windows y un diálogo detallado en Linux/macOS."""
+    if platform.system() == "Windows":
+        return mostrar_propiedades_windows(ruta_archivo)
+    try:
+        p = Path(ruta_archivo)
+        st = p.stat()
+        tipo = "Carpeta" if p.is_dir() else "Archivo"
+        mod_t = datetime.datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        perm = stat.filemode(st.st_mode)
+        size_kb = max(1, st.st_size // 1024) if p.is_file() else 0
+        tam_txt = f"{st.st_size:,} bytes ({size_kb:,} KB)" if p.is_file() else "Directorio"
+        QMessageBox.information(
+            parent_widget,
+            f"Propiedades — {p.name}",
+            f"<b>Nombre:</b> {p.name}<br>"
+            f"<b>Tipo:</b> {tipo}<br>"
+            f"<b>Ruta:</b> <code>{p.resolve()}</code><br>"
+            f"<b>Tamaño:</b> {tam_txt}<br>"
+            f"<b>Permisos:</b> <code>{perm}</code><br>"
+            f"<b>Modificado:</b> {mod_t}",
+        )
+        return True
+    except Exception:
+        return False
 
 def mostrar_propiedades_windows(ruta_archivo):
     """Invoca la ventana de propiedades nativa de Windows usando ShellExecuteExW"""
@@ -75,7 +105,13 @@ def abrir_dispositivo_adb(dev_id, parent_widget=None):
                                 app.nav_bar.seleccionar_tab(i)
                         break
         elif msg.clickedButton() == btn_explorar:
-            if platform.system() == "Windows":
+            sys_os = platform.system()
+            if sys_os == "Windows":
                 subprocess.Popen(["explorer.exe", "shell:MyComputerFolder"])
+            elif sys_os == "Darwin":
+                open_path_native("/Volumes")
+            else:
+                gvfs = Path(f"/run/user/{os.getuid()}/gvfs") if hasattr(os, "getuid") else Path("/media")
+                open_path_native(gvfs if gvfs.exists() else Path("/media"))
     except Exception as e:
         print(f"[ShellUtils] Error al interactuar con dispositivo ADB: {e}")

@@ -12,7 +12,7 @@ from .submodulos.zip_manager import TabZipManager
 from .utils.file_manager import FileManager
 from .utils.office_previewer import OfficePreviewer
 from .utils.operation_worker import FileOperationWorker
-from .utils.shell_utils import mostrar_propiedades_windows, abrir_dispositivo_adb
+from .utils.shell_utils import mostrar_propiedades_windows, mostrar_propiedades_multiplataforma, abrir_dispositivo_adb
 
 class TabArchivos(QWidget):
     """Suite Principal del Módulo de Archivos (Explorador, Commander, Diff Viewer, Zip)"""
@@ -414,9 +414,10 @@ class TabArchivos(QWidget):
             self.gui.mostrar_info_general(nombre, "Recurso o equipo de red")
             return
 
-        ruta_str_actual = str(self.manager.ruta_actual).replace("/", "\\")
-        if ruta_str_actual.startswith("\\\\"):
-            partes = [p for p in ruta_str_actual[2:].split("\\") if p]
+        ruta_raw = str(self.manager.ruta_actual)
+        if ruta_raw.startswith("\\\\") or ruta_raw.startswith("//"):
+            ruta_norm = ruta_raw.replace("/", "\\")
+            partes = [p for p in ruta_norm[2:].split("\\") if p]
             if len(partes) <= 1:
                 self.archivo_editando = None
                 self.gui.mostrar_info_general(nombre, "Carpeta compartida de red")
@@ -796,11 +797,18 @@ class TabArchivos(QWidget):
         ruta = str(self.manager.ruta_actual)
         system = platform.system()
         try:
-            if cmd.lower() == "cmd":
+            if cmd.lower() in ("cmd", "terminal", "bash", "zsh"):
                 if system == "Windows":
-                    # 🔥 FIX DEFINITIVO: Forzar CWD y usar /K para mantener abierta
                     subprocess.Popen(["cmd.exe", "/K"], cwd=ruta, creationflags=subprocess.CREATE_NEW_CONSOLE)
-                else: self._ejecutar_app_sistema(cmd, ruta)
+                elif system == "Darwin":
+                    subprocess.Popen(["open", "-a", "Terminal", ruta])
+                else:
+                    import shutil
+                    term = next((t for t in ("x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "xterm") if shutil.which(t)), None)
+                    if term:
+                        subprocess.Popen([term], cwd=ruta)
+                    else:
+                        self._ejecutar_app_sistema(cmd, ruta)
             else:
                 # Ejecución genérica
                 self._ejecutar_app_sistema(cmd, ruta)
@@ -1004,12 +1012,9 @@ class TabArchivos(QWidget):
         else:
             ruta = self.manager.ruta_actual
             
-        if platform.system() == "Windows":
-            success = mostrar_propiedades_windows(ruta)
-            if not success:
-                self.gui.barra_estado.showMessage("No se pudieron cargar las propiedades de Windows", 3000)
-        else:
-            self.gui.barra_estado.showMessage("Propiedades de Windows solo disponibles en Windows", 3000)
+        success = mostrar_propiedades_multiplataforma(ruta, self.gui)
+        if not success:
+            self.gui.barra_estado.showMessage("No se pudieron cargar las propiedades del elemento", 3000)
 
     def copiar_ruta_acceso(self):
         if getattr(self.manager, "is_network_view", False) or str(self.manager.ruta_actual).lower() in ("network", "//red", "\\\\red"):
