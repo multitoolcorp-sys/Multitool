@@ -255,13 +255,10 @@ class DownloadItemWidget(QFrame):
     def _abrir_carpeta(self, path):
         folder = Path(path).parent if path else Path.home() / "Downloads"
         if folder.exists():
-            try:
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(str(path))])
-            except Exception:
-                try:
-                    open_path_native(str(folder))
-                except Exception:
-                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+            from controlador.utils.platform_compat import reveal_in_explorer
+            target = path if (path and Path(path).exists()) else folder
+            if not reveal_in_explorer(target):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
 
 class DownloadsFlyoutWidget(QFrame):

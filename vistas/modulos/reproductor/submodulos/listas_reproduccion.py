@@ -365,7 +365,20 @@ class ListasReproduccionSubmodule(QWidget):
                         if ctypes.windll.kernel32.GetDriveTypeW(drive) == 2:
                             drives.append(drive)
                     bitmask >>= 1
-            except: pass
+            except Exception:
+                pass
+        elif sys.platform == "darwin":
+            vols = Path("/Volumes")
+            if vols.exists():
+                for p in vols.iterdir():
+                    if p.is_dir() and p.name != "Macintosh HD":
+                        drives.append(str(p))
+        else:
+            for base in (Path("/media"), Path("/run/media"), Path("/mnt")):
+                if base.exists():
+                    for p in base.rglob("*"):
+                        if p.is_dir() and p.parent in (base, *(c for c in base.iterdir() if c.is_dir())):
+                            drives.append(str(p))
         return drives
 
     def refrescar_biblioteca(self):

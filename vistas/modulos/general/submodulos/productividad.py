@@ -392,7 +392,8 @@ class ProductividadGUI(QWidget):
             self.stop_sound()
             self.btn_toggle_pomo.setText("▶️ Iniciar Enfoque")
             try:
-                winsound.Beep(1000, 500)
+                from controlador.utils.platform_compat import beep_native
+                beep_native(1000, 500)
             except Exception:
                 pass
 

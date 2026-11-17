@@ -141,7 +141,8 @@ class DiskScannerThread(QThread):
         return total
 
     def _get_recycle_bin_size(self):
-        if platform.system() == "Windows":
+        sys_os = platform.system()
+        if sys_os == "Windows":
             try:
                 cmd = "Get-ChildItem -Path 'C:\\$Recycle.Bin' -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum"
                 out = subprocess.check_output(["powershell", "-Command", cmd], text=True)
@@ -150,8 +151,12 @@ class DiskScannerThread(QThread):
                         val = line.split(":")[1].strip()
                         if val.isdigit():
                             return int(val)
-            except:
+            except Exception:
                 pass
+        elif sys_os == "Darwin":
+            return self._get_folder_size(os.path.expanduser("~/.Trash"))
+        else:
+            return self._get_folder_size(os.path.expanduser("~/.local/share/Trash/files"))
         return 0
 
 
@@ -224,9 +229,9 @@ class DiskCleanerThread(QThread):
         return total
 
     def _clean_recycle_bin(self):
-        if platform.system() == "Windows":
+        sys_os = platform.system()
+        if sys_os == "Windows":
             try:
-                # Medir tamaño
                 cmd_size = "Get-ChildItem -Path 'C:\\$Recycle.Bin' -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum"
                 out = subprocess.check_output(["powershell", "-Command", cmd_size], text=True)
                 before = 0
@@ -234,11 +239,32 @@ class DiskCleanerThread(QThread):
                     if "Sum" in line and ":" in line:
                         val = line.split(":")[1].strip()
                         if val.isdigit(): before = int(val)
-                
-                # Ejecutar comando vaciar
                 subprocess.run(["powershell", "-Command", "Clear-RecycleBin -Force -ErrorAction SilentlyContinue"], capture_output=True)
                 return before
-            except: pass
+            except Exception:
+                pass
+        else:
+            import shutil
+            trash_dirs = (
+                [os.path.expanduser("~/.Trash")]
+                if sys_os == "Darwin"
+                else [os.path.expanduser("~/.local/share/Trash/files"), os.path.expanduser("~/.local/share/Trash/info")]
+            )
+            freed = 0
+            for td in trash_dirs:
+                if os.path.exists(td):
+                    for item in os.listdir(td):
+                        fp = os.path.join(td, item)
+                        try:
+                            if os.path.isdir(fp):
+                                freed += sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(fp) for f in fs)
+                                shutil.rmtree(fp, ignore_errors=True)
+                            else:
+                                freed += os.path.getsize(fp)
+                                os.unlink(fp)
+                        except Exception:
+                            pass
+            return freed
         return 0
 
 

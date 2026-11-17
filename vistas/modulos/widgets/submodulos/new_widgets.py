@@ -700,14 +700,33 @@ class QuickStickyNotesWidget(QuickWidgetBase):
 # ==============================================================================
 # SUBMÓDULO 2: QUICK LAUNCHER (Lanzador Rápido de Aplicaciones y Enlaces)
 # ==============================================================================
-DEFAULT_LAUNCHER = [
-    {"name": "Explorador", "icon": "📁", "action": "cmd:explorer.exe"},
-    {"name": "Calculadora", "icon": "🧮", "action": "cmd:calc.exe"},
-    {"name": "Bloc de Notas", "icon": "📝", "action": "cmd:notepad.exe"},
-    {"name": "Google Chrome", "icon": "🌐", "action": "url:https://google.com"},
-    {"name": "YouTube", "icon": "▶️", "action": "url:https://youtube.com"},
-    {"name": "Carpeta Usuario", "icon": "🏠", "action": "folder:home"}
-]
+if sys.platform == "win32":
+    DEFAULT_LAUNCHER = [
+        {"name": "Explorador", "icon": "📁", "action": "cmd:explorer.exe"},
+        {"name": "Calculadora", "icon": "🧮", "action": "cmd:calc.exe"},
+        {"name": "Bloc de Notas", "icon": "📝", "action": "cmd:notepad.exe"},
+        {"name": "Google Chrome", "icon": "🌐", "action": "url:https://google.com"},
+        {"name": "YouTube", "icon": "▶️", "action": "url:https://youtube.com"},
+        {"name": "Carpeta Usuario", "icon": "🏠", "action": "folder:home"}
+    ]
+elif sys.platform == "darwin":
+    DEFAULT_LAUNCHER = [
+        {"name": "Finder", "icon": "📁", "action": "folder:home"},
+        {"name": "Calculadora", "icon": "🧮", "action": "cmd:open -a Calculator"},
+        {"name": "TextEdit", "icon": "📝", "action": "cmd:open -a TextEdit"},
+        {"name": "Google Chrome", "icon": "🌐", "action": "url:https://google.com"},
+        {"name": "YouTube", "icon": "▶️", "action": "url:https://youtube.com"},
+        {"name": "Carpeta Usuario", "icon": "🏠", "action": "folder:home"}
+    ]
+else:
+    DEFAULT_LAUNCHER = [
+        {"name": "Archivos", "icon": "📁", "action": "folder:home"},
+        {"name": "Calculadora", "icon": "🧮", "action": "cmd:gnome-calculator"},
+        {"name": "Editor Texto", "icon": "📝", "action": "cmd:gedit"},
+        {"name": "Google Chrome", "icon": "🌐", "action": "url:https://google.com"},
+        {"name": "YouTube", "icon": "▶️", "action": "url:https://youtube.com"},
+        {"name": "Carpeta Usuario", "icon": "🏠", "action": "folder:home"}
+    ]
 
 class QuickLauncherWidget(QuickWidgetBase):
     """Submódulo Lanzador Rápido de Accesos Directos"""

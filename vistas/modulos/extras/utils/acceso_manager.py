@@ -1,5 +1,6 @@
 import json
 import os
+import platform
 from controlador.utils.platform_compat import open_path_native
 import subprocess
 from pathlib import Path
@@ -11,15 +12,30 @@ class AccesosManager:
         self.ruta_usuario.mkdir(parents=True, exist_ok=True)
         self.ruta_datos = self.ruta_usuario / "mis_accesos.json"
         
-        # Aplicaciones recomendadas iniciales que se copian la primera vez (para Windows)
-        self.apps_por_defecto = [
-            {"nombre": "Calculadora", "ruta": "calc.exe", "icono": "🧮"},
-            {"nombre": "Bloc de Notas", "ruta": "notepad.exe", "icono": "📝"},
-            {"nombre": "Paint", "ruta": "mspaint.exe", "icono": "🎨"},
-            {"nombre": "Explorador", "ruta": "explorer.exe", "icono": "📁"},
-            {"nombre": "Terminal", "ruta": "cmd.exe", "icono": "🖥️"},
-            {"nombre": "Configuración", "ruta": "ms-settings:", "icono": "⚙️"}
-        ]
+        sys_os = platform.system()
+        if sys_os == "Windows":
+            self.apps_por_defecto = [
+                {"nombre": "Calculadora", "ruta": "calc.exe", "icono": "🧮"},
+                {"nombre": "Bloc de Notas", "ruta": "notepad.exe", "icono": "📝"},
+                {"nombre": "Paint", "ruta": "mspaint.exe", "icono": "🎨"},
+                {"nombre": "Explorador", "ruta": "explorer.exe", "icono": "📁"},
+                {"nombre": "Terminal", "ruta": "cmd.exe", "icono": "🖥️"},
+                {"nombre": "Configuración", "ruta": "ms-settings:", "icono": "⚙️"}
+            ]
+        elif sys_os == "Darwin":
+            self.apps_por_defecto = [
+                {"nombre": "Calculadora", "ruta": "open -a Calculator", "icono": "🧮"},
+                {"nombre": "TextEdit", "ruta": "open -a TextEdit", "icono": "📝"},
+                {"nombre": "Finder", "ruta": str(Path.home()), "icono": "📁"},
+                {"nombre": "Terminal", "ruta": "open -a Terminal", "icono": "🖥️"},
+            ]
+        else:
+            self.apps_por_defecto = [
+                {"nombre": "Calculadora", "ruta": "gnome-calculator", "icono": "🧮"},
+                {"nombre": "Editor de Texto", "ruta": "gedit", "icono": "📝"},
+                {"nombre": "Archivos", "ruta": str(Path.home()), "icono": "📁"},
+                {"nombre": "Terminal", "ruta": "x-terminal-emulator", "icono": "🖥️"},
+            ]
         
         self.mis_apps = self._cargar_datos()
 

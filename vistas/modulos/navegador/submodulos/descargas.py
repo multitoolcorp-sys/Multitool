@@ -667,13 +667,10 @@ class TabNavegadorDescargas(QWidget):
     def _abrir_carpeta(self, file_path):
         folder = os.path.dirname(file_path) if file_path else str(Path.home() / "Downloads")
         if os.path.exists(folder):
-            try:
-                subprocess.Popen(["explorer", "/select,", os.path.normpath(str(file_path))])
-            except Exception:
-                try:
-                    open_path_native(folder)
-                except Exception:
-                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+            from controlador.utils.platform_compat import reveal_in_explorer
+            target = file_path if (file_path and os.path.exists(file_path)) else folder
+            if not reveal_in_explorer(target):
+                QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def actualizar_tema(self, colores):
         if isinstance(colores, dict):
