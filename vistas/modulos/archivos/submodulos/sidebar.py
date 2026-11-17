@@ -68,24 +68,54 @@ class FileSidebar(QFrame):
             QPushButton:hover {{ background: rgba(255, 255, 255, 0.05); color: {self.colores['acento']}; }}
         """
 
-        # ── 1. SECCIÓN BIBLIOTECAS ──
-        lbl_side = QLabel("BIBLIOTECAS")
+        # ── 1. SECCIÓN BIBLIOTECAS / SISTEMA ──
+        sys_os = platform.system()
+        titulo_sec = "BIBLIOTECAS" if sys_os == "Windows" else "SISTEMA Y HOME"
+        lbl_side = QLabel(titulo_sec)
         lbl_side.setFont(QFont(self.font_family, 8, QFont.Weight.Bold))
         lbl_side.setStyleSheet(f"color: {self.colores['fg_secundario']}; margin-bottom: 3px; letter-spacing: 1px;")
         self.main_layout.addWidget(lbl_side)
-        
+
         home = str(Path.home())
-        accesos = [
-            ("💻 Este Equipo", "shell:MyComputerFolder"),
-            ("🏠 Home", home),
-            ("🖥️ Escritorio", str(Path.home() / "Desktop")),
-            ("📂 Documentos", str(Path.home() / "Documents")),
-            ("⬇️ Descargas", str(Path.home() / "Downloads")),
-            ("🖼️ Imágenes", str(Path.home() / "Pictures")),
-            ("🌐 Red", "network"),
-            ("🗑️ Papelera", "trash"),
-        ]
-        
+        if sys_os == "Windows":
+            accesos = [
+                ("💻 Este Equipo", "shell:MyComputerFolder"),
+                ("🏠 Home", home),
+                ("🖥️ Escritorio", str(Path.home() / "Desktop")),
+                ("📂 Documentos", str(Path.home() / "Documents")),
+                ("⬇️ Descargas", str(Path.home() / "Downloads")),
+                ("🖼️ Imágenes", str(Path.home() / "Pictures")),
+                ("🌐 Red", "network"),
+                ("🗑️ Papelera", "trash"),
+            ]
+        elif sys_os == "Darwin":
+            accesos = [
+                ("🍎 Raíz (/)", "/"),
+                ("🏠 Home (~)", home),
+                ("📱 Aplicaciones", "/Applications"),
+                ("💾 Volúmenes", "/Volumes"),
+                ("👥 Usuarios", "/Users"),
+                ("🖥️ Escritorio", str(Path.home() / "Desktop")),
+                ("📂 Documentos", str(Path.home() / "Documents")),
+                ("⬇️ Descargas", str(Path.home() / "Downloads")),
+                ("🌐 Red", "network"),
+                ("🗑️ Papelera", "trash"),
+            ]
+        else:
+            accesos = [
+                ("🐧 Raíz (/)", "/"),
+                ("🏠 Home (~)", home),
+                ("👥 /home", "/home"),
+                ("📦 /var", "/var"),
+                ("⚙️ /etc", "/etc"),
+                ("🔌 /mnt", "/mnt"),
+                ("💾 /media", "/media"),
+                ("⬇️ Descargas", str(Path.home() / "Downloads")),
+                ("📂 Documentos", str(Path.home() / "Documents")),
+                ("🌐 Red", "network"),
+                ("🗑️ Papelera", "trash"),
+            ]
+
         for text, path in accesos:
             if path in ("trash", "network", "shell:MyComputerFolder") or os.path.exists(path):
                 btn = QPushButton(text)
