@@ -51,6 +51,25 @@ def open_path_native(target: str | Path) -> bool:
         return False
 
 
+def reveal_in_explorer(target: str | Path) -> bool:
+    """Abre el explorador de archivos seleccionando el archivo (o abriendo la carpeta)."""
+    p = Path(target).resolve()
+    try:
+        os_key = get_os_key()
+        if os_key == "windows":
+            if p.is_file():
+                subprocess.Popen(f'explorer /select,"{p}"')
+            else:
+                subprocess.Popen(f'explorer "{p}"')
+        elif os_key == "macos":
+            subprocess.Popen(["open", "-R", str(p)] if p.is_file() else ["open", str(p)])
+        else:
+            subprocess.Popen(["xdg-open", str(p.parent if p.is_file() else p)])
+        return True
+    except Exception:
+        return False
+
+
 def get_default_shell() -> str:
     """Devuelve la terminal por defecto según el sistema operativo."""
     if get_os_key() == "windows":

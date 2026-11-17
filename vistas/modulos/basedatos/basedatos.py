@@ -1249,12 +1249,12 @@ class TabBasedatos(QWidget):
                 if p.exists():
                     target_path = p.resolve()
 
-        import subprocess
+        from controlador.utils.platform_compat import reveal_in_explorer
         if target_path:
-            subprocess.Popen(f'explorer /select,"{target_path}"')
+            reveal_in_explorer(target_path)
         else:
             self._asegurar_directorio_estatico()
-            subprocess.Popen(f'explorer "{self.databases_dir.resolve()}"')
+            reveal_in_explorer(self.databases_dir.resolve())
 
     def _actualizar_destino_db_en_consolas(self, name: str, path: str):
         """Actualiza el indicador visual de base de datos destino en todas las consolas SQL abiertas"""
@@ -1874,9 +1874,8 @@ class TabBasedatos(QWidget):
                 info_text = c_path or str(conn_data)
                 QApplication.clipboard().setText(info_text)
             elif a_open_folder and action == a_open_folder:
-                import subprocess
-                p = Path(c_path).resolve()
-                subprocess.Popen(f'explorer /select,"{p}"')
+                from controlador.utils.platform_compat import reveal_in_explorer
+                reveal_in_explorer(c_path)
             elif action == a_remove:
                 self._eliminar_conexion_guardada(conn_data.get("name"))
 
