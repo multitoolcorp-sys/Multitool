@@ -474,9 +474,11 @@ class TabEmulador(QWidget):
             self.canvas.set_display_buffer(self.display)
 
     def play_beep(self):
-        if winsound:
-            try: winsound.Beep(580, 70)
-            except: pass
+        try:
+            from controlador.utils.platform_compat import beep_native
+            beep_native(580, 70)
+        except Exception:
+            pass
 
     def emulate_cycle(self):
         if self.pc < 0x200 or self.pc >= 4094:

@@ -931,11 +931,11 @@ class CasinoSubmodule(QWidget):
             self.btn_bono.setEnabled(saldo == 0)
 
     def _beep(self, freq, duration):
-        if winsound:
-            try:
-                winsound.Beep(freq, duration)
-            except Exception:
-                pass
+        try:
+            from controlador.utils.platform_compat import beep_native
+            beep_native(freq, duration)
+        except Exception:
+            pass
 
     def actualizar_tema(self, colores):
         self.colores = colores
