@@ -1,10 +1,70 @@
 {
   "modulo": "sistema",
-  "version": "21.1.1",
+  "version": "21.9.0",
   "fecha": "2026-08-17",
-  "descripcion": "Actualización del módulo Sistema v21.1.1",
-  "ultima_actualizacion": "2026-10-17",
+  "descripcion": "1. \n+Bug de vista de pestañas en Terminal\n+Bug de vista de pestañas en Sistema/Control Remoto",
+  "ultima_actualizacion": "2026-11-18",
   "historial": [
+    {
+      "version": "21.9.0",
+      "fecha": "2026-11-18 03:24:40",
+      "descripcion": "1. \n+Bug de vista de pestañas en Terminal\n+Bug de vista de pestañas en Sistema/Control Remoto"
+    },
+    {
+      "version": "21.8.4",
+      "fecha": "2026-11-18 03:16:24",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.8.3",
+      "fecha": "2026-11-18 03:08:03",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.8.2",
+      "fecha": "2026-11-18 03:06:51",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.8.1",
+      "fecha": "2026-11-18 03:04:20",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.8.0",
+      "fecha": "2026-11-12 17:41:26",
+      "descripcion": "+ Módulo 'Sistema' actualizado (1 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.7.0",
+      "fecha": "2026-11-12 17:38:04",
+      "descripcion": "+ Actualización de Interfaz y Modo IDE (gui.py / dashboard_layout.py)\n+ Actualización de Controlador, Utils y Cargador Dinámico\n+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))\n+ Módulo 'Terminal' actualizado (1 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.6.0",
+      "fecha": "2026-11-12 17:26:11",
+      "descripcion": "+ Módulo 'Sistema' actualizado (1 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.5.0",
+      "fecha": "2026-11-12 17:25:12",
+      "descripcion": "+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.4.0",
+      "fecha": "2026-11-12 17:06:18",
+      "descripcion": "+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.3.0",
+      "fecha": "2026-11-12 16:55:10",
+      "descripcion": "+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))"
+    },
+    {
+      "version": "21.2.0",
+      "fecha": "2026-11-12 16:46:22",
+      "descripcion": "+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))"
+    },
     {
       "version": "21.1.1",
       "fecha": "2026-10-17 01:37:38",

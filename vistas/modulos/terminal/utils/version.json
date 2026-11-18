@@ -1,10 +1,40 @@
 {
   "modulo": "terminal",
-  "version": "21.0.1",
+  "version": "21.2.0",
   "fecha": "2026-08-17",
-  "descripcion": "Actualización del módulo Terminal v21.0.1",
-  "ultima_actualizacion": "2026-10-17",
+  "descripcion": "1. \n+Bug de vista de pestañas en Terminal\n+Bug de vista de pestañas en Sistema/Control Remoto",
+  "ultima_actualizacion": "2026-11-18",
   "historial": [
+    {
+      "version": "21.2.0",
+      "fecha": "2026-11-18 03:24:56",
+      "descripcion": "1. \n+Bug de vista de pestañas en Terminal\n+Bug de vista de pestañas en Sistema/Control Remoto"
+    },
+    {
+      "version": "21.1.4",
+      "fecha": "2026-11-18 03:16:38",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.3",
+      "fecha": "2026-11-18 03:08:18",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.2",
+      "fecha": "2026-11-18 03:07:41",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.1",
+      "fecha": "2026-11-18 03:04:21",
+      "descripcion": "Actualización de módulo."
+    },
+    {
+      "version": "21.1.0",
+      "fecha": "2026-11-12 17:38:04",
+      "descripcion": "+ Actualización de Interfaz y Modo IDE (gui.py / dashboard_layout.py)\n+ Actualización de Controlador, Utils y Cargador Dinámico\n+ Módulo 'Sistema' actualizado (3 archivo(s) modificado(s))\n+ Módulo 'Terminal' actualizado (1 archivo(s) modificado(s))"
+    },
     {
       "version": "21.0.1",
       "fecha": "2026-10-17 01:38:08",
