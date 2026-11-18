@@ -94,6 +94,15 @@ def compilar_app_principal(base_path: Path):
         "--nofollow-import-to=vistas.dashboard_layout",
         "--nofollow-import-to=vistas.scrollable",
         "--nofollow-import-to=vistas.command_palette",
+        "--nofollow-import-to=vistas.utils.creator",
+        "--nofollow-import-to=vistas.utils.compilar_modulo",
+        "--nofollow-import-to=vistas.utils.workspaces",
+        "--nofollow-import-to=vistas.utils.quick_launcher",
+        "--nofollow-import-to=vistas.utils.module_store",
+        "--nofollow-import-to=vistas.utils.profile_backup",
+        "--nofollow-import-to=vistas.utils.automation_flows",
+        "--nofollow-import-to=controlador.utils.platform_compat",
+        "--nofollow-import-to=controlador.utils.event_bus",
         "--nofollow-import-to=webview",
         "--nofollow-import-to=yt_dlp",
         "--nofollow-import-to=PyQt6.QtWebEngineWidgets",
@@ -103,7 +112,6 @@ def compilar_app_principal(base_path: Path):
         "--include-module=ssl",
         "--include-module=uuid",
         "--include-module=smtplib",
-        "--include-module=winsound",
         "--include-module=sqlite3",
         "--include-module=_sqlite3",
         "--include-package=email",
@@ -132,6 +140,7 @@ def compilar_app_principal(base_path: Path):
     
     if sys_os == "Windows":
         cmd.insert(4, "--windows-console-mode=disable")
+        cmd.append("--include-module=winsound")
         ico_path = base_path / "vistas" / "utils" / "icono.ico"
         if ico_path.exists():
             cmd.append(f"--windows-icon-from-ico={ico_path}")
