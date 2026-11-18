@@ -75,17 +75,21 @@ def _asegurar_script_ssh_askpass() -> str:
 
 
 if TERMINAL_MODULE_AVAILABLE:
+    from vistas.modulos.terminal.submodulos.vt100_screen import VT100ScreenBuffer
+
     class RemoteSingleTerminalSession(SingleTerminalSession):
         """
         Extiende SingleTerminalSession (de terminal_main.py) para sesiones remotas SSH / SFTP / Telnet / WinRM:
         - Ejecuta ssh -tt directamente en QProcess con SSH_ASKPASS_REQUIRE=force (sin el error 'stdin is not a terminal')
         - Envía saltos de línea '\\n' puros en sesiones PTY remotas Linux para evitar doble eco de prompt
+        - Emula pantalla alternativa VT100 (nano, vim, htop, less) mediante VT100ScreenBuffer
         """
 
         def __init__(self, parent, context, shell_cmd=None, shell_args=None, cwd=None, tema_dict=None, ssh_password="", is_remote_pty=False):
             self.ssh_password = ssh_password or ""
             self.is_remote_pty = bool(is_remote_pty)
             self._esc_tail_buffer = ""
+            self._vt100 = VT100ScreenBuffer()
             super().__init__(parent, context, shell_cmd=shell_cmd, shell_args=shell_args, cwd=cwd, tema_dict=tema_dict)
 
         def leer_salida(self):
@@ -115,6 +119,36 @@ if TERMINAL_MODULE_AVAILABLE:
 
             if not text:
                 return
+
+            alt_enter_seqs = ("\x1b[?1049h", "\x1b[?47h", "\x1b[?1047h")
+            alt_exit_seqs = ("\x1b[?1049l", "\x1b[?47l", "\x1b[?1047l")
+            entering_alt = (not self._vt100.in_alt_screen) and any(s in text for s in alt_enter_seqs)
+            if entering_alt or self._vt100.in_alt_screen:
+                if entering_alt:
+                    self._vt100.saved_normal_text = self.terminal.toPlainText()
+                    self._pending_echo = None
+                    self._pending_empty_enter = False
+                self._vt100.feed(text)
+                if self._vt100.in_alt_screen:
+                    rendered = self._vt100.render()
+                    self.terminal.setPlainText(rendered)
+                    cur = self.terminal.textCursor()
+                    cur.setPosition(min(self._vt100.cursor_char_offset(), len(rendered)))
+                    self.terminal.setTextCursor(cur)
+                    self.terminal._prompt_pos = len(rendered)
+                    return
+                # Salió de pantalla alternativa: restaurar historial normal y procesar resto si existe
+                self.terminal.setPlainText(self._vt100.saved_normal_text)
+                self.terminal.moveCursor(QTextCursor.MoveOperation.End)
+                self.terminal._prompt_pos = self.terminal.textCursor().position()
+                last_exit_end = -1
+                for s in alt_exit_seqs:
+                    idx = text.rfind(s)
+                    if idx != -1:
+                        last_exit_end = max(last_exit_end, idx + len(s))
+                text = text[last_exit_end:] if last_exit_end != -1 else ""
+                if not text:
+                    return
 
             if hasattr(self.ansi_parser, "limpiar_secuencias_control"):
                 text = self.ansi_parser.limpiar_secuencias_control(text)
@@ -1191,6 +1225,7 @@ class TabRemote(QWidget):
         cfg_lay.setSpacing(4)
 
         self.tabs_inspector = QTabWidget()
+        self.tabs_inspector._keep_tabs_visible_in_ide = True
         self.tabs_inspector.setStyleSheet(f"""
             QTabWidget::pane {{
                 background: {self.colores['bg_terciario']};
@@ -1498,6 +1533,7 @@ class TabRemote(QWidget):
         r_lay.setSpacing(5)
 
         self.tabs_sesiones = QTabWidget()
+        self.tabs_sesiones._keep_tabs_visible_in_ide = True
         self.tabs_sesiones.setTabsClosable(True)
         self.tabs_sesiones.setMovable(True)
         self.tabs_sesiones.tabCloseRequested.connect(self._cerrar_pestana_sesion)

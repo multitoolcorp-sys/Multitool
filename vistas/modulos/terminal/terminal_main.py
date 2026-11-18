@@ -236,6 +236,7 @@ class TabTerminal(QWidget):
 
         # Gestor de Pestañas
         self.tab_widget = QTabWidget()
+        self.tab_widget._keep_tabs_visible_in_ide = True
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(True)
         self.tab_widget.setFont(QFont(self.font_family, 9))

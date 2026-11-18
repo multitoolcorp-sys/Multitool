@@ -50,7 +50,72 @@ class InteractiveTerminalScreen(QTextEdit):
                 self.setTextCursor(cursor)
             cursor.insertText(cb.text())
 
+    def _enviar_tecla_vt100(self, event) -> bool:
+        """Envía pulsaciones crudas a la sesión cuando está activa una pantalla alternativa (nano/vim/htop)."""
+        if not self.session or not getattr(self.session, "process", None):
+            return False
+        key = event.key()
+        modifiers = event.modifiers()
+
+        # Mantener zoom y copiar/pegar en modo TUI
+        if modifiers == Qt.KeyboardModifier.ControlModifier:
+            if key in (Qt.Key.Key_Plus, Qt.Key.Key_Equal):
+                self.session.ajustar_zoom(1)
+                return True
+            if key == Qt.Key.Key_Minus:
+                self.session.ajustar_zoom(-1)
+                return True
+            if key == Qt.Key.Key_0:
+                self.session.reset_zoom()
+                return True
+            if Qt.Key.Key_A <= key <= Qt.Key.Key_Z:
+                ctrl_byte = bytes([key - Qt.Key.Key_A + 1])
+                self.session.process.write(ctrl_byte)
+                return True
+
+        if modifiers == (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.ShiftModifier):
+            if key == Qt.Key.Key_C:
+                self.copy()
+                return True
+            if key == Qt.Key.Key_V:
+                cb = QApplication.clipboard()
+                if cb and cb.text():
+                    self.session.process.write(cb.text().encode("utf-8"))
+                return True
+
+        special_map = {
+            Qt.Key.Key_Return: b"\r",
+            Qt.Key.Key_Enter: b"\r",
+            Qt.Key.Key_Backspace: b"\x7f",
+            Qt.Key.Key_Tab: b"\t",
+            Qt.Key.Key_Escape: b"\x1b",
+            Qt.Key.Key_Up: b"\x1b[A",
+            Qt.Key.Key_Down: b"\x1b[B",
+            Qt.Key.Key_Right: b"\x1b[C",
+            Qt.Key.Key_Left: b"\x1b[D",
+            Qt.Key.Key_Home: b"\x1b[H",
+            Qt.Key.Key_End: b"\x1b[F",
+            Qt.Key.Key_Delete: b"\x1b[3~",
+            Qt.Key.Key_PageUp: b"\x1b[5~",
+            Qt.Key.Key_PageDown: b"\x1b[6~",
+        }
+        if key in special_map:
+            self.session.process.write(special_map[key])
+            return True
+
+        txt = event.text()
+        if txt:
+            self.session.process.write(txt.encode("utf-8"))
+            return True
+        return False
+
     def keyPressEvent(self, event):
+        vt100 = getattr(self.session, "_vt100", None) if self.session else None
+        if vt100 and getattr(vt100, "in_alt_screen", False):
+            if self._enviar_tecla_vt100(event):
+                event.accept()
+                return
+
         key = event.key()
         modifiers = event.modifiers()
 
@@ -412,6 +477,92 @@ class SingleTerminalSession(QWidget):
         except Exception:
             pass
 
+    def _asegurar_askpass_interactivo(self) -> str:
+        """Crea un helper SSH_ASKPASS gráfico para que scp/ssh pidan contraseña sin congelar QProcess."""
+        import tempfile
+        helper_dir = Path(tempfile.gettempdir()) / "multitool_ssh_askpass"
+        try:
+            helper_dir.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+        if platform.system() == "Windows":
+            ps1_path = helper_dir / "terminal_askpass.ps1"
+            bat_path = helper_dir / "terminal_askpass.bat"
+            ps1_code = (
+                "param([string]$Prompt = 'Contraseña SSH / SCP:')\n"
+                "Add-Type -AssemblyName System.Windows.Forms\n"
+                "Add-Type -AssemblyName System.Drawing\n"
+                "$form = New-Object System.Windows.Forms.Form\n"
+                "$form.Text = 'Autenticación SSH / SCP'\n"
+                "$form.Size = New-Object System.Drawing.Size(420, 165)\n"
+                "$form.StartPosition = 'CenterScreen'\n"
+                "$form.FormBorderStyle = 'FixedDialog'\n"
+                "$form.MaximizeBox = $false\n"
+                "$form.MinimizeBox = $false\n"
+                "$form.TopMost = $true\n"
+                "$form.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 46)\n"
+                "$form.ForeColor = [System.Drawing.Color]::White\n"
+                "$lbl = New-Object System.Windows.Forms.Label\n"
+                "$lbl.Location = New-Object System.Drawing.Point(14, 14)\n"
+                "$lbl.Size = New-Object System.Drawing.Size(380, 36)\n"
+                "$lbl.Text = $Prompt\n"
+                "$form.Controls.Add($lbl)\n"
+                "$tb = New-Object System.Windows.Forms.TextBox\n"
+                "$tb.Location = New-Object System.Drawing.Point(14, 54)\n"
+                "$tb.Size = New-Object System.Drawing.Size(376, 24)\n"
+                "$tb.UseSystemPasswordChar = $true\n"
+                "$tb.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 65)\n"
+                "$tb.ForeColor = [System.Drawing.Color]::White\n"
+                "$form.Controls.Add($tb)\n"
+                "$ok = New-Object System.Windows.Forms.Button\n"
+                "$ok.Text = 'Aceptar'\n"
+                "$ok.DialogResult = [System.Windows.Forms.DialogResult]::OK\n"
+                "$ok.Location = New-Object System.Drawing.Point(226, 90)\n"
+                "$ok.Size = New-Object System.Drawing.Size(80, 28)\n"
+                "$form.AcceptButton = $ok\n"
+                "$form.Controls.Add($ok)\n"
+                "$cancel = New-Object System.Windows.Forms.Button\n"
+                "$cancel.Text = 'Cancelar'\n"
+                "$cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel\n"
+                "$cancel.Location = New-Object System.Drawing.Point(312, 90)\n"
+                "$cancel.Size = New-Object System.Drawing.Size(80, 28)\n"
+                "$form.CancelButton = $cancel\n"
+                "$form.Controls.Add($cancel)\n"
+                "$form.Add_Shown({ $tb.Focus() })\n"
+                "if ($form.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {\n"
+                "    [Console]::Out.WriteLine($tb.Text)\n"
+                "    exit 0\n"
+                "} else {\n"
+                "    exit 1\n"
+                "}\n"
+            )
+            bat_code = '@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0terminal_askpass.ps1" "%~1"\r\n'
+            try:
+                ps1_path.write_text(ps1_code, encoding="utf-8")
+                bat_path.write_text(bat_code, encoding="utf-8")
+            except Exception:
+                pass
+            return str(bat_path)
+
+        sh_path = helper_dir / "terminal_askpass.sh"
+        sh_code = (
+            '#!/bin/sh\n'
+            'if command -v zenity >/dev/null 2>&1; then\n'
+            '  zenity --password --title="SSH / SCP" --text="${1:-Contraseña:}"\n'
+            'elif command -v kdialog >/dev/null 2>&1; then\n'
+            '  kdialog --password "${1:-Contraseña:}"\n'
+            'elif command -v ssh-askpass >/dev/null 2>&1; then\n'
+            '  ssh-askpass "$1"\n'
+            'fi\n'
+        )
+        try:
+            sh_path.write_text(sh_code, encoding="utf-8")
+            os.chmod(sh_path, 0o755)
+        except Exception:
+            pass
+        return str(sh_path)
+
     def iniciar_proceso(self):
         self.process = QProcess(self)
         self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
@@ -420,6 +571,12 @@ class SingleTerminalSession(QWidget):
 
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONIOENCODING", "UTF-8")
+        askpass_script = self._asegurar_askpass_interactivo()
+        if askpass_script:
+            env.insert("SSH_ASKPASS", askpass_script)
+            env.insert("SSH_ASKPASS_REQUIRE", "force")
+            if not env.value("DISPLAY"):
+                env.insert("DISPLAY", ":0")
         self.process.setProcessEnvironment(env)
         self.process.setWorkingDirectory(self.cwd)
 

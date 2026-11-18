@@ -1767,7 +1767,7 @@ class BaseAppGUI(QMainWindow):
                     parent_cls = tw.parent().__class__.__name__ if tw.parent() else ""
                     if parent_cls in clases_excluidas or tw.__class__.__name__ in clases_excluidas:
                         return
-                    if hasattr(tw, "_is_web_browser_tabs") or "browser" in parent_cls.lower():
+                    if hasattr(tw, "_is_web_browser_tabs") or getattr(tw, "_keep_tabs_visible_in_ide", False) or "browser" in parent_cls.lower():
                         return
                     tb.setVisible(not ocultar)
                     if not ocultar:
