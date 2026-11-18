@@ -1748,7 +1748,7 @@ class BaseAppGUI(QMainWindow):
                         for tw in page.findChildren(QTabWidget):
                             parent_cls = tw.parent().__class__.__name__ if tw.parent() else ""
                             if parent_cls not in clases_excluidas and tw.__class__.__name__ not in clases_excluidas:
-                                if not hasattr(tw, "_is_web_browser_tabs") and "browser" not in parent_cls.lower():
+                                if not hasattr(tw, "_is_web_browser_tabs") and not getattr(tw, "_keep_tabs_visible_in_ide", False) and "browser" not in parent_cls.lower():
                                     return tw
                 break
 
@@ -1835,7 +1835,8 @@ class BaseAppGUI(QMainWindow):
         target_tw = self._resolver_tab_widget_submodulos(mod_name)
         if target_tw:
             if hasattr(target_tw, "tabBar") and target_tw.tabBar():
-                target_tw.tabBar().hide()
+                if not hasattr(target_tw, "_is_web_browser_tabs") and not getattr(target_tw, "_keep_tabs_visible_in_ide", False):
+                    target_tw.tabBar().hide()
             if 0 <= sub_idx < target_tw.count():
                 target_tw.setCurrentIndex(sub_idx)
             elif sub_name:
@@ -1884,7 +1885,8 @@ class BaseAppGUI(QMainWindow):
         target_tw = self._resolver_tab_widget_submodulos(mod_name)
         if target_tw:
             if hasattr(target_tw, "tabBar") and target_tw.tabBar():
-                target_tw.tabBar().hide()
+                if not hasattr(target_tw, "_is_web_browser_tabs") and not getattr(target_tw, "_keep_tabs_visible_in_ide", False):
+                    target_tw.tabBar().hide()
             if sub_name:
                 for s_i in range(target_tw.count()):
                     txt = target_tw.tabText(s_i).lower()
