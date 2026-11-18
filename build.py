@@ -79,6 +79,7 @@ def compilar_app_principal(base_path: Path):
         # Plugins y dependencias
         "--enable-plugin=pyqt6",
         "--follow-imports",
+        "--no-deployment-flag=excluded-module-usage",
         lto_flag,
         
         # Exclusiones de paquetes pesados y módulos dinámicos
