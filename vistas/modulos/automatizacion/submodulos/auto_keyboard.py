@@ -34,6 +34,8 @@ class AutoKeyboardWorker:
         self.signals = signals
         self.running = False
         self.thread = None
+        self._stop_event = threading.Event()
+        self._run_id = 0
 
         self.mode = "single"  # "single", "text", "hold"
         self.vk_code = VK_MAP.get("ESPACIO", 0x20)
@@ -48,46 +50,62 @@ class AutoKeyboardWorker:
     def start(self):
         if self.running:
             return
+        if self.thread and self.thread.is_alive():
+            self._stop_event.set()
+            self.thread.join(timeout=0.2)
+        self._run_id += 1
+        my_run_id = self._run_id
+        self._stop_event.clear()
         self.running = True
-        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread = threading.Thread(target=self._run, args=(my_run_id,), daemon=True)
         self.thread.start()
         self.signals.started.emit()
 
     def stop(self):
         self.running = False
+        self._stop_event.set()
 
-    def _run(self):
+    def _run(self, run_id: int):
         total = 0
         try:
             if self.mode == "hold":
                 key_down(self.vk_code)
-                while self.running:
-                    time.sleep(0.05)
-                key_up(self.vk_code)
+                self.signals.pressed.emit(1)
+                while self.running and not self._stop_event.is_set():
+                    if self._stop_event.wait(0.05):
+                        break
+                    # Reenviar key_down estilo auto-repeat para que juegos (Roblox) mantengan la tecla activa aunque cambien de foco
+                    key_down(self.vk_code)
                 return
 
             delay = max(0.002, self.interval_ms / 1000.0)
             hold = max(0.001, self.hold_ms / 1000.0)
 
-            while self.running:
+            while self.running and not self._stop_event.is_set():
                 t0 = time.perf_counter()
 
                 if self.mode == "single":
-                    key_press(self.vk_code, hold_duration=hold)
+                    key_press(self.vk_code, hold_duration=hold, stop_event=self._stop_event)
+                    if self._stop_event.is_set():
+                        break
                     total += 1
                     self.signals.pressed.emit(total)
                 elif self.mode == "text":
                     lines = self.text_to_type.splitlines() or [""]
                     for line in lines:
-                        if not self.running:
+                        if not self.running or self._stop_event.is_set():
                             break
                         char_delay = 0.015 if not self.humanize else random.uniform(0.01, 0.03)
-                        type_text(line, delay=char_delay)
+                        type_text(line, delay=char_delay, stop_event=self._stop_event)
+                        if self._stop_event.is_set():
+                            break
                         if self.press_enter_after_line:
-                            key_press(VK_MAP.get("ENTER", 0x0D), hold_duration=0.01)
+                            key_press(VK_MAP.get("ENTER", 0x0D), hold_duration=0.015, stop_event=self._stop_event)
                         total += 1
                         self.signals.pressed.emit(total)
 
+                if self._stop_event.is_set():
+                    break
                 if self.repeat_mode == "count" and total >= self.target_count:
                     break
 
@@ -98,15 +116,17 @@ class AutoKeyboardWorker:
                 elapsed = time.perf_counter() - t0
                 sleep_needed = actual_delay - elapsed
                 if sleep_needed > 0.002:
-                    time.sleep(sleep_needed - 0.001)
-                while (time.perf_counter() - t0) < actual_delay:
+                    if self._stop_event.wait(sleep_needed - 0.001):
+                        break
+                while not self._stop_event.is_set() and (time.perf_counter() - t0) < actual_delay:
                     pass
 
         finally:
             if self.mode == "hold":
                 key_up(self.vk_code)
-            self.running = False
-            self.signals.stopped.emit()
+            if run_id == self._run_id:
+                self.running = False
+                self.signals.stopped.emit()
 
 
 class TabAutoKeyboard(QWidget):

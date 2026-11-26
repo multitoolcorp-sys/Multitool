@@ -755,13 +755,18 @@ def key_up(vk_code: int):
             _pg.keyUp(name)
 
 
-def key_press(vk_code: int, hold_duration: float = 0.025):
-    """Presiona y suelta una tecla con un tiempo de sostenimiento configurable."""
+def key_press(vk_code: int, hold_duration: float = 0.025, stop_event=None):
+    """Presiona y suelta una tecla con un tiempo de sostenimiento configurable e interrumpible."""
     if user32:
         _send_key_input(vk_code, is_up=False)
-        if hold_duration > 0:
-            time.sleep(hold_duration)
-        _send_key_input(vk_code, is_up=True)
+        try:
+            if hold_duration > 0:
+                if stop_event is not None:
+                    stop_event.wait(hold_duration)
+                else:
+                    time.sleep(hold_duration)
+        finally:
+            _send_key_input(vk_code, is_up=True)
     elif _pg:
         name = VK_TO_NAME.get(vk_code, "").lower()
         if name:
@@ -802,17 +807,23 @@ def send_char(char: str):
         _send_unicode_char(char)
 
 
-def type_text(text: str, delay: float = 0.01):
-    """Escribe una cadena de texto simulando pulsaciones de teclado reales."""
+def type_text(text: str, delay: float = 0.01, stop_event=None):
+    """Escribe una cadena de texto simulando pulsaciones de teclado reales (interrumpible)."""
     for ch in text:
+        if stop_event is not None and stop_event.is_set():
+            break
         if ch == "\n":
-            key_press(VK_MAP["ENTER"])
+            key_press(VK_MAP["ENTER"], stop_event=stop_event)
         elif ch == "\t":
-            key_press(VK_MAP["TAB"])
+            key_press(VK_MAP["TAB"], stop_event=stop_event)
         else:
             send_char(ch)
         if delay > 0:
-            time.sleep(delay)
+            if stop_event is not None:
+                if stop_event.wait(delay):
+                    break
+            else:
+                time.sleep(delay)
 
 
 class HotkeySignals(QObject):
