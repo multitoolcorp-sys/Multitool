@@ -40,7 +40,7 @@ class AutoKeyboardWorker:
         self.text_to_type = ""
         self.press_enter_after_line = True
         self.interval_ms = 50
-        self.hold_ms = 10
+        self.hold_ms = 30
         self.humanize = False
         self.repeat_mode = "infinite"
         self.target_count = 100
@@ -280,7 +280,7 @@ class TabAutoKeyboard(QWidget):
         t_lay.addWidget(self._crear_label("Sostenimiento (Hold):"), 1, 0)
         self.spin_hold = QSpinBox()
         self.spin_hold.setRange(1, 5000)
-        self.spin_hold.setValue(10)
+        self.spin_hold.setValue(30)
         self.spin_hold.setSuffix(" ms")
         self.spin_hold.setStyleSheet(self._estilo_input())
         t_lay.addWidget(self.spin_hold, 1, 1)

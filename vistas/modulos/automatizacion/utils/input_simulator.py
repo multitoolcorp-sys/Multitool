@@ -264,16 +264,58 @@ class RECT(Structure):
 
 
 if IS_WINDOWS and wintypes is not None:
+    ULONG_PTR = ctypes.c_ulonglong if ctypes.sizeof(ctypes.c_void_p) == 8 else ctypes.c_ulong
+
     class MSLLHOOKSTRUCT(Structure):
         _fields_ = [
             ("pt", wintypes.POINT),
             ("mouseData", wintypes.DWORD),
             ("flags", wintypes.DWORD),
             ("time", wintypes.DWORD),
-            ("dwExtraInfo", ctypes.c_ulonglong),
+            ("dwExtraInfo", ULONG_PTR),
+        ]
+
+    class MOUSEINPUT(Structure):
+        _fields_ = [
+            ("dx", wintypes.LONG),
+            ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ULONG_PTR),
+        ]
+
+    class KEYBDINPUT(Structure):
+        _fields_ = [
+            ("wVk", wintypes.WORD),
+            ("wScan", wintypes.WORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ULONG_PTR),
+        ]
+
+    class HARDWAREINPUT(Structure):
+        _fields_ = [
+            ("uMsg", wintypes.DWORD),
+            ("wParamL", wintypes.WORD),
+            ("wParamH", wintypes.WORD),
+        ]
+
+    class _INPUT_UNION(ctypes.Union):
+        _fields_ = [
+            ("mi", MOUSEINPUT),
+            ("ki", KEYBDINPUT),
+            ("hi", HARDWAREINPUT),
+        ]
+
+    class INPUT(Structure):
+        _fields_ = [
+            ("type", wintypes.DWORD),
+            ("union", _INPUT_UNION),
         ]
 else:
     MSLLHOOKSTRUCT = None
+    INPUT = None
 
 
 class _PhysicalMouseTracker:
@@ -622,10 +664,81 @@ def mouse_scroll(amount: int = 120):
         _pg.scroll(int(amount))
 
 
+_EXTENDED_VKS = {
+    0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,
+    0x2C, 0x2D, 0x2E, 0x5B, 0x5C, 0x5D, 0x6F, 0x90, 0xA3, 0xA5,
+}
+
+
+def _send_key_input(vk_code: int, is_up: bool = False):
+    """Envía eventos de teclado mediante SendInput con ScanCode de hardware (compatible con DirectInput/Roblox)."""
+    if not user32:
+        return
+    if INPUT is None:
+        flags = KEYEVENTF_KEYUP if is_up else 0
+        user32.keybd_event(vk_code, 0, flags, 0)
+        return
+
+    # Obtener scan code hardware; MAPVK_VK_TO_VSC_EX (4) indica prefijo extendido 0xE0/0xE1
+    scan_ex = user32.MapVirtualKeyW(vk_code, 4)
+    scan = scan_ex & 0xFF
+    if not scan:
+        scan = user32.MapVirtualKeyW(vk_code, 0) & 0xFF
+
+    is_extended = (vk_code in _EXTENDED_VKS) or ((scan_ex & 0xFF00) in (0xE000, 0xE100))
+
+    inp = INPUT()
+    inp.type = 1  # INPUT_KEYBOARD
+
+    if scan:
+        flags = KEYEVENTF_SCANCODE
+        if is_extended:
+            flags |= KEYEVENTF_EXTENDEDKEY
+        if is_up:
+            flags |= KEYEVENTF_KEYUP
+        inp.union.ki = KEYBDINPUT(wVk=0, wScan=scan, dwFlags=flags, time=0, dwExtraInfo=0)
+    else:
+        # Fallback para teclas sin scan code PS/2 (ej. multimedia)
+        flags = KEYEVENTF_KEYUP if is_up else 0
+        if is_extended:
+            flags |= KEYEVENTF_EXTENDEDKEY
+        inp.union.ki = KEYBDINPUT(wVk=vk_code, wScan=0, dwFlags=flags, time=0, dwExtraInfo=0)
+
+    sent = user32.SendInput(1, byref(inp), ctypes.sizeof(INPUT))
+    if sent == 0:
+        # Último recurso si SendInput falla (manteniendo scan code y bandera extendida)
+        flags = KEYEVENTF_KEYUP if is_up else 0
+        if is_extended:
+            flags |= KEYEVENTF_EXTENDEDKEY
+        user32.keybd_event(vk_code, scan, flags, 0)
+
+
+def _send_unicode_char(char: str):
+    """Envía un carácter Unicode mediante SendInput (KEYEVENTF_UNICODE)."""
+    if not user32:
+        return
+    if INPUT is None:
+        user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE, 0)
+        user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0)
+        return
+
+    code = ord(char)
+    down_inp = INPUT()
+    down_inp.type = 1
+    down_inp.union.ki = KEYBDINPUT(wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0)
+
+    up_inp = INPUT()
+    up_inp.type = 1
+    up_inp.union.ki = KEYBDINPUT(wVk=0, wScan=code, dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
+
+    arr = (INPUT * 2)(down_inp, up_inp)
+    user32.SendInput(2, arr, ctypes.sizeof(INPUT))
+
+
 def key_down(vk_code: int):
-    """Mantiene presionada una tecla por su código virtual."""
+    """Mantiene presionada una tecla por su código virtual (compatible con juegos DirectInput/RawInput)."""
     if user32:
-        user32.keybd_event(vk_code, 0, 0, 0)
+        _send_key_input(vk_code, is_up=False)
     elif _pg:
         name = VK_TO_NAME.get(vk_code, "").lower()
         if name:
@@ -635,20 +748,20 @@ def key_down(vk_code: int):
 def key_up(vk_code: int):
     """Suelta una tecla presionada."""
     if user32:
-        user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
+        _send_key_input(vk_code, is_up=True)
     elif _pg:
         name = VK_TO_NAME.get(vk_code, "").lower()
         if name:
             _pg.keyUp(name)
 
 
-def key_press(vk_code: int, hold_duration: float = 0.01):
+def key_press(vk_code: int, hold_duration: float = 0.025):
     """Presiona y suelta una tecla con un tiempo de sostenimiento configurable."""
     if user32:
-        user32.keybd_event(vk_code, 0, 0, 0)
+        _send_key_input(vk_code, is_up=False)
         if hold_duration > 0:
             time.sleep(hold_duration)
-        user32.keybd_event(vk_code, 0, KEYEVENTF_KEYUP, 0)
+        _send_key_input(vk_code, is_up=True)
     elif _pg:
         name = VK_TO_NAME.get(vk_code, "").lower()
         if name:
@@ -656,7 +769,7 @@ def key_press(vk_code: int, hold_duration: float = 0.01):
 
 
 def send_char(char: str):
-    """Envía un carácter utilizando VkKeyScanW o Unicode directo."""
+    """Envía un carácter utilizando VkKeyScanW + ScanCodes o Unicode directo vía SendInput."""
     if not user32:
         if _pg:
             _pg.write(char)
@@ -677,7 +790,7 @@ def send_char(char: str):
         if alt:
             key_down(VK_MAP["ALT"])
 
-        key_press(vk, hold_duration=0.005)
+        key_press(vk, hold_duration=0.015)
 
         if alt:
             key_up(VK_MAP["ALT"])
@@ -686,8 +799,7 @@ def send_char(char: str):
         if shift:
             key_up(VK_MAP["SHIFT"])
     else:
-        user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE, 0)
-        user32.keybd_event(0, ord(char), KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0)
+        _send_unicode_char(char)
 
 
 def type_text(text: str, delay: float = 0.01):
