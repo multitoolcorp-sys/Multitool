@@ -233,10 +233,10 @@ def incrementar_version_semver(version_str, tiene_novedad=False, tiene_arreglo=F
 
     return f"{major}.{minor}.{patch}"
 
-def obtener_o_actualizar_version_modulo(base_dir, mod_name, descripcion=""):
+def obtener_o_actualizar_version_modulo(base_dir, mod_name, descripcion="", actualizar_json=True):
     """
     Lee 'vistas/modulos/<mod_name>/utils/version.json', calcula la nueva versión SemVer
-    según la descripción (+ = MINOR bump 21.1.0, - = PATCH bump 21.0.1) y la guarda de nuevo.
+    según la descripción (+ = MINOR bump 21.1.0, - = PATCH bump 21.0.1) y la guarda si actualizar_json=True.
     """
     mod_dir = Path(base_dir) / "vistas" / "modulos" / mod_name
     utils_dir = mod_dir / "utils"
@@ -252,6 +252,9 @@ def obtener_o_actualizar_version_modulo(base_dir, mod_name, descripcion=""):
                 current_ver = vdata.get("version", "21.0.0")
         except Exception:
             pass
+
+    if not actualizar_json:
+        return current_ver
 
     tiene_novedad = False
     tiene_arreglo = False
@@ -641,7 +644,8 @@ if HAS_PYQT:
             archivos_personalizados=None,
             modo_rapido=True,
             solo_modificados=False,
-            delta_por_modulo=None
+            delta_por_modulo=None,
+            actualizar_version_json=True
         ):
             super().__init__()
             self.base_dir = base_dir
@@ -654,6 +658,7 @@ if HAS_PYQT:
             self.modo_rapido = modo_rapido
             self.solo_modificados = solo_modificados
             self.delta_por_modulo = dict(delta_por_modulo or {})
+            self.actualizar_version_json = actualizar_version_json
             self.unificar = unificar_modulos
             self.nombre_personalizado = nombre_personalizado.strip()
             self.descripcion = descripcion.strip()
@@ -1174,9 +1179,9 @@ if HAS_PYQT:
                     else:
                         self.log_signal.emit(f"[⚡ MODO RÁPIDO] Omitiendo compilación pesada de Nuitka para '{mod_name}' (código dinámico directo).")
 
-                    # Actualizar versión SemVer del módulo según la descripción (+/-)
-                    mod_ver = obtener_o_actualizar_version_modulo(self.base_dir, mod_name, self.descripcion)
-                    self.log_signal.emit(f"Versión calculada del módulo '{mod_name}': v{mod_ver}")
+                    # Actualizar versión SemVer del módulo según la descripción (+/-) si está habilitado
+                    mod_ver = obtener_o_actualizar_version_modulo(self.base_dir, mod_name, self.descripcion, actualizar_json=self.actualizar_version_json)
+                    self.log_signal.emit(f"Versión del módulo '{mod_name}': v{mod_ver}" + ("" if self.actualizar_version_json else " (version.json sin modificar)"))
 
                     # Determinar si aplicamos Parche Delta (solo archivos modificados) o módulo completo
                     delta_files = self.delta_por_modulo.get(mod_name.lower(), []) if self.solo_modificados else []
@@ -1522,6 +1527,11 @@ if HAS_PYQT:
             self.cb_copiar_web.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: bold;")
             options_layout.addWidget(self.cb_copiar_web)
 
+            self.cb_no_version_json = QCheckBox("🔒 No añadir nueva versión a version.json (mantiene la versión actual y evita commits extra)")
+            self.cb_no_version_json.setChecked(False)
+            self.cb_no_version_json.setStyleSheet("color: #F472B6; font-size: 11px; font-weight: bold;")
+            options_layout.addWidget(self.cb_no_version_json)
+
             main_layout.addLayout(options_layout)
 
             # Nombre personalizado del archivo
@@ -1729,6 +1739,7 @@ if HAS_PYQT:
             self.cb_delta.setEnabled(False)
             self.cb_unificar.setEnabled(False)
             self.cb_copiar_web.setEnabled(False)
+            self.cb_no_version_json.setEnabled(False)
             self.txt_custom_name.setEnabled(False)
             self.txt_descripcion.setEnabled(False)
             for cb in self.checkboxes.values():
@@ -1752,7 +1763,8 @@ if HAS_PYQT:
                 archivos_personalizados=self.archivos_personalizados,
                 modo_rapido=self.cb_modo_rapido.isChecked(),
                 solo_modificados=self.cb_delta.isChecked(),
-                delta_por_modulo=self._ultimo_delta_por_modulo
+                delta_por_modulo=self._ultimo_delta_por_modulo,
+                actualizar_version_json=not self.cb_no_version_json.isChecked()
             )
             self.worker.log_signal.connect(self.append_log)
             self.worker.progress_signal.connect(self.update_progress)
@@ -1791,6 +1803,7 @@ if HAS_PYQT:
             self.cb_delta.setEnabled(True)
             self.cb_unificar.setEnabled(True)
             self.cb_copiar_web.setEnabled(True)
+            self.cb_no_version_json.setEnabled(True)
             self.txt_custom_name.setEnabled(True)
             self.txt_descripcion.setEnabled(True)
             for cb in self.checkboxes.values():

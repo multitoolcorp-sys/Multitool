@@ -38,15 +38,6 @@
             "icon": "📜",
             "alias": "historial_de",
             "position": 4
-        },
-        {
-            "name": "Asistente IA (Privado)",
-            "file_name": "submodulos/asistente_ia.py",
-            "class_name": "AsistenteIASubmodule",
-            "visible": true,
-            "icon": "🤖",
-            "alias": "asistente_ia",
-            "position": 5
         }
     ],
     "alias": "chat",

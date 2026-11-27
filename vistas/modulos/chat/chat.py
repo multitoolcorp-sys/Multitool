@@ -17,7 +17,6 @@ from .submodulos.sala_chat import SalaChatSubmodule
 from .submodulos.conexion_lan import ConexionLanSubmodule
 from .submodulos.stickers_emojis import StickersEmojisSubmodule
 from .submodulos.historial_chats import HistorialChatsSubmodule
-from .submodulos.asistente_ia import AsistenteIASubmodule
 from .utils.chat_display import ChatDisplay
 from .utils.chat_manager import ChatManager
 
@@ -203,19 +202,16 @@ class TabChat(QWidget):
             self.tab_lan = ConexionLanSubmodule(self, self.context, self.colores, self.callbacks, self.manager)
             self.tab_stickers = StickersEmojisSubmodule(self, self.context, self.colores, self.callbacks)
             self.tab_historial = HistorialChatsSubmodule(self, self.context, self.colores, self.callbacks, self.manager)
-            self.tab_ai = AsistenteIASubmodule(self, self.context, self.colores)
 
             self.tabs.addTab(self.tab_sala, "💬 Sala de Chat")
             self.tabs.addTab(self.tab_lan, "🌐 Servidor & Conexión LAN")
             self.tabs.addTab(self.tab_stickers, "🎨 Stickers & Emojis")
             self.tabs.addTab(self.tab_historial, "📜 Historial de Chats")
-            self.tabs.addTab(self.tab_ai, "🤖 Asistente IA (Privado)")
         else:
             self.tab_sala = self.submod_instances.get("SalaChatSubmodule") or self.submod_instances.get("salachatsubmodule")
             self.tab_lan = self.submod_instances.get("ConexionLanSubmodule") or self.submod_instances.get("conexionlansubmodule")
             self.tab_stickers = self.submod_instances.get("StickersEmojisSubmodule") or self.submod_instances.get("stickersemojissubmodule")
             self.tab_historial = self.submod_instances.get("HistorialChatsSubmodule") or self.submod_instances.get("historialchatssubmodule")
-            self.tab_ai = self.submod_instances.get("AsistenteIASubmodule") or self.submod_instances.get("asistenteiasubmodule")
 
         # Aliases Proxy para compatibilidad total con llamadas internas
         self.gui = self
@@ -538,8 +534,7 @@ class TabChat(QWidget):
             getattr(self, "tab_sala", None),
             getattr(self, "tab_lan", None),
             getattr(self, "tab_stickers", None),
-            getattr(self, "tab_historial", None),
-            getattr(self, "tab_ai", None)
+            getattr(self, "tab_historial", None)
         ]:
             if submod and hasattr(submod, "actualizar_tema"):
                 try:
@@ -561,8 +556,7 @@ class TabChat(QWidget):
             getattr(self, "tab_sala", None),
             getattr(self, "tab_lan", None),
             getattr(self, "tab_stickers", None),
-            getattr(self, "tab_historial", None),
-            getattr(self, "tab_ai", None)
+            getattr(self, "tab_historial", None)
         ]:
             if submod and hasattr(submod, "cleanup"):
                 try:
