@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QPushButton, QFrame, QSplitter, QListWidget, QListWidgetItem,
     QTextEdit, QFileDialog, QMessageBox, QMenu, QTabWidget
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
 from PyQt6.QtGui import QFont, QColor, QAction, QCursor, QGuiApplication
 
 from .submodulos.sala_chat import SalaChatSubmodule
@@ -68,6 +68,16 @@ class ChatInput(QTextEdit):
             super().keyPressEvent(event)
 
 
+class _ChatSignalBridge(QObject):
+    """Puente de señales Qt para ejecutar callbacks de red de ChatManager en el hilo principal."""
+    sig_mensaje = pyqtSignal(dict)
+    sig_estado = pyqtSignal(str)
+    sig_usuarios = pyqtSignal(list)
+    sig_ip = pyqtSignal(str, int)
+    sig_notificacion = pyqtSignal(object)
+    sig_hosts_lan = pyqtSignal(list)
+
+
 class TabChat(QWidget):
     """
     Módulo Principal de Chat Local LAN & Stickers con QTabWidget y 4 Submódulos Desacoplados:
@@ -93,13 +103,22 @@ class TabChat(QWidget):
             "acento_hover": "#818CF8", "exito": "#4CAF50", "error": "#F44336"
         })
 
+        self._signal_bridge = _ChatSignalBridge(self)
+        self._signal_bridge.sig_mensaje.connect(self.manejar_mensaje)
+        self._signal_bridge.sig_estado.connect(self.manejar_estado)
+        self._signal_bridge.sig_usuarios.connect(self.manejar_usuarios)
+        self._signal_bridge.sig_ip.connect(self.manejar_ip)
+        self._signal_bridge.sig_notificacion.connect(self.manejar_notificacion)
+        self._signal_bridge.sig_hosts_lan.connect(self.manejar_hosts_lan)
+
         self.manager = ChatManager(self.usuario)
         self.manager.configurar_callbacks(
-            msg_cb=self.manejar_mensaje,
-            status_cb=self.manejar_estado,
-            users_cb=self.manejar_usuarios,
-            ip_cb=self.manejar_ip,
-            notify_cb=self.manejar_notificacion
+            msg_cb=lambda d: self._signal_bridge.sig_mensaje.emit(d),
+            status_cb=lambda s: self._signal_bridge.sig_estado.emit(s),
+            users_cb=lambda u: self._signal_bridge.sig_usuarios.emit(u),
+            ip_cb=lambda ip, p: self._signal_bridge.sig_ip.emit(ip, int(p or 0)),
+            notify_cb=lambda *a: self._signal_bridge.sig_notificacion.emit(a),
+            hosts_cb=lambda h: self._signal_bridge.sig_hosts_lan.emit(h),
         )
 
         self.viendo_historial = False
@@ -132,6 +151,7 @@ class TabChat(QWidget):
         self.inicializar_ui()
         self.actualizar_lista_guardados()
         self.mostrar_vista_vacia_sala()
+        self.manager.iniciar_escaneo_lan()
 
     def inicializar_ui(self):
         self.main_layout = QVBoxLayout(self)
@@ -366,8 +386,21 @@ class TabChat(QWidget):
     def manejar_ip(self, ip, puerto):
         self.lbl_contacto.setText(f"📡 RED LAN: {ip}:{puerto}")
 
-    def manejar_notificacion(self, notif_str):
+    def manejar_notificacion(self, notif_arg):
+        if isinstance(notif_arg, tuple):
+            if len(notif_arg) >= 2 and notif_arg[0] == "username_sync":
+                self.usuario = notif_arg[1]
+                if hasattr(self, "txt_usuario") and self.txt_usuario:
+                    self.txt_usuario.setText(self.usuario)
+                return
+            notif_str = " ".join(str(x) for x in notif_arg)
+        else:
+            notif_str = str(notif_arg)
         self.display.add_system_message(notif_str)
+
+    def manejar_hosts_lan(self, hosts_list):
+        if hasattr(self, "tab_lan") and self.tab_lan and hasattr(self.tab_lan, "actualizar_hosts_lan"):
+            self.tab_lan.actualizar_hosts_lan(hosts_list)
 
     # --- ENVIAR CONTENIDO ---
     def enviar_mensaje(self):
@@ -516,6 +549,10 @@ class TabChat(QWidget):
 
     def cleanup(self):
         """Libera sockets de conexión y recursos en segundo plano."""
+        try:
+            self.manager.detener_escaneo_lan()
+        except Exception:
+            pass
         try:
             self.desconectar()
         except Exception:

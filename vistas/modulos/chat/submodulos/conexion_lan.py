@@ -2,7 +2,7 @@ import socket
 import platform
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QFrame, QListWidget, QGroupBox, QMessageBox
+    QPushButton, QFrame, QListWidget, QListWidgetItem, QGroupBox, QMessageBox
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QGuiApplication
@@ -122,6 +122,48 @@ class ConexionLanSubmodule(QWidget):
 
         layout.addWidget(conn_box)
 
+        # ── Panel 1.5: Auto-Descubrimiento de Salas en Red Local (LAN) ──
+        hosts_box = QGroupBox("🔍 Salas Disponibles en Red Local (Auto-Descubrimiento)")
+        hosts_box.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
+        hosts_box.setStyleSheet(conn_box.styleSheet())
+        h_lay = QVBoxLayout(hosts_box)
+        h_lay.setSpacing(8)
+
+        h_top = QHBoxLayout()
+        lbl_hint = QLabel("Haz doble clic en una sala detectada para conectarte al instante sin escribir la IP:")
+        lbl_hint.setStyleSheet("color: #AAB0B8; font-size: 11px; font-weight: normal;")
+        h_top.addWidget(lbl_hint)
+        h_top.addStretch()
+
+        self.btn_scan_lan = QPushButton("🔄 Buscar Salas")
+        self.btn_scan_lan.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_scan_lan.setStyleSheet("background: rgba(99,102,241,0.22); color: white; border: 1px solid rgba(99,102,241,0.45); border-radius: 6px; padding: 4px 10px; font-size: 11px;")
+        self.btn_scan_lan.clicked.connect(lambda: self.manager.sondear_hosts_lan() if self.manager else None)
+        h_top.addWidget(self.btn_scan_lan)
+
+        self.btn_join_selected = QPushButton("🔗 Conectar Seleccionada")
+        self.btn_join_selected.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_join_selected.setStyleSheet(f"background: {acento}; color: white; border-radius: 6px; padding: 4px 12px; font-size: 11px; font-weight: bold;")
+        self.btn_join_selected.clicked.connect(self._conectar_host_seleccionado)
+        h_top.addWidget(self.btn_join_selected)
+        h_lay.addLayout(h_top)
+
+        self.list_hosts_lan = QListWidget()
+        self.list_hosts_lan.setFont(QFont(self.font_family, 9))
+        self.list_hosts_lan.setMaximumHeight(115)
+        self.list_hosts_lan.setStyleSheet(f"""
+            QListWidget {{
+                background: {bg_terc}; color: white; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 4px;
+            }}
+            QListWidget::item {{ padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.05); }}
+            QListWidget::item:selected {{ background: rgba(99,102,241,0.35); }}
+        """)
+        self.list_hosts_lan.itemDoubleClicked.connect(self._on_host_item_double_clicked)
+        h_lay.addWidget(self.list_hosts_lan)
+        self.actualizar_hosts_lan([])
+
+        layout.addWidget(hosts_box)
+
         # ── Panel 2: Diagnóstico de IP Local y Usuarios Conectados ──
         diag_box = QGroupBox("👥 Estado de Red & Usuarios Conectados")
         diag_box.setFont(QFont(self.font_family, 10, QFont.Weight.Bold))
@@ -174,3 +216,38 @@ class ConexionLanSubmodule(QWidget):
         ip = self.txt_ip.text()
         QGuiApplication.clipboard().setText(ip)
         QMessageBox.information(self, "Copiado", f"IP '{ip}' copiada al portapapeles.")
+
+    def actualizar_hosts_lan(self, hosts_list):
+        if not hasattr(self, "list_hosts_lan"):
+            return
+        self.list_hosts_lan.clear()
+        if not hosts_list:
+            item = QListWidgetItem("📡 Buscando hosts activos en tu red local...")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.list_hosts_lan.addItem(item)
+            return
+        for h in hosts_list:
+            sala = h.get("sala") or f"Sala de {h.get('host', 'Host')}"
+            ip = h.get("ip", "127.0.0.1")
+            port = h.get("port", 55400)
+            usuarios = h.get("usuarios", 1)
+            item = QListWidgetItem(f"🟢 {sala}   —   {ip}:{port}   (👥 {usuarios} conectados)")
+            item.setData(Qt.ItemDataRole.UserRole, {"ip": ip, "port": port})
+            self.list_hosts_lan.addItem(item)
+
+    def _on_host_item_double_clicked(self, item):
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if not data:
+            return
+        self.txt_ip.setText(str(data["ip"]))
+        self.txt_port.setText(str(data["port"]))
+        cb = self.callbacks.get("unirse_host")
+        if cb:
+            cb()
+
+    def _conectar_host_seleccionado(self):
+        item = self.list_hosts_lan.currentItem()
+        if not item:
+            QMessageBox.information(self, "Selecciona una sala", "Primero selecciona una sala de la lista o pulsa 'Buscar Salas'.")
+            return
+        self._on_host_item_double_clicked(item)
