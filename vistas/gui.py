@@ -19,35 +19,19 @@ from vistas.utils.notification import show_notification
 
 def _asegurar_dashboard_layout_desde_disco():
     """Garantiza que vistas/scrollable.py y vistas/dashboard_layout.py se carguen desde el archivo físico en disco para soportar reemplazo por actualizaciones (.mtu)."""
-    try:
-        import sys
-        import importlib.util
-        from controlador.utils.paths import get_resource_path
-        import vistas
-        vistas_dir = get_resource_path() / "vistas"
-        for mod_short, filename in (("scrollable", "scrollable.py"), ("dashboard_layout", "dashboard_layout.py")):
-            full_mod_name = f"vistas.{mod_short}"
-            py_path = vistas_dir / filename
-            if py_path.exists():
-                existing = sys.modules.get(full_mod_name)
-                existing_file = getattr(existing, "__file__", "") if existing else ""
-                if not existing or not existing_file or Path(existing_file).resolve() != py_path.resolve():
-                    spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
-                    if spec and spec.loader:
-                        mod = importlib.util.module_from_spec(spec)
-                        sys.modules[full_mod_name] = mod
-                        spec.loader.exec_module(mod)
-                        setattr(vistas, mod_short, mod)
-    except Exception as e:
-        print(f"[BaseAppGUI] Aviso cargando dashboard_layout desde disco: {e}")
+    from controlador.utils.paths import cargar_vistas_desde_disco
+    cargar_vistas_desde_disco((("scrollable", "scrollable.py"), ("dashboard_layout", "dashboard_layout.py")))
 
 _asegurar_dashboard_layout_desde_disco()
 
 from vistas.scrollable import ScrollableNavBar
 from vistas.dashboard_layout import DashboardSidebar, DashboardTabBar, DashboardEmptyView, CommandPaletteDialog
 from vistas.utils.updates_log_dialog import UpdatesLogDialog
+from vistas.utils.window_state_mixin import WindowStateMixin
+from vistas.utils.resource_monitor_mixin import ResourceMonitorMixin
+from vistas.utils.navigation_mixin import NavigationMixin
 
-class BaseAppGUI(QMainWindow):
+class BaseAppGUI(QMainWindow, WindowStateMixin, ResourceMonitorMixin, NavigationMixin):
     """Interfaz Base Premium con Barra de Título integrada y Navegación Unificada EXTERNA"""
     def __init__(self, usuario, colores=None):
         super().__init__()
@@ -381,38 +365,6 @@ class BaseAppGUI(QMainWindow):
         except Exception as e:
             print(f"[BaseAppGUI] Error alternando barras en submódulos: {e}")
 
-    def _mostrar_boton_flotante_salir_fullscreen(self):
-        if not hasattr(self, "btn_exit_fullscreen") or not self.btn_exit_fullscreen:
-            self.btn_exit_fullscreen = QPushButton("✕ Salir de Pantalla Completa (F11)", self)
-            self.btn_exit_fullscreen.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_exit_fullscreen.setStyleSheet("""
-                QPushButton {
-                    background-color: rgba(30, 30, 46, 0.94);
-                    color: #FFFFFF;
-                    border: 1px solid #6366F1;
-                    border-radius: 14px;
-                    padding: 6px 18px;
-                    font-size: 11px;
-                    font-weight: bold;
-                    font-family: 'Segoe UI', Arial, sans-serif;
-                }
-                QPushButton:hover {
-                    background-color: #6366F1;
-                    color: #FFFFFF;
-                }
-            """)
-            self.btn_exit_fullscreen.clicked.connect(self.toggle_pantalla_completa)
-        
-        w_btn = 220
-        h_btn = 30
-        self.btn_exit_fullscreen.setGeometry((self.width() - w_btn) // 2, 8, w_btn, h_btn)
-        self.btn_exit_fullscreen.show()
-        self.btn_exit_fullscreen.raise_()
-
-    def _ocultar_boton_flotante_salir_fullscreen(self):
-        if hasattr(self, "btn_exit_fullscreen") and self.btn_exit_fullscreen:
-            self.btn_exit_fullscreen.hide()
-
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if getattr(self, "is_fullscreen_mode", False) and hasattr(self, "btn_exit_fullscreen") and self.btn_exit_fullscreen:
@@ -420,72 +372,6 @@ class BaseAppGUI(QMainWindow):
             h_btn = 30
             self.btn_exit_fullscreen.setGeometry((self.width() - w_btn) // 2, 8, w_btn, h_btn)
             self.btn_exit_fullscreen.raise_()
-
-    def _get_window_state_path(self):
-        try:
-            from controlador.utils.paths import get_data_path
-            p = get_data_path() / "browser_data" / "window_state.json"
-            p.parent.mkdir(parents=True, exist_ok=True)
-            return p
-        except Exception:
-            return Path("window_state.json")
-
-    def _restaurar_geometria_ventana(self):
-        state_file = self._get_window_state_path()
-        restaurado = False
-        if state_file.exists():
-            try:
-                with open(state_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                x = data.get("x")
-                y = data.get("y")
-                w = data.get("width")
-                h = data.get("height")
-                is_max = data.get("is_maximized", False)
-                
-                if w and h and w >= 400 and h >= 300:
-                    screen = self.screen().geometry()
-                    if x is not None and y is not None:
-                        x = max(screen.left(), min(x, screen.right() - 250))
-                        y = max(screen.top(), min(y, screen.bottom() - 250))
-                        self.move(x, y)
-                    self.resize(w, h)
-                    if is_max:
-                        self.setWindowState(self.windowState() | Qt.WindowState.WindowMaximized)
-                    restaurado = True
-            except Exception as e:
-                print(f"[BaseAppGUI] Error restaurando geometría: {e}")
-
-        if not restaurado:
-            screen = self.screen().geometry()
-            w, h = int(screen.width() * 0.85), int(screen.height() * 0.85)
-            self.resize(w, h)
-            x = (screen.width() - w) // 2
-            y = (screen.height() - h) // 2
-            self.move(x, y)
-
-    def _guardar_geometria_ventana(self):
-        try:
-            state_file = self._get_window_state_path()
-            is_max = self.isMaximized()
-            data = {"is_maximized": is_max}
-            if not is_max:
-                data["width"] = self.width()
-                data["height"] = self.height()
-                data["x"] = self.x()
-                data["y"] = self.y()
-            else:
-                normal_geom = self.normalGeometry()
-                if normal_geom.isValid() and normal_geom.width() > 300 and normal_geom.height() > 200:
-                    data["width"] = normal_geom.width()
-                    data["height"] = normal_geom.height()
-                    data["x"] = normal_geom.x()
-                    data["y"] = normal_geom.y()
-            
-            with open(state_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"[BaseAppGUI] Error guardando geometría: {e}")
 
     def on_tab_changed(self, index):
         """Manejador base para registrar cambios de módulo en la auditoría."""
@@ -545,6 +431,14 @@ class BaseAppGUI(QMainWindow):
         fg_s = self.COLORES.get('fg_secundario', '#AAB0B8')
         ac = self.COLORES.get('acento', '#6366F1')
         ac_h = self.COLORES.get('acento_hover', '#818CF8')
+
+        try:
+            from vistas.estilos import generar_qss_global
+            app_inst = QApplication.instance()
+            if app_inst:
+                app_inst.setStyleSheet(generar_qss_global(self.COLORES))
+        except Exception:
+            pass
 
         common_subcontrol_styles = f"""
             QMainWindow, QWidget#central_widget {{
@@ -755,11 +649,6 @@ class BaseAppGUI(QMainWindow):
     def mostrar_notificacion(self, titulo, mensaje, tipo="info"):
         from vistas.utils.notification import show_notification
         show_notification(self, titulo, mensaje, tipo, self.COLORES)
-
-    # --- Mocks para compatibilidad ---
-    def after(self, ms, func, *args): QTimer.singleShot(ms, lambda: func(*args))
-    def update(self): QApplication.processEvents()
-    def update_idletasks(self): QApplication.processEvents()
 
     def crear_menu(self):
         """Inicializa los menús en la QMenuBar nativa organizados en TOOLBAR y MODULES."""
@@ -1920,19 +1809,6 @@ class BaseAppGUI(QMainWindow):
         if hasattr(self, "abrir_gestor_modulos"):
             self.abrir_gestor_modulos()
 
-    def abrir_paleta_comandos(self):
-        """Abre la paleta de comandos flotante global (Ctrl+Shift+P / F1)."""
-        try:
-            from vistas.command_palette import CommandPaletteDialog
-            dlg = CommandPaletteDialog(parent=self, colores=self.COLORES, on_action=self._ejecutar_accion_paleta)
-            geo = self.geometry()
-            x = geo.x() + (geo.width() - dlg.width()) // 2
-            y = geo.y() + 60
-            dlg.move(x, y)
-            dlg.exec()
-        except Exception as e:
-            print(f"Error abriendo paleta de comandos: {e}")
-
     def _ejecutar_accion_paleta(self, action: str):
         """Despacha la acción elegida desde la paleta de comandos."""
         if not action:
@@ -2022,79 +1898,6 @@ class BaseAppGUI(QMainWindow):
         except Exception as e:
             print(f"[BaseAppGUI] Error activando módulo por número: {e}")
 
-    # ── Monitor de Memoria RAM & Optimización en Vivo ────────────────────────
-
-    def _setup_ram_monitor(self):
-        """Inicializa el widget y timer para monitorear el consumo de RAM en tiempo real insertándolo en la barra de estado."""
-        parent_w = getattr(self, "barra_estado_frame", self)
-        self.btn_ram_monitor = QPushButton("⚡ RAM: -- MB", parent_w)
-        self.btn_ram_monitor.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_ram_monitor.setToolTip("Consumo de RAM en tiempo real. Haz clic para optimizar y liberar memoria (Garbage Collector).")
-        self.btn_ram_monitor.setStyleSheet(f"""
-            QPushButton {{
-                background-color: rgba(99, 102, 241, 0.12);
-                color: {self.COLORES.get('acento', '#6366F1')};
-                border: 1px solid rgba(99, 102, 241, 0.3);
-                border-radius: 4px;
-                padding: 2px 8px;
-                font-family: Consolas, monospace;
-                font-size: 10px;
-                font-weight: bold;
-                margin-left: 6px;
-            }}
-            QPushButton:hover {{
-                background-color: {self.COLORES.get('acento', '#6366F1')};
-                color: #FFFFFF;
-            }}
-        """)
-        self.btn_ram_monitor.clicked.connect(self._liberar_memoria_manual)
-
-        # Insertar en la barra de estado inferior
-        if hasattr(self, "barra_estado_layout") and self.barra_estado_layout:
-            self.barra_estado_layout.addWidget(self.btn_ram_monitor)
-        elif hasattr(self, "barra_layout") and self.barra_layout:
-            self.barra_layout.addWidget(self.btn_ram_monitor)
-
-        self._ram_timer = QTimer(self)
-        self._ram_timer.timeout.connect(self._actualizar_ram_display)
-        self._ram_timer.start(2000)
-        self._actualizar_ram_display()
-
-    def _get_ram_usage_mb(self):
-        """Retorna el consumo actual de memoria RAM del proceso en MB usando psutil o fallbacks."""
-        try:
-            import os
-            import psutil
-            proc = psutil.Process(os.getpid())
-            mem_bytes = proc.memory_info().rss
-            return round(mem_bytes / (1024 * 1024), 1)
-        except Exception:
-            try:
-                import os, resource
-                mem_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-                return round(mem_kb / 1024, 1)
-            except Exception:
-                return 0.0
-
-    def _actualizar_ram_display(self):
-        ram_mb = self._get_ram_usage_mb()
-        if hasattr(self, "btn_ram_monitor") and self.btn_ram_monitor:
-            if ram_mb > 0:
-                self.btn_ram_monitor.setText(f"⚡ RAM: {ram_mb} MB")
-            else:
-                self.btn_ram_monitor.setText("⚡ RAM: OK")
-
-    def _liberar_memoria_manual(self):
-        """Ejecuta una recolección forzada de basura para liberar RAM de módulos en reposo."""
-        import gc
-        antes = self._get_ram_usage_mb()
-        gc.collect()
-        self._actualizar_ram_display()
-        despues = self._get_ram_usage_mb()
-        ahorro = max(0, round(antes - despues, 1))
-        msg = f"🧹 Memoria optimizada con éxito. RAM actual: {despues} MB ({ahorro} MB liberados)" if ahorro > 0 else f"🧹 Memoria optimizada. RAM actual: {despues} MB"
-        self.set_status(msg)
-
     # ── Paleta de Comandos (Ctrl+P / Ctrl+Shift+P) ──────────────────────────
 
     def abrir_paleta_comandos(self):
@@ -2148,67 +1951,6 @@ class BaseAppGUI(QMainWindow):
             self._abrir_en_archivos(file_path)
 
         event.acceptProposedAction()
-
-    # ── Navegación con Historial (Atrás / Adelante) ──────────────────────────
-
-    def navegar_atras(self):
-        """Vuelve al módulo/submódulo anterior en el historial (Alt+←)."""
-        if getattr(self, "_nav_history_idx", -1) > 0:
-            self._nav_history_idx -= 1
-            mod_name, sub_name = self._nav_history[self._nav_history_idx]
-            self._nav_history_locked = True
-            try:
-                self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name, registrar_historial=False)
-            finally:
-                self._nav_history_locked = False
-            self._actualizar_botones_historial()
-
-    def navegar_adelante(self):
-        """Avanza al siguiente módulo/submódulo en el historial (Alt+→)."""
-        if hasattr(self, "_nav_history") and getattr(self, "_nav_history_idx", -1) + 1 < len(self._nav_history):
-            self._nav_history_idx += 1
-            mod_name, sub_name = self._nav_history[self._nav_history_idx]
-            self._nav_history_locked = True
-            try:
-                self.abrir_en_modulo(mod_name, submodulo_nombre=sub_name, registrar_historial=False)
-            finally:
-                self._nav_history_locked = False
-            self._actualizar_botones_historial()
-
-    def _actualizar_botones_historial(self):
-        """Habilita o deshabilita los botones ◀ y ▶ según la posición en el historial."""
-        if hasattr(self, "btn_nav_back") and self.btn_nav_back:
-            can_back = getattr(self, "_nav_history_idx", -1) > 0
-            self.btn_nav_back.setEnabled(can_back)
-        if hasattr(self, "btn_nav_forward") and self.btn_nav_forward:
-            can_fwd = hasattr(self, "_nav_history") and getattr(self, "_nav_history_idx", -1) + 1 < len(self._nav_history)
-            self.btn_nav_forward.setEnabled(can_fwd)
-
-    # ── Modo Zen / Enfoque Limpio (F10) ─────────────────────────────────────
-
-    def toggle_zen_mode(self):
-        """Alterna el Modo Zen / Enfoque limpio (F10) ocultando o restaurando barras."""
-        if not getattr(self, "is_zen_mode", False):
-            self.is_zen_mode = True
-            self._zen_saved_state = {
-                "sidebar": self.sidebar.isVisible() if hasattr(self, "sidebar") else False,
-                "editor_tab_bar": self.editor_tab_bar.isVisible() if hasattr(self, "editor_tab_bar") else False,
-                "nav_bar": self.nav_bar.isVisible() if hasattr(self, "nav_bar") else False,
-                "menu_bar": self.menuBar().isVisible() if self.menuBar() else False,
-                "barra_estado": self.barra_estado_frame.isVisible() if hasattr(self, "barra_estado_frame") else False,
-            }
-            if hasattr(self, "sidebar"): self.sidebar.hide()
-            if hasattr(self, "editor_tab_bar"): self.editor_tab_bar.hide()
-            if hasattr(self, "nav_bar"): self.nav_bar.hide()
-            if self.menuBar(): self.menuBar().hide()
-            if hasattr(self, "barra_estado_frame"): self.barra_estado_frame.hide()
-            self.mostrar_notificacion("Modo Zen", "🧘 Modo Enfoque activado. Presiona F10 para restaurar las barras.", "info")
-        else:
-            self.is_zen_mode = False
-            modo = getattr(self, "modo_vista", "clasico")
-            self._aplicar_modo_vista(modo)
-            if hasattr(self, "barra_estado_frame"): self.barra_estado_frame.show()
-            self.mostrar_notificacion("Modo Zen", "Modo normal restaurado.", "info")
 
     # ── Centro de Notificaciones y Auditoría ────────────────────────────────
 
@@ -2286,165 +2028,4 @@ class BaseAppGUI(QMainWindow):
                     self.editor_tab_bar.set_current_index(curr_idx)
         except Exception as e:
             print(f"[Dashboard] Error restaurando sesión de pestañas: {e}")
-
-    # ── Despachador Universal Inter-Módulos (Archivos & Navegación) ─────────
-
-    def abrir_en_modulo(self, modulo_nombre, submodulo_nombre=None, ruta_archivo=None, registrar_historial=True):
-        """
-        Método central universal para abrir o enviar archivos a cualquier módulo/submódulo
-        compatible tanto en Modo MMS (Clásico) como en Modo IDE (Dashboard).
-        """
-        try:
-            mod_target = None
-            mod_idx = -1
-            visibles = [m for m in getattr(self, "modulos_cargados", []) if m.get("visible", True)]
-            for i, m in enumerate(visibles):
-                if m.get("name", "").lower() == modulo_nombre.lower():
-                    mod_target = m
-                    mod_idx = i
-                    break
-
-            if not mod_target:
-                print(f"[MultiTool] Módulo '{modulo_nombre}' no encontrado.")
-                return False
-
-            # Asegurar instanciación si estaba en reposo
-            if not mod_target.get("loaded", False):
-                self._instanciar_modulo(mod_target)
-
-            container = getattr(self, "clases_modulos", {}).get(mod_target["name"])
-
-            # Determinar submódulo adecuado
-            sub_idx = 0
-            if submodulo_nombre and container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-                for si in range(container.tabs.count()):
-                    t_text = container.tabs.tabText(si).strip().lower()
-                    if t_text == submodulo_nombre.strip().lower() or submodulo_nombre.strip().lower() in t_text:
-                        sub_idx = si
-                        submodulo_nombre = container.tabs.tabText(si).strip()
-                        break
-            elif not submodulo_nombre and container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-                if container.tabs.count() > 0:
-                    sub_idx = container.tabs.currentIndex()
-                    submodulo_nombre = container.tabs.tabText(sub_idx).strip()
-
-            # 1. Navegación según el modo actual
-            modo = getattr(self, "modo_vista", "clasico")
-            if modo == "dashboard":
-                self.notebook.setCurrentIndex(mod_idx)
-                if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-                    container.tabs.setCurrentIndex(sub_idx)
-                self.notebook.show()
-                if hasattr(self, "dashboard_empty_view"):
-                    self.dashboard_empty_view.hide()
-                clean_sub = (submodulo_nombre or "").strip()
-                title = f"{modulo_nombre.capitalize()} › {clean_sub}" if clean_sub else modulo_nombre.capitalize()
-                self.editor_tab_bar.add_tab(modulo_nombre, clean_sub, title, make_active=True)
-                if hasattr(self, "sidebar") and self.sidebar:
-                    self.sidebar.renderizar_arbol()
-            else:
-                self.notebook.setCurrentIndex(mod_idx)
-                if hasattr(self, "nav_bar"):
-                    self.nav_bar.select_tab(mod_idx)
-                if container and hasattr(container, "tabs") and isinstance(container.tabs, QWidget):
-                    container.tabs.setCurrentIndex(sub_idx)
-
-            # 2. Despacho del archivo si se proporcionó una ruta
-            if ruta_archivo:
-                self._despachar_archivo_a_modulo(modulo_nombre, container, ruta_archivo)
-
-            # 3. Registrar en historial de navegación
-            if registrar_historial and not getattr(self, "_nav_history_locked", False):
-                if not hasattr(self, "_nav_history"):
-                    self._nav_history = []
-                    self._nav_history_idx = -1
-                if self._nav_history_idx + 1 < len(self._nav_history):
-                    self._nav_history = self._nav_history[:self._nav_history_idx + 1]
-                self._nav_history.append((modulo_nombre, submodulo_nombre))
-                self._nav_history_idx = len(self._nav_history) - 1
-                self._actualizar_botones_historial()
-
-            if getattr(self, "modo_vista", "") == "dashboard":
-                self._guardar_sesion_editor_tabs()
-
-            return True
-        except Exception as e:
-            print(f"[MultiTool] Error en abrir_en_modulo ({modulo_nombre}): {e}")
-            return False
-
-    def _despachar_archivo_a_modulo(self, modulo_nombre, container, ruta_archivo):
-        """Despacha la ruta de archivo al módulo destino de manera desacoplada."""
-        from pathlib import Path
-        p = Path(ruta_archivo)
-        if not p.exists():
-            return
-
-        m_low = modulo_nombre.lower()
-        try:
-            # 1. NOTAS / EDITOR
-            if m_low == "notas":
-                notas_inst = None
-                if container:
-                    if hasattr(container, "import_manager"):
-                        notas_inst = container
-                    elif hasattr(container, "submodules_instances"):
-                        for inst in container.submodules_instances.values():
-                            if hasattr(inst, "import_manager"):
-                                notas_inst = inst
-                                break
-                    if not notas_inst and hasattr(container, "tabs") and hasattr(container.tabs, "currentWidget"):
-                        cw = container.tabs.currentWidget()
-                        if hasattr(cw, "import_manager"):
-                            notas_inst = cw
-                if notas_inst and hasattr(notas_inst, "import_manager"):
-                    notas_inst.import_manager.importar_archivo_individual(str(p))
-                    if hasattr(notas_inst, "cargar_lista_notas"):
-                        notas_inst.cargar_lista_notas()
-
-            # 2. REPRODUCTOR MULTIMEDIA
-            elif m_low == "reproductor":
-                rep_inst = None
-                if container:
-                    if hasattr(container, "reproducir_directo"):
-                        rep_inst = container
-                    elif hasattr(container, "submodules_instances"):
-                        for inst in container.submodules_instances.values():
-                            if hasattr(inst, "reproducir_directo"):
-                                rep_inst = inst
-                                break
-                if rep_inst:
-                    rep_inst.reproducir_directo(str(p))
-
-            # 3. NAVEGADOR WEB
-            elif m_low == "navegador":
-                nav_browser = None
-                if container:
-                    from vistas.modulos.navegador.submodulos.integrado.browser import MultiTabBrowser
-                    for ch in container.findChildren(MultiTabBrowser):
-                        nav_browser = ch
-                        break
-                if nav_browser and hasattr(nav_browser, "add_new_tab"):
-                    from PyQt6.QtCore import QUrl
-                    nav_browser.add_new_tab(QUrl.fromLocalFile(str(p.resolve())), label=p.name)
-
-            # 4. CUADERNO
-            elif m_low == "cuaderno":
-                pass
-        except Exception as ex:
-            print(f"[MultiTool] Error despachando archivo a {modulo_nombre}: {ex}")
-
-    def _abrir_en_reproductor(self, path_str):
-        self.abrir_en_modulo("reproductor", ruta_archivo=path_str)
-
-    def _abrir_en_notas(self, path_str):
-        self.abrir_en_modulo("notas", ruta_archivo=path_str)
-
-    def _abrir_en_archivos(self, path_str):
-        self.abrir_en_modulo("archivos", ruta_archivo=path_str)
-
-    def _abrir_en_navegador(self, path_str):
-        self.abrir_en_modulo("navegador", ruta_archivo=path_str)
-
-    def _navegar_a_modulo_nombre(self, mod_name):
-        self.abrir_en_modulo(mod_name)
 

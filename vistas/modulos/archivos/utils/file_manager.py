@@ -72,12 +72,12 @@ class FileManager:
                         data["size_raw"] = stats.st_size
                         data["size"] = self._format_bytes(stats.st_size)
                         archivos_data.append(data)
-                except: continue
+                except Exception: continue
                     
             carpetas_data.sort(key=lambda x: x["name"].lower())
             archivos_data.sort(key=lambda x: x["name"].lower())
             return carpetas_data, archivos_data
-        except: return [], []
+        except Exception: return [], []
 
     def _obtener_recursos_servidor_unc(self, server_name):
         """Lista los recursos compartidos en un servidor SMB de red (net view \\servidor)."""

@@ -384,7 +384,7 @@ class FileExplorerList(QFrame):
         if "is_inside_archive" in self.callbacks:
             try:
                 is_inside = self.callbacks["is_inside_archive"]()
-            except:
+            except Exception:
                 pass
                 
         if hasattr(self, "toolbar_buttons"):

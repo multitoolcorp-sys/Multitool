@@ -40,7 +40,8 @@ class ProductividadGUI(QWidget):
         if not self.colores and hasattr(parent, "colores") and isinstance(parent.colores, dict):
             self.colores = parent.colores
 
-        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", ".")) if self.context else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", "") or get_data_path()) if self.context else get_data_path()
         self.dir_sonidos_personales = self.ruta_usuario / "ambiental_sounds"
         self.dir_sonidos_personales.mkdir(parents=True, exist_ok=True)
 

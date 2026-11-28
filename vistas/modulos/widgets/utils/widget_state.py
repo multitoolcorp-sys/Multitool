@@ -29,7 +29,8 @@ DEFAULT_WIDGET_CONFIG = {
 class QuickWidgetState:
     """Gestiona la carga, modificación y guardado de la configuración de widgets"""
     def __init__(self, ruta_usuario=None):
-        self.ruta_usuario = Path(ruta_usuario) if ruta_usuario else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(ruta_usuario) if ruta_usuario else get_data_path()
         self.config_file = self.ruta_usuario / "config_widgets.json"
         self.config = self.cargar_configuracion()
 

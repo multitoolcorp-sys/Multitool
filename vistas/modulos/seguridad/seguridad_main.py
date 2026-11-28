@@ -56,7 +56,8 @@ class TabSeguridad(QWidget):
             "fg_principal": "#E2E2E2", "fg_secundario": "#AAB0B8", "acento": "#6366F1",
             "acento_hover": "#818CF8", "error": "#F87171", "exito": "#34D399", "advertencia": "#FBBF24"
         })
-        self.ruta_usuario = Path(getattr(context, "ruta_usuario", ".")) if context else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(getattr(context, "ruta_usuario", "") or get_data_path()) if context else get_data_path()
         self.ruta_vault = self.ruta_usuario / "caja_fuerte.json"
 
         self.font_family = "Segoe UI" if platform.system() == "Windows" else "Inter"
@@ -992,3 +993,18 @@ class TabSeguridad(QWidget):
             self.widget_vacio.setStyleSheet(f"background-color: {self.colores['bg_secundario']}; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);")
         if hasattr(self, "card_status_boveda"):
             self.card_status_boveda.setStyleSheet(f"background-color: {self.colores['bg_terciario']}; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06);")
+
+    def cleanup(self):
+        """Limpia temporizadores, sesiones de bóveda y subpáginas de Seguridad."""
+        for attr in ("auth_timer", "lock_timer", "page_procesos"):
+            obj = getattr(self, attr, None)
+            if obj and hasattr(obj, "stop"):
+                try:
+                    obj.stop()
+                except Exception:
+                    pass
+            elif obj and hasattr(obj, "cleanup"):
+                try:
+                    obj.cleanup()
+                except Exception:
+                    pass

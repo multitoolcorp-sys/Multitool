@@ -71,7 +71,7 @@ class SystemManager(QObject):
                 "disponible": self._format_bytes(mem.available)
             }
             info["uptime"] = self._get_uptime()
-        except: pass
+        except Exception: pass
         return info
 
     def _get_uptime(self):
@@ -102,7 +102,7 @@ class SystemManager(QObject):
                             if "model name" in line:
                                 return line.split(":")[1].strip()
             return platform.processor()
-        except: return platform.processor()
+        except Exception: return platform.processor()
 
     def _format_bytes(self, b):
         if not b: return "0 B"
@@ -150,7 +150,7 @@ class SystemManager(QObject):
                    for p in sorted_procs[:5]:
                        if p.get('cpu_percent', 0) > 0.1:
                            top_procs.append(f"{p['name']} ({p['cpu_percent']:.1f}%)")
-                except: pass
+                except Exception: pass
 
                 data = {
                     "cpu": cpu, "mem_p": mem.percent, "mem_u": self._format_bytes(mem.used), "mem_t": self._format_bytes(mem.total),
@@ -171,7 +171,7 @@ class SystemManager(QObject):
                 if gpus:
                     g = gpus[0]
                     return {"uso": g.load*100, "nombre": g.name}
-            except: pass
+            except Exception: pass
         return {"uso": 0, "nombre": "No detectada"}
 
     def _update_graph_data(self, c, m, d, g):
@@ -189,7 +189,7 @@ class SystemManager(QObject):
         try:
             active_pids = set(psutil.pids())
             self._proc_cache = {pid: proc for pid, proc in self._proc_cache.items() if pid in active_pids}
-        except:
+        except Exception:
             active_pids = []
             
         for pid in active_pids:
@@ -210,7 +210,7 @@ class SystemManager(QObject):
                 })
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-            except:
+            except Exception:
                 pass
                 
         res.sort(key=lambda x: x['cpu_raw'], reverse=True)
@@ -224,7 +224,7 @@ class SystemManager(QObject):
             return subprocess.check_output(['ping', flag, str(count), safe_host], stderr=subprocess.STDOUT, text=True)
         except subprocess.CalledProcessError as e:
             return f"Error en ping: {e.output}"
-        except: return "No se pudo realizar el ping."
+        except Exception: return "No se pudo realizar el ping."
 
     def info_red_completa(self):
         dat = NetworkLogic.get_network_details()

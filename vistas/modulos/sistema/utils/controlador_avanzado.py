@@ -169,7 +169,7 @@ class ControladorAvanzado:
             try:
                 os.remove(os.path.join(temp, f))
                 eliminado += 1
-            except:
+            except Exception:
                 pass
 
         self.vista.txt_tools_info.setPlainText(

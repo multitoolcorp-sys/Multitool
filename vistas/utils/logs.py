@@ -4,6 +4,7 @@ import datetime
 import zipfile
 import sys
 import io
+import threading
 from pathlib import Path
 
 
@@ -21,11 +22,12 @@ class JsonLogger:
             elif nivel == "ERROR": logging.error(f"[{modulo}] {mensaje}")
 
     def __init__(self, ruta_usuario):
+        self._lock = threading.Lock()
         self.ruta_logs = Path(ruta_usuario) / "logs"
         self.ruta_logs.mkdir(parents=True, exist_ok=True)
 
         self.fecha_actual = datetime.date.today().isoformat()
-        self.archivo_actual = self.ruta_logs / f"{self.fecha_actual}.json"
+        self.archivo_actual = self.ruta_logs / f"{self.fecha_actual}.jsonl"
 
         self._rotar_logs_antiguos()
         self._setup_streams()
@@ -36,9 +38,10 @@ class JsonLogger:
     # ─────────────────────────────────────────────
 
     def _rotar_logs_antiguos(self):
-        for item in self.ruta_logs.glob("*.json"):
-            if item.stem != self.fecha_actual:
-                self._archivar_log(item)
+        for pattern in ("*.json", "*.jsonl"):
+            for item in self.ruta_logs.glob(pattern):
+                if item.stem != self.fecha_actual:
+                    self._archivar_log(item)
 
     def _archivar_log(self, archivo_path):
         zip_path = archivo_path.with_suffix(".zip")
@@ -68,28 +71,23 @@ class JsonLogger:
         except Exception:
             pass
 
-        # 🔹 guardar en JSON
+        # 🔹 guardar en JSON Lines (O(1) append, thread-safe)
         try:
-            logs = []
-
-            if self.archivo_actual.exists():
-                try:
-                    with open(self.archivo_actual, "r", encoding="utf-8") as f:
-                        logs = json.load(f)
-                except Exception:
-                    logs = []
-
-            logs.append(entrada)
-
-            with open(self.archivo_actual, "w", encoding="utf-8") as f:
-                json.dump(logs, f, indent=4, ensure_ascii=False)
-
+            linea = json.dumps(entrada, ensure_ascii=False) + "\n"
+            with self._lock:
+                hoy = datetime.date.today().isoformat()
+                if hoy != self.fecha_actual:
+                    self._archivar_log(self.archivo_actual)
+                    self.fecha_actual = hoy
+                    self.archivo_actual = self.ruta_logs / f"{self.fecha_actual}.jsonl"
+                with open(self.archivo_actual, "a", encoding="utf-8") as f:
+                    f.write(linea)
         except Exception:
             # nunca romper la app por logs
             try:
                 if hasattr(self, "old_stdout") and self.old_stdout:
                     self.old_stdout.write("[ERROR] Fallo guardando log\n")
-            except:
+            except Exception:
                 pass
 
     # ─────────────────────────────────────────────

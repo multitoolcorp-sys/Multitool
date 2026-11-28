@@ -179,7 +179,7 @@ class MathParser:
         try:
             float(s)
             return True
-        except:
+        except Exception:
             return False
 
     def format_number(self, n):
@@ -199,6 +199,6 @@ class MathParser:
                     entero_f = "{:,}".format(int(entero)).replace(",", ".")
                     return f"{entero_f},{decimal}"
                 return s.replace(".", ",")
-        except:
+        except Exception:
             return str(n)
 

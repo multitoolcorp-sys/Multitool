@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import hmac
 import time
 import datetime
 import shutil
@@ -36,7 +37,7 @@ class AuthValidator:
             salt_hex, key_hex = stored_password.split(':')
             salt = bytes.fromhex(salt_hex)
             new_hash = AuthValidator.hash_password(provided_password, salt)
-            return new_hash == stored_password
+            return hmac.compare_digest(new_hash, stored_password)
         except ValueError:
             return False
 
@@ -122,6 +123,31 @@ class AuthValidator:
             intentos_login[usuario] = {'intentos': 1}
         else:
             intentos_login[usuario]['intentos'] = intentos_login[usuario].get('intentos', 0) + 1
+
+    @staticmethod
+    def cargar_intentos_login():
+        """Carga los intentos de login persistidos en disco."""
+        try:
+            p = get_cuentas_path() / ".login_attempts.json"
+            if p.exists():
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+        return {}
+
+    @staticmethod
+    def guardar_intentos_login(intentos_login):
+        """Persiste los intentos de login en disco."""
+        try:
+            p = get_cuentas_path() / ".login_attempts.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(intentos_login, f, indent=2)
+        except Exception:
+            pass
 
 
 class AuthCreator:

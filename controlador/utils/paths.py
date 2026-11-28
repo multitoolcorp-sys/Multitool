@@ -139,3 +139,34 @@ def reiniciar_aplicacion(parent=None):
                 "Por favor, cierra y abre MultiTool manualmente para aplicar los cambios."
             )
         return False
+
+
+def cargar_vistas_desde_disco(modulos_info, force_reload=False):
+    """
+    Carga dinámicamente submódulos de `vistas` desde sus archivos físicos en disco
+    para soportar reemplazo en caliente por actualizaciones (.mtu), evitando
+    recargar módulos que ya están cargados desde la misma ruta física.
+    """
+    import importlib.util
+    import vistas
+
+    vistas_dir = get_resource_path() / "vistas"
+    for mod_short, filename in modulos_info:
+        full_mod_name = f"vistas.{mod_short}"
+        py_path = vistas_dir / filename
+        if not py_path.exists():
+            continue
+        try:
+            existing = sys.modules.get(full_mod_name)
+            existing_file = getattr(existing, "__file__", "") if existing else ""
+            if not force_reload and existing and existing_file:
+                if Path(existing_file).resolve() == py_path.resolve():
+                    continue
+            spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
+            if spec and spec.loader:
+                mod = importlib.util.module_from_spec(spec)
+                sys.modules[full_mod_name] = mod
+                spec.loader.exec_module(mod)
+                setattr(vistas, mod_short, mod)
+        except Exception as e:
+            print(f"[DynamicVistaLoader] Aviso cargando {full_mod_name} desde disco: {e}")

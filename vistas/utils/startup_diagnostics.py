@@ -16,9 +16,13 @@ class StartupDiagnostics:
         warnings = []
         is_ok = True
 
+        from controlador.utils.paths import get_data_path, get_resource_path
+        data_dir = get_data_path()
+        res_dir = get_resource_path()
+
         # 1. Verificar Espacio en Disco
         try:
-            total, used, free = shutil.disk_usage(".")
+            total, used, free = shutil.disk_usage(str(data_dir if data_dir.exists() else Path(".")))
             free_mb = free / (1024 * 1024)
             if free_mb < 200:
                 warnings.append(f"Espacio libre en disco bajo: {free_mb:.1f} MB disponibles.")
@@ -26,8 +30,7 @@ class StartupDiagnostics:
             warnings.append(f"No se pudo verificar el disco: {e}")
 
         # 2. Verificar estructura de carpetas esenciales
-        base_dir = Path(".")
-        cuentas_dir = base_dir / "cuentas"
+        cuentas_dir = data_dir / "cuentas"
         if not cuentas_dir.exists():
             try:
                 cuentas_dir.mkdir(parents=True, exist_ok=True)
@@ -37,7 +40,7 @@ class StartupDiagnostics:
                 warnings.append(f"No se pudo crear carpeta 'cuentas': {e}")
 
         # 3. Verificar JSON de Temas
-        temas_file = base_dir / "vistas" / "utils" / "temas.json"
+        temas_file = res_dir / "vistas" / "utils" / "temas.json"
         if temas_file.exists():
             try:
                 with open(temas_file, "r", encoding="utf-8") as f:

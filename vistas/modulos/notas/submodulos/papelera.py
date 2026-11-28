@@ -28,7 +28,8 @@ class TabPapelera(QWidget):
             self.colores = self.context.app.COLORES
 
         self.callback_restaurar = callback_restaurar
-        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", ".")) if self.context else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", "") or get_data_path()) if self.context else get_data_path()
         self.dir_papelera = self.ruta_usuario / "notas" / ".papelera"
         self.dir_papelera.mkdir(parents=True, exist_ok=True)
         self.font_family = "Segoe UI"

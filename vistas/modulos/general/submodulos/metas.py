@@ -41,7 +41,8 @@ class TabMetasGUI(QWidget):
         if not isinstance(self.colores, dict):
             self.colores = {}
 
-        ruta_base = Path(getattr(self.context, "ruta_usuario", ".")) if self.context and hasattr(self.context, "ruta_usuario") else Path(".")
+        from controlador.utils.paths import get_data_path
+        ruta_base = Path(getattr(self.context, "ruta_usuario", "") or get_data_path()) if self.context and hasattr(self.context, "ruta_usuario") else get_data_path()
         self.ruta_json = ruta_base / "metas_okrs_data.json"
         self.metas = []
 

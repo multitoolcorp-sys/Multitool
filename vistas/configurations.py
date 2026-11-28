@@ -223,14 +223,16 @@ class DynamicModuleContainer(QWidget):
 
             try:
                 instance = cls(*args, **kwargs)
-            except TypeError:
-                try:
-                    instance = cls(self, self.context, self.colores)
-                except TypeError:
+            except TypeError as e_sig:
+                instance = None
+                for fallback_args in ((self, self.context, self.colores), (self, self.context), (self,)):
                     try:
-                        instance = cls(self, self.context)
+                        instance = cls(*fallback_args)
+                        break
                     except TypeError:
-                        instance = cls(self)
+                        continue
+                if instance is None:
+                    raise e_sig
 
             self.submodules_instances[sub["name"]] = instance
             
@@ -257,6 +259,20 @@ class DynamicModuleContainer(QWidget):
         )
         err_lbl.setWordWrap(True)
         self.main_layout.addWidget(err_lbl)
+
+    def cleanup(self):
+        """Propaga la limpieza de recursos hacia todos los submódulos instanciados."""
+        for inst in list(self.submodules_instances.values()):
+            if inst is None:
+                continue
+            for method_name in ("cleanup", "detener_monitoreo", "close"):
+                if hasattr(inst, method_name) and callable(getattr(inst, method_name)):
+                    try:
+                        getattr(inst, method_name)()
+                        if method_name == "cleanup":
+                            break
+                    except Exception:
+                        pass
 
 
 def load_class_dynamically(sub_info):

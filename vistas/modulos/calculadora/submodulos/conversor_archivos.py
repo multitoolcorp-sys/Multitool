@@ -169,7 +169,7 @@ class TabCalculadoraConversorArchivos(QWidget):
             if hasattr(self, 'temp_out_path') and self.temp_out_path and self.temp_out_path.exists():
                 try:
                     self.temp_out_path.unlink()
-                except:
+                except Exception:
                     pass
             self.temp_out_path = None
             
@@ -226,7 +226,7 @@ class TabCalculadoraConversorArchivos(QWidget):
         if hasattr(self, 'temp_out_path') and self.temp_out_path and self.temp_out_path.exists():
             try:
                 self.temp_out_path.unlink()
-            except:
+            except Exception:
                 pass
         
         # Generar ruta temporal de salida

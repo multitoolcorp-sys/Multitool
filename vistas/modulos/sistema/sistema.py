@@ -95,7 +95,7 @@ class TabSistema(QWidget):
         if hasattr(self.gui, 'tab_procesos') and hasattr(self.gui.tab_procesos, 'chart'):
             try:
                 self.gui.tab_procesos.chart.add_points(d['cpu'], d['mem_p'])
-            except:
+            except Exception:
                 pass
 
         # Resto de la UI (Monitor)
@@ -244,7 +244,7 @@ class TabSistema(QWidget):
                 try: 
                     subprocess.Popen([cmd])
                     break
-                except: continue
+                except Exception: continue
         elif sys == "Darwin": subprocess.Popen(["open", "/Applications/Utilities/Disk Utility.app"])
 
     def abrir_conexiones_red(self):
@@ -470,3 +470,15 @@ class TabSistema(QWidget):
                     font-weight: bold;
                 }}
             """)
+
+    def cleanup(self):
+        """Detiene el monitoreo del sistema y libera recursos de pestañas remotas."""
+        try:
+            self.detener_monitoreo()
+        except Exception:
+            pass
+        if hasattr(self, "gui") and hasattr(self.gui, "tab_remote") and hasattr(self.gui.tab_remote, "cleanup"):
+            try:
+                self.gui.tab_remote.cleanup()
+            except Exception:
+                pass

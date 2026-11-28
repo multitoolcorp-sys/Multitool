@@ -227,7 +227,7 @@ class TabResumen(QWidget):
             self.card_gpu.bar.setValue(int(uso_gpu))
             
             self.lbl_net_val.setText(f"▲ {data['net_up']} | ▼ {data['net_down']}")
-        except: pass
+        except Exception: pass
 
     def rellenar_grid_info(self, info):
         # Limpiar

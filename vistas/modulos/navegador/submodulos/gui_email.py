@@ -662,7 +662,7 @@ class EmailGUI(QWidget):
                 self.actualizar_ui_lista_correos(self.cached_emails)
                 now_str = datetime.datetime.fromtimestamp(cache_file.stat().st_mtime).strftime("%d/%m %H:%M")
                 self.lbl_sync_status.setText(f"Cargado (caché: {now_str})")
-            except:
+            except Exception:
                 self.cached_emails = []
         else:
             self.cached_emails = []
@@ -706,7 +706,7 @@ class EmailGUI(QWidget):
             cache_file.parent.mkdir(parents=True, exist_ok=True)
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(emails_list, f, indent=4)
-        except: pass
+        except Exception: pass
         
         now = datetime.datetime.now().strftime("%H:%M")
         self.lbl_sync_status.setText(f"Sincronizado a las {now}")
@@ -729,7 +729,7 @@ class EmailGUI(QWidget):
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, 'w') as f:
                 json.dump({"email": email, "pass": password}, f)
-        except: pass
+        except Exception: pass
 
     def cargar_datos_vinculacion(self):
         if self.config_path.exists():
@@ -749,7 +749,7 @@ class EmailGUI(QWidget):
                     
                     # Sincronizar automáticamente en segundo plano
                     self.sincronizar_inbox_background()
-            except: pass
+            except Exception: pass
 
     def reset_form(self):
         if self.config_path.exists(): 
@@ -759,7 +759,7 @@ class EmailGUI(QWidget):
         cache_file = self.ruta_usuario / "chat" / "gmail_inbox_cache.json"
         if cache_file.exists():
             try: cache_file.unlink()
-            except: pass
+            except Exception: pass
             
         self.root_stack.setCurrentIndex(0)
         self.txt_pass.clear()

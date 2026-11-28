@@ -23,7 +23,8 @@ class TabBacklinksGUI(QWidget):
         self.context = context
         self.colores = colores or (getattr(context.app, "COLORES", {}) if context and hasattr(context, "app") else {})
 
-        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", ".")) if self.context else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(getattr(self.context, "ruta_usuario", "") or get_data_path()) if self.context else get_data_path()
         self.ruta_notas = self.ruta_usuario / "notas"
 
         # Grafos en memoria: outgoing_links[nota] = set(destinos), incoming_links[nota] = set(origenes)

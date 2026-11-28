@@ -351,10 +351,10 @@ class WebView2Widget(QWidget):
                         pass
                 except Exception:
                     try: args.State = CoreWV2.CoreWebView2PermissionState.Deny
-                    except: pass
+                    except Exception: pass
                 finally:
                     try: deferral.Complete()
-                    except: pass
+                    except Exception: pass
 
             QTimer.singleShot(50, _solicitar_usuario)
         except Exception as e:

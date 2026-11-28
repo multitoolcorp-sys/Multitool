@@ -177,7 +177,7 @@ class FinanceTrackerWindow(QWidget):
             try:
                 monto = float(monto_str)
                 balance += monto if tipo == "Ingreso" else -monto
-            except: continue
+            except Exception: continue
         
         self.lbl_balance.setText(f"Balance Total: ${balance:,.2f}")
         color = self.colores['exito'] if balance >= 0 else self.colores['error']
@@ -193,7 +193,7 @@ class FinanceTrackerWindow(QWidget):
             
         try:
             monto = float(monto_str)
-        except:
+        except Exception:
             return QMessageBox.warning(self, "Formato Inválido", "El monto debe ser un número válido.")
             
         row = self.tabla.rowCount()
@@ -241,7 +241,7 @@ class FinanceTrackerWindow(QWidget):
             self.ruta_tracker.parent.mkdir(parents=True, exist_ok=True)
             with open(self.ruta_tracker, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
-        except: pass
+        except Exception: pass
 
     def cargar_datos(self):
         if not self.ruta_tracker.exists(): return
@@ -259,7 +259,7 @@ class FinanceTrackerWindow(QWidget):
                 self.tabla.setItem(i, 3, QTableWidgetItem(reg["monto"]))
             
             self.calcular_balance()
-        except: pass
+        except Exception: pass
 
 class TabCalculadoraFinanzas(QWidget):
     """Submódulo de pestañas para seguimiento financiero personal integrado"""

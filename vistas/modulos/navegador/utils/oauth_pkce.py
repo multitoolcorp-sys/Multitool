@@ -284,7 +284,7 @@ class GoogleOAuthManager(QObject):
                 "User-Agent": "MultiTool-DesktopApp/1.0"
             })
 
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 token_data = json.loads(resp.read().decode("utf-8"))
 
             access_token = token_data.get("access_token")
@@ -317,7 +317,7 @@ class GoogleOAuthManager(QObject):
             "Authorization": f"Bearer {access_token}",
             "User-Agent": "MultiTool-DesktopApp/1.0"
         })
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def save_session(self, session_data: dict):

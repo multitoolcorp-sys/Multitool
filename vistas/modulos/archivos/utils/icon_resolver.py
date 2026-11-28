@@ -85,7 +85,7 @@ class IconResolver:
             
             if res:
                 return shfileinfo.szTypeName
-        except:
+        except Exception:
             pass
         return None
 

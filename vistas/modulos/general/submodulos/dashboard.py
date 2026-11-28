@@ -172,7 +172,7 @@ class TabInicioGUI(QWidget):
                             try:
                                 with open(local_path, "wb") as f:
                                     f.write(data)
-                            except: pass
+                            except Exception: pass
                             btn.setIcon(QIcon(pix))
                             btn.setIconSize(QSize(28, 28))
                             btn.setText("")
@@ -288,7 +288,7 @@ class TabInicioGUI(QWidget):
             try:
                 with open(ruta_todo, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except:
+            except Exception:
                 return []
         return []
         
@@ -380,7 +380,7 @@ class TabInicioGUI(QWidget):
                 with open(ruta_pi, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     return data.get("text", "")
-            except:
+            except Exception:
                 return ""
         return ""
         
@@ -934,7 +934,7 @@ class TabInicioGUI(QWidget):
             with open(config_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
             banner.hide()
-        except: pass
+        except Exception: pass
 
     def mostrar_personalizar(self):
         dialog = QDialog(self)

@@ -323,3 +323,20 @@ class TabCuenta(QWidget):
         lay.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
 
         dlg.exec()
+
+    def cleanup(self):
+        """Detiene el vigilante de inactividad y limpia los submódulos de Cuenta."""
+        watcher = getattr(self, "idle_watcher", None)
+        if watcher:
+            for m in ("stop", "cleanup"):
+                if hasattr(watcher, m):
+                    try:
+                        getattr(watcher, m)()
+                    except Exception:
+                        pass
+        for inst in getattr(self, "submod_instances", {}).values():
+            if inst and hasattr(inst, "cleanup"):
+                try:
+                    inst.cleanup()
+                except Exception:
+                    pass

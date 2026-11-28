@@ -16,27 +16,13 @@ def _cargar_vistas_reemplazables_disco():
     e inyecta sus módulos en sys.modules para que las actualizaciones (.mtu)
     reemplacen efectivamente la interfaz incluso en ejecutables compilados con Nuitka.
     """
-    try:
-        from controlador.utils.paths import get_resource_path
-        import vistas
-        vistas_dir = get_resource_path() / "vistas"
-        for mod_short, filename in (
-            ("scrollable", "scrollable.py"),
-            ("command_palette", "command_palette.py"),
-            ("dashboard_layout", "dashboard_layout.py"),
-            ("gui", "gui.py"),
-        ):
-            py_path = vistas_dir / filename
-            full_mod_name = f"vistas.{mod_short}"
-            if py_path.exists():
-                spec = importlib.util.spec_from_file_location(full_mod_name, str(py_path))
-                if spec and spec.loader:
-                    mod = importlib.util.module_from_spec(spec)
-                    sys.modules[full_mod_name] = mod
-                    spec.loader.exec_module(mod)
-                    setattr(vistas, mod_short, mod)
-    except Exception as e:
-        print(f"[DynamicVistaLoader] Aviso cargando vistas desde disco: {e}")
+    from controlador.utils.paths import cargar_vistas_desde_disco
+    cargar_vistas_desde_disco((
+        ("scrollable", "scrollable.py"),
+        ("command_palette", "command_palette.py"),
+        ("dashboard_layout", "dashboard_layout.py"),
+        ("gui", "gui.py"),
+    ))
 
 _cargar_vistas_reemplazables_disco()
 
@@ -200,9 +186,10 @@ class AppMultitareasGUI(BaseAppGUI):
         config_path = self.ruta_usuario / "config.json"
         if config_path.exists():
             try:
+                from controlador.auth.crypto_utils import process_config_for_load
                 with open(config_path, "r", encoding="utf-8") as f:
-                    self.config = json.load(f)
-            except:
+                    self.config = process_config_for_load(json.load(f))
+            except Exception:
                 self.config = {}
         else:
             self.config = {}
@@ -210,8 +197,9 @@ class AppMultitareasGUI(BaseAppGUI):
     def guardar_configuracion(self):
         config_path = self.ruta_usuario / "config.json"
         try:
+            from controlador.auth.crypto_utils import process_config_for_save
             with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=4)
+                json.dump(process_config_for_save(self.config), f, indent=4, ensure_ascii=False)
         except Exception as e:
             QMessageBox.critical(self, "Error", f"No se pudo guardar la configuración: {e}")
 
@@ -299,7 +287,6 @@ class AppMultitareasGUI(BaseAppGUI):
         """Reenvía el progreso del hilo a la pantalla de carga (hilo principal)."""
         if self.callback_progreso:
             self.callback_progreso(porcentaje, mensaje)
-        QApplication.processEvents()
 
     def _on_loader_terminado(self, modulos_con_clase):
         """
@@ -681,9 +668,8 @@ class AppMultitareasGUI(BaseAppGUI):
         if respuesta == QMessageBox.StandardButton.Yes:
             self.config["login"] = False
             self.guardar_configuracion()
-            self.close()
-            import main
-            main.main()
+            from controlador.utils.paths import reiniciar_aplicacion
+            reiniciar_aplicacion(self)
 
     def obtener_todos_los_modulos(self):
         """Retorna todos los módulos con el estado actual (global + usuario)."""

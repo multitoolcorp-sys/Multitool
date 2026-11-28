@@ -177,13 +177,13 @@ class TabCalculadoraBasica(QWidget):
         try: 
             self.memoria += self.parser.evaluate(self.expresion)
             self.lbl_preview.setText(f"M: {self.parser.format_number(self.memoria)}")
-        except: pass
+        except Exception: pass
 
     def mem_sub(self):
         try: 
             self.memoria -= self.parser.evaluate(self.expresion)
             self.lbl_preview.setText(f"M: {self.parser.format_number(self.memoria)}")
-        except: pass
+        except Exception: pass
 
     def accion(self, b):
         if self.expresion == "0" and b not in "=C←,+-*/%()": self.expresion = ""

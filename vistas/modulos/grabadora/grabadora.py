@@ -168,7 +168,7 @@ class TabGrabadora(QWidget):
         if not self.manager.grabando_audio:
             idx_str = self.tab_audio.combo_dispositivo.currentText()
             try: idx = int(idx_str.split(":")[0])
-            except: idx = None
+            except Exception: idx = None
             if self.manager.iniciar_audio(idx, self._update_audio_visual):
                 self.tab_audio.btn_grabar_audio.setText("⏹️ Detener")
                 self.tab_audio.btn_grabar_audio.setStyleSheet(f"background: {self.colores['error']}; color: white; padding: 10px 20px; border-radius: 8px; border: none; font-weight: bold;")

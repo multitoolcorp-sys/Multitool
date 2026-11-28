@@ -824,13 +824,13 @@ class ConversionThread(QThread):
                                 pix.save(str(img_temp))
                                 zip_file.write(img_temp, arcname=f"pagina_{page_num + 1}{out_ext}")
                                 try: img_temp.unlink()
-                                except: pass
+                                except Exception: pass
                         final_out = zip_path
 
                     doc.close()
                     if temp_pdf and temp_pdf.exists():
                         try: temp_pdf.unlink()
-                        except: pass
+                        except Exception: pass
 
                     self.progress.emit(100)
                     self.finished.emit(str(final_out), True)

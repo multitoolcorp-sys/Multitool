@@ -259,4 +259,4 @@ class SoundboardGUI(QWidget):
         try:
             path.unlink()
             self.load_sounds()
-        except: pass
+        except Exception: pass

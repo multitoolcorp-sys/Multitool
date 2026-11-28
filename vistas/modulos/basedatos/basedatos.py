@@ -2622,5 +2622,25 @@ class TabBasedatos(QWidget):
 
     def closeEvent(self, event):
         self.guardar_estado_pestanas()
+        self.cleanup()
         super().closeEvent(event)
+
+    def cleanup(self):
+        """Guarda estado y cierra conexiones activas de bases de datos al descargar el módulo."""
+        try:
+            self.guardar_estado_pestanas()
+        except Exception:
+            pass
+        for attr in ("active_db", "db_manager", "conn"):
+            obj = getattr(self, attr, None)
+            if obj and hasattr(obj, "disconnect"):
+                try:
+                    obj.disconnect()
+                except Exception:
+                    pass
+            elif obj and hasattr(obj, "close"):
+                try:
+                    obj.close()
+                except Exception:
+                    pass
 

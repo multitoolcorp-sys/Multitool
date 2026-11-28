@@ -281,7 +281,7 @@ class KanbanGUI(QWidget):
         try:
             with open(self.ruta_kanban, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4)
-        except: pass
+        except Exception: pass
 
     def load_kanban(self):
         if not self.ruta_kanban.exists(): return
@@ -302,5 +302,5 @@ class KanbanGUI(QWidget):
                 it.setFont(QFont("Outfit", 10))
                 self.list_done.addItem(it)
             self.actualizar_contadores()
-        except: pass
+        except Exception: pass
 

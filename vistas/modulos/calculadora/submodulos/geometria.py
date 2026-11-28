@@ -131,7 +131,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Área: {area:.4f} | Perímetro: {per:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Círculo (r={r})", f"Área: {area:.4f}, Perímetro: {per:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa un valor numérico válido")
 
         btn.clicked.connect(calc)
@@ -162,7 +162,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Área: {area:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Triángulo (b={b}, h={h})", f"Área: {area:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa valores válidos")
 
         btn.clicked.connect(calc)
@@ -194,7 +194,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Área: {area:.4f} | Perímetro: {per:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Rectángulo ({b}x{h})", f"Área: {area:.4f}, Perímetro: {per:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa valores válidos")
 
         btn.clicked.connect(calc)
@@ -225,7 +225,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Volumen: {vol:.4f} | Área Sup.: {surf:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Esfera (r={r})", f"Vol: {vol:.4f}, Área Sup: {surf:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa un radio válido")
 
         btn.clicked.connect(calc)
@@ -257,7 +257,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Volumen: {vol:.4f} | Área Total: {area:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Cilindro (r={r}, h={h})", f"Vol: {vol:.4f}, Área: {area:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa valores válidos")
 
         btn.clicked.connect(calc)
@@ -288,7 +288,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Volumen: {vol:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Cono (r={r}, h={h})", f"Volumen: {vol:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa valores válidos")
 
         btn.clicked.connect(calc)
@@ -319,7 +319,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Volumen: {vol:.4f} | Área Sup.: {surf:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Cubo (a={a})", f"Vol: {vol:.4f}, Área Sup: {surf:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa un lado válido")
 
         btn.clicked.connect(calc)
@@ -350,7 +350,7 @@ class TabCalculadoraGeometria(QWidget):
                 lbl_res.setText(f"Hipotenusa (c): {c:.4f}")
                 if self.add_historial:
                     self.add_historial(f"Pitágoras (a={a}, b={b})", f"c = {c:.4f}")
-            except:
+            except Exception:
                 lbl_res.setText("⚠️ Ingresa catetos válidos")
 
         btn.clicked.connect(calc)

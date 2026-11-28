@@ -757,4 +757,19 @@ class TabNavegador(QWidget):
             if hasattr(self.sub_integrado, "toggle_fullscreen_mode"):
                 self.sub_integrado.toggle_fullscreen_mode(is_fullscreen)
 
+    def cleanup(self):
+        """Cierra recursos de navegación integrada, correo y descargas al descargar el módulo."""
+        for attr in ("sub_integrado", "sub_externo", "sub_email", "sub_descargas"):
+            sub = getattr(self, attr, None)
+            if sub and hasattr(sub, "cleanup"):
+                try:
+                    sub.cleanup()
+                except Exception:
+                    pass
+            elif sub and hasattr(sub, "close"):
+                try:
+                    sub.close()
+                except Exception:
+                    pass
+
 

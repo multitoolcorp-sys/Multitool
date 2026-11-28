@@ -19,7 +19,8 @@ class TabArchivos(QWidget):
     def __init__(self, parent=None, context=None, colores=None):
         super().__init__(parent)
         self.context = context
-        self.ruta_usuario = Path(getattr(context, "ruta_usuario", ".")) if context else Path(".")
+        from controlador.utils.paths import get_data_path
+        self.ruta_usuario = Path(getattr(context, "ruta_usuario", "") or get_data_path()) if context else get_data_path()
         if colores:
             self.colores = colores
         elif context and hasattr(context, "app") and hasattr(context.app, "COLORES"):
@@ -378,7 +379,7 @@ class TabArchivos(QWidget):
 
                 # Si es un comando (ej: cmd), ejecutar en la ruta actual
                 self.ejecutar_comando_ruta(ruta_texto)
-            except:
+            except Exception:
                 self.gui.barra_estado.showMessage(f"No se pudo resolver: {ruta_texto}", 3000)
 
     def _abrir_ruta_sistema(self, ruta):
@@ -475,7 +476,7 @@ class TabArchivos(QWidget):
                     
                     self.archivo_editando = None
                     self.gui.mostrar_vista_texto(content, nombre, editable=False)
-                except:
+                except Exception:
                     self.gui.mostrar_info_general(nombre, "Error al extraer vista previa de Office")
             else:
                 self.archivo_editando = None

@@ -193,7 +193,7 @@ class WinStyleFileOpDialog(QDialog):
                 lbl_meta = QLabel(f"Fecha de creación: {mtime}")
                 lbl_meta.setStyleSheet("color: #666666; font-size: 11px;")
                 info_lay.addWidget(lbl_meta)
-            except:
+            except Exception:
                 pass
                 
             det_lay.addLayout(info_lay, 1)

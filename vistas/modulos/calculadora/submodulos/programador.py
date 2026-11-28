@@ -158,17 +158,17 @@ class TabCalculadoraProgramador(QWidget):
                 max_val = (1 << self.word_bits) - 1
                 val = (~val) & max_val
                 self._actualizar_desde_base(str(val), 10)
-            except: pass
+            except Exception: pass
         elif text == "LSH (<<)":
             try:
                 val = int(self.txt_dec.text(), 10) << 1
                 self._actualizar_desde_base(str(val), 10)
-            except: pass
+            except Exception: pass
         elif text == "RSH (>>)":
             try:
                 val = int(self.txt_dec.text(), 10) >> 1
                 self._actualizar_desde_base(str(val), 10)
-            except: pass
+            except Exception: pass
         else:
             if text in "0123456789ABCDEF":
                 curr = self.txt_dec.text()

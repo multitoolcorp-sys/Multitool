@@ -137,3 +137,13 @@ class TabCalculadora(QWidget):
                     pass
             elif hasattr(w, "colores"):
                 w.colores = self.colores
+
+    def cleanup(self):
+        """Libera recursos y propaga cleanup a los submódulos de Calculadora."""
+        for i in range(self.calc_notebook.count()):
+            w = self.calc_notebook.widget(i)
+            if w and hasattr(w, "cleanup"):
+                try:
+                    w.cleanup()
+                except Exception:
+                    pass

@@ -97,7 +97,7 @@ class FolderTreeDialog(QDialog):
                         if os.path.exists(drive):
                             root = self.crear_item(self.tree, f"💻 Disco Local ({drive})", drive)
                             self.crear_item(root, "Cargando...", "")
-            except:
+            except Exception:
                 # Fallback a C: si falla la API
                 root = self.crear_item(self.tree, "💻 Disco Local (C:)", "C:\\")
                 self.crear_item(root, "Cargando...", "")
@@ -135,7 +135,7 @@ class FolderTreeDialog(QDialog):
                 try:
                     if any(e.is_dir() for e in entry.iterdir()):
                         self.crear_item(node, "Cargando...", "")
-                except:
+                except Exception:
                     pass
         except PermissionError:
             self.crear_item(item, "🚫 Sin acceso", "")

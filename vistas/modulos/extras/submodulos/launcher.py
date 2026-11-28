@@ -241,7 +241,7 @@ class LauncherGUI(QWidget):
             try:
                 with open(self.ruta_data, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except:
+            except Exception:
                 return []
         return []
 
@@ -249,7 +249,7 @@ class LauncherGUI(QWidget):
         try:
             with open(self.ruta_data, "w", encoding="utf-8") as f:
                 json.dump(self.apps, f, indent=4)
-        except:
+        except Exception:
             pass
 
     def _refresh_list(self):

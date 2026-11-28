@@ -189,7 +189,7 @@ class TabSeguridad(QWidget):
                 try:
                     usage = psutil.disk_usage(p.mountpoint)
                     estado = f"{usage.percent}% usado"
-                except:
+                except Exception:
                     estado = "No montado / Protegido"
                 
                 it_use = QTableWidgetItem(estado)

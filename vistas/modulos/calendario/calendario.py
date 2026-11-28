@@ -183,7 +183,7 @@ class TabCalendario(QWidget):
             
         try:
             datetime.datetime.strptime(hora, "%H:%M")
-        except:
+        except Exception:
             QMessageBox.warning(self, "Formato Inválido", "Por favor ingresa un formato de hora válido (HH:MM).")
             return
 

@@ -119,9 +119,9 @@ class DiskScannerThread(QThread):
                     fp = os.path.join(root, f)
                     try:
                         total += os.path.getsize(fp)
-                    except:
+                    except Exception:
                         pass
-        except:
+        except Exception:
             pass
         return total
 
@@ -214,7 +214,7 @@ class DiskCleanerThread(QThread):
                     sz = os.path.getsize(ip)
                     os.remove(ip)
                     total_deleted += sz
-            except:
+            except Exception:
                 pass
         return total_deleted
 
@@ -225,7 +225,7 @@ class DiskCleanerThread(QThread):
                 for f in files:
                     fp = os.path.join(root, f)
                     total += os.path.getsize(fp)
-        except: pass
+        except Exception: pass
         return total
 
     def _clean_recycle_bin(self):

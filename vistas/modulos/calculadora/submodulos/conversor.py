@@ -201,7 +201,7 @@ class TabCalculadoraConversor(QWidget):
                     p2 = p1.parent()
                     if p2:
                         cache_dir = getattr(p2, "ruta_usuario", None)
-            except:
+            except Exception:
                 pass
                 
             res = ConversorLogic.convertir(val_str, tipo, origen, destino, cache_dir)

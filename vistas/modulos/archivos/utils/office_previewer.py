@@ -63,7 +63,7 @@ class OfficePreviewer:
                             if c.get('t') == 's':
                                 try:
                                     row_data.append(shared_strings[int(val)])
-                                except:
+                                except Exception:
                                     row_data.append(val)
                             else:
                                 row_data.append(val)

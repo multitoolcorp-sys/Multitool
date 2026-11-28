@@ -27,7 +27,7 @@ class NavigationManager:
                 with open(ruta, "r", encoding="utf-8") as f:
                     return json.load(f)
             return []
-        except: return []
+        except Exception: return []
 
     def guardar_historial(self):
         try:
@@ -35,7 +35,7 @@ class NavigationManager:
             self.ruta_usuario.mkdir(parents=True, exist_ok=True)
             with open(ruta, "w", encoding="utf-8") as f:
                 json.dump(self.historial, f, ensure_ascii=False, indent=4)
-        except: pass
+        except Exception: pass
 
     def añadir_historial(self, url, titulo=None):
         if not url or not isinstance(url, str):

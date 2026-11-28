@@ -48,10 +48,14 @@ class GlobalActionFilter(QObject):
         return super().eventFilter(obj, event)
 
 def setup_logging():
+    from controlador.utils.paths import get_data_path
+    log_dir = get_data_path()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "multitool.log"
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[logging.FileHandler("multitool.log", encoding="utf-8"), logging.StreamHandler(sys.stdout)]
+        handlers=[logging.FileHandler(str(log_file), encoding="utf-8"), logging.StreamHandler(sys.stdout)]
     )
 
 def setup_platform_specific():
@@ -128,23 +132,34 @@ def main():
             # Esta instancia funciona con su propio identificador de proceso independiente
             ipc_server.listen(f"MultiTool_IPC_{os.getpid()}")
 
+    def _procesar_mensaje_ipc(data: str):
+        main_win = getattr(app, "multitool_main_window", None)
+        if data.startswith("OPEN_URL:"):
+            url = data.split("OPEN_URL:", 1)[1].strip()
+            if main_win and hasattr(main_win, "abrir_url_en_navegador"):
+                main_win.abrir_url_en_navegador(url)
+            else:
+                app.initial_url_to_open = url
+        elif data == "BRING_TO_FRONT":
+            if main_win and hasattr(main_win, "traer_al_frente"):
+                main_win.traer_al_frente()
+
     def on_ipc_connection():
-        client = ipc_server.nextPendingConnection()
-        if not client:
-            return
-        if client.waitForReadyRead(800):
-            data = client.readAll().data().decode("utf-8", errors="ignore").strip()
-            client.disconnectFromServer()
-            main_win = getattr(app, "multitool_main_window", None)
-            if data.startswith("OPEN_URL:"):
-                url = data.split("OPEN_URL:", 1)[1].strip()
-                if main_win and hasattr(main_win, "abrir_url_en_navegador"):
-                    main_win.abrir_url_en_navegador(url)
-                else:
-                    app.initial_url_to_open = url
-            elif data == "BRING_TO_FRONT":
-                if main_win and hasattr(main_win, "traer_al_frente"):
-                    main_win.traer_al_frente()
+        while ipc_server.hasPendingConnections():
+            client = ipc_server.nextPendingConnection()
+            if not client:
+                continue
+
+            def _leer_cliente(sock=client):
+                data = sock.readAll().data().decode("utf-8", errors="ignore").strip()
+                if data:
+                    _procesar_mensaje_ipc(data)
+                sock.disconnectFromServer()
+
+            client.readyRead.connect(_leer_cliente)
+            client.disconnected.connect(client.deleteLater)
+            if client.bytesAvailable() > 0:
+                _leer_cliente()
 
     ipc_server.newConnection.connect(on_ipc_connection)
 
@@ -159,80 +174,8 @@ def main():
     app.aboutToQuit.connect(cleanup_ipc)
     
     # Estilo base global para diálogos, mensajes emergentes (QMessageBox) y tooltips
-    app.setStyleSheet("""
-        QMessageBox {
-            background-color: #1E1E2E;
-            color: #FFFFFF;
-        }
-        QMessageBox QLabel {
-            color: #FFFFFF;
-            background-color: transparent;
-            font-size: 9.5pt;
-        }
-        QMessageBox QPushButton {
-            background-color: #6366F1;
-            color: #FFFFFF;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 16px;
-            font-weight: bold;
-            min-width: 75px;
-        }
-        QMessageBox QPushButton:hover {
-            background-color: #4F46E5;
-        }
-        QToolTip {
-            background-color: #2D2D3D;
-            color: #FFFFFF;
-            border: 1px solid #4B5563;
-            padding: 5px 8px;
-            border-radius: 4px;
-            font-size: 9pt;
-        }
-        QMenu {
-            background-color: #1E1E2E;
-            color: #E2E8F0;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            border-radius: 8px;
-            padding: 6px;
-        }
-        QMenu::item {
-            background-color: transparent;
-            color: #E2E8F0;
-            padding: 8px 24px 8px 14px;
-            border-radius: 6px;
-            font-size: 9.5pt;
-        }
-        QMenu::item:selected {
-            background-color: #6366F1;
-            color: #FFFFFF !important;
-            font-weight: bold;
-        }
-        QMenu::item:disabled {
-            background-color: transparent;
-            color: #64748B !important;
-        }
-        QMenu::separator {
-            height: 1px;
-            background-color: rgba(255, 255, 255, 0.08);
-            margin: 4px 6px;
-        }
-        QMenu::indicator {
-            width: 16px;
-            height: 16px;
-            margin-left: 6px;
-        }
-        QMenu::indicator:checked {
-            background-color: #6366F1;
-            border: 1px solid #818CF8;
-            border-radius: 3px;
-        }
-        QMenu::indicator:unchecked {
-            background-color: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-        }
-    """)
+    from vistas.estilos import generar_qss_global
+    app.setStyleSheet(generar_qss_global())
     
     # 2. Diagnósticos de Inicio (Pre-Flight Checks)
     is_ok, warnings = StartupDiagnostics.run_checks()

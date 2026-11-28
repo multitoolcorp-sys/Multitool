@@ -151,21 +151,21 @@ class EmailFetchThread(QThread):
                             if content_type == "text/plain":
                                 try:
                                     body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
-                                except: pass
+                                except Exception: pass
                             elif content_type == "text/html":
                                 try:
                                     html_body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8", errors="replace")
-                                except: pass
+                                except Exception: pass
                 else:
                     content_type = msg.get_content_type()
                     if content_type == "text/plain":
                         try:
                             body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="replace")
-                        except: pass
+                        except Exception: pass
                     elif content_type == "text/html":
                         try:
                             html_body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8", errors="replace")
-                        except: pass
+                        except Exception: pass
                 
                 final_body = html_body if html_body else body
                 if not final_body:
@@ -207,5 +207,5 @@ class EmailFetchThread(QThread):
                 else:
                     decoded_parts.append(str(part))
             return "".join(decoded_parts)
-        except:
+        except Exception:
             return str(header_val)

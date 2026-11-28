@@ -15,14 +15,14 @@ class FavoritesManager:
                 with open(ruta, "r", encoding="utf-8") as f:
                     return json.load(f)
             return []
-        except: return []
+        except Exception: return []
 
     def guardar_favoritos(self):
         try:
             ruta = self.ruta_usuario / "favoritos.json"
             with open(ruta, "w", encoding="utf-8") as f:
                 json.dump(self.favoritos, f, ensure_ascii=False, indent=4)
-        except: pass
+        except Exception: pass
 
     def añadir_favorito(self, nombre, url, categoria="General"):
         fecha = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

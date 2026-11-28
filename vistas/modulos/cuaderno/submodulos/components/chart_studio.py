@@ -250,7 +250,7 @@ class ChartStudio(QWidget):
 
             try:
                 self.fig.tight_layout()
-            except:
+            except Exception:
                 pass
             self.canvas.draw()
         except Exception as e:

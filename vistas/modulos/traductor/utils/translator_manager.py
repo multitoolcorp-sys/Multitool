@@ -492,7 +492,7 @@ class TranslatorManager(QObject):
                 self.deteccion_completada.emit(codigo)
             else:
                 self.deteccion_completada.emit("auto")
-        except:
+        except Exception:
             self.deteccion_completada.emit("auto")
 
     def pronunciar(self, texto, idioma):
@@ -512,7 +512,7 @@ class TranslatorManager(QObject):
             import playsound
             playsound.playsound(temp_path)
             try: os.remove(temp_path)
-            except: pass
+            except Exception: pass
                 
             self.tts_finalizado.emit()
         except Exception as e:

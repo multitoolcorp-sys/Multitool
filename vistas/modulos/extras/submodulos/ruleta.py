@@ -280,13 +280,13 @@ class RuletaDecisoraView(QWidget):
         if self.ruta_data.exists():
             try:
                 with open(self.ruta_data, "r", encoding="utf-8") as f: return json.load(f)
-            except: pass
+            except Exception: pass
         return []
 
     def guardar_datos(self):
         try:
             with open(self.ruta_data, "w", encoding="utf-8") as f: json.dump(self.opciones, f, indent=4)
-        except: pass
+        except Exception: pass
 
     def _sync_opciones(self):
         new_text = self.edit_masa.toPlainText()

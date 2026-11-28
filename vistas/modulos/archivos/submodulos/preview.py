@@ -294,7 +294,7 @@ class FilePreview(QFrame):
             for u in ['B', 'KB', 'MB', 'GB']:
                 if size < 1024: return f"{size:.1f} {u}"
                 size /= 1024
-        except: return "--"
+        except Exception: return "--"
 
     def limpiar(self):
         self.ruta_archivo_actual = None

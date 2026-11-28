@@ -16,8 +16,8 @@ class NetworkLogic:
             for url in ['https://api.ipify.org', 'https://ifconfig.me/ip', 'https://icanhazip.com']:
                 try:
                     return requests.get(url, timeout=2).text.strip()
-                except: continue
-        except: pass
+                except Exception: continue
+        except Exception: pass
         return "No disponible"
 
     @staticmethod
@@ -31,7 +31,7 @@ class NetworkLogic:
             try:
                 s.connect(("8.8.8.8", 80))
                 details['local_ip'] = s.getsockname()[0]
-            except:
+            except Exception:
                 details['local_ip'] = socket.gethostbyname(hostname)
             finally:
                 s.close()
@@ -45,7 +45,7 @@ class NetworkLogic:
                     key = winreg.OpenKey(reg, r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters")
                     details['dns'] = winreg.QueryValueEx(key, "NameServer")[0]
                     if not details['dns']: details['dns'] = "Auto (DHCP)"
-                except: details['dns'] = "Windows DNS"
+                except Exception: details['dns'] = "Windows DNS"
             elif os_name in ["Linux", "Darwin"]:
                 try:
                     # Intento común para Unix (resolv.conf)
@@ -55,8 +55,8 @@ class NetworkLogic:
                                 if line.startswith("nameserver"):
                                     details['dns'] = line.split()[1]
                                     break
-                except: pass
-        except: pass
+                except Exception: pass
+        except Exception: pass
         return details
 
     @staticmethod
@@ -80,7 +80,7 @@ class SecurityLogic:
                         'ip': conn.laddr.ip,
                         'pid': conn.pid
                     })
-        except: pass
+        except Exception: pass
         return ports
 
     @staticmethod
@@ -95,13 +95,13 @@ class SecurityLogic:
                 try:
                     out = subprocess.check_output('ufw status', shell=True, text=True)
                     return "Activo (UFW)" if "active" in out else "Inactivo"
-                except:
+                except Exception:
                     # Alternativa iptables
                     return "Detectando (Iptables)"
             elif os_name == "Darwin":
                 out = subprocess.check_output('/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate', shell=True, text=True)
                 return "Activo (macOS)" if "enabled" in out.lower() else "Desactivado"
-        except: pass
+        except Exception: pass
         return "No detectado"
 
     @staticmethod
@@ -120,7 +120,7 @@ class SecurityLogic:
                     if len(services) > 30: break
                     if p.info['username'] in ['root', '_windowserver', 'daemon']:
                         services.append({'name': p.info['name'], 'status': 'Servicio/Daemon'})
-        except: pass
+        except Exception: pass
         return services
 
 class SystemToolsLogic:
@@ -148,9 +148,9 @@ class SystemToolsLogic:
                         try:
                             os.remove(os.path.join(root, f))
                             cleaned += 1
-                        except: pass
+                        except Exception: pass
                     if cleaned > 1000: break # Evitar bucles infinitos en sistemas muy sucios
-            except: pass
+            except Exception: pass
         return cleaned
 
     @staticmethod
@@ -166,11 +166,11 @@ class SystemToolsLogic:
                     try: 
                         subprocess.check_call(c, shell=True, stdout=subprocess.DEVNULL)
                         break
-                    except: continue
+                    except Exception: continue
             elif os_name == "Darwin":
                 subprocess.check_call("sudo killall -HUP mDNSResponder", shell=True)
             return True
-        except: return False
+        except Exception: return False
 
     @staticmethod
     def restart_shell():
@@ -187,6 +187,6 @@ class SystemToolsLogic:
             elif os_name == "Darwin":
                 subprocess.check_call("killall Finder", shell=True)
                 return True
-        except: pass
+        except Exception: pass
         return False
 

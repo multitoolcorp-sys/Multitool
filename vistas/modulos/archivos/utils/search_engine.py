@@ -35,7 +35,7 @@ class GlobalSearchWorker(QThread):
                                 "type": path.suffix.upper() if path.suffix else "Archivo"
                             })
                             count += 1
-                        except: continue
+                        except Exception: continue
                 
                 # Buscar en carpetas
                 for d in dirs:

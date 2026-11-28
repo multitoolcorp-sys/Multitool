@@ -46,7 +46,7 @@ class UniversalSecurityEngine:
                             "det": f"Binario en carpeta temporal: {name}",
                             "nivel": "ALTO"
                         })
-            except: continue
+            except Exception: continue
         return findings
 
     def escanear_persistencia(self):
@@ -67,8 +67,8 @@ class UniversalSecurityEngine:
                         k = winreg.OpenKey(hive, path)
                         for i in range(winreg.QueryInfoKey(k)[1]):
                             findings.append({"tipo": "Inicio", "cat": "Registro", "det": f"Autorun: {winreg.EnumValue(k, i)[0]}", "nivel": "BAJO"})
-                    except: continue
-            except: pass
+                    except Exception: continue
+            except Exception: pass
             
         elif system in ["Linux", "Darwin"]:
             # REVISAR CARPETAS DE INICIO
@@ -80,7 +80,7 @@ class UniversalSecurityEngine:
                         items = os.listdir(full_p)
                         for item in items:
                             findings.append({"tipo": "Inicio", "cat": "Script/Config", "det": f"Encontrado en {p}: {item}", "nivel": "BAJO"})
-                    except: continue
+                    except Exception: continue
         return findings
 
     def monitor_usb(self, callback):
@@ -92,7 +92,7 @@ class UniversalSecurityEngine:
                 watcher = c.watch_for(notification_type="Creation", wmi_class="Win32_USBControllerDevice")
                 while True:
                     try: watcher(); callback("Windows")
-                    except: break
+                    except Exception: break
             threading.Thread(target=_win_usb, daemon=True).start()
         
         elif system == "Linux":
@@ -113,7 +113,7 @@ class UniversalSecurityEngine:
                     try:
                         subprocess.check_output(['system_profiler', 'SPUSBDataType'])
                         # Notificar cambio es mas complejo en macOS sin libs extras, pero al menos intentamos
-                    except: pass
+                    except Exception: pass
             threading.Thread(target=_mac_usb, daemon=True).start()
 
     @staticmethod
